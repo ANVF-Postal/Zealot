@@ -38,3 +38,5 @@ Xkeyscore is a classified American analytical system that searches, analyzes and
 While Zealot is designed to reduce the usable data footprint of its messages, no internet communication can definitively avoid NSA wiretaps. True immunity to collection is impossible over the internet.
 
 However, Zealot's architecture leaves limited usable data behind to be analyzed. Provided your SSH connection to the server is properly encrypted, Xkeyscore can only see and track certain metadata associated with internet packets sent over the SSH connection. Spy agencies can still technically track when you sent messages over SSH, what encryption methods were used and the volume of traffic engaged. This is a consequence of these agencies wiretapping vast portions of the internet.
+
+Important reminder: If an attacker gains either remote or physical access to the system, all data is compromised. While zealot chats do not live forever, they can be intercepted and saved unencrypted if Zealot is used on a compromised system.
