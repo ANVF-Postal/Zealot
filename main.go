@@ -997,7 +997,8 @@ func makeStyles(cfg Config) uiStyles {
 			Foreground(accent).
 			Bold(true),
 
-		system: lipgloss.NewStyle().			Background(bg).
+		system: lipgloss.NewStyle().
+			Background(bg).
 			Foreground(lipgloss.Color("#707786")).
 			Italic(true),
 	}
@@ -1996,7 +1997,8 @@ func renderCompactMessage(
 	return lines
 }
 
-func wrapText(text string, width int) []string {	if width < 1 {
+func wrapText(text string, width int) []string {
+	if width < 1 {
 		width = 1
 	}
 	return wrapTextVariable(text, width, width, width)
