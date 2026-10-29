@@ -2077,7 +2077,7 @@ func wrapTextVariable(text string, firstWidth, secondWidth, fullWidth int) []str
 					break
 				}
 
-				part, rest := splitLongWordPrefix(remaining, capWidth)
+				part, rest := splitLongWordPrefix(remaining, capWidth, isURLLike(token))
 				if part == "" || rest == remaining {
 					// Progress even for unusual zero-width/control-only tokens.
 					_, size := utf8.DecodeRuneInString(remaining)
@@ -2105,11 +2105,10 @@ func wrapTextVariable(text string, firstWidth, secondWidth, fullWidth int) []str
 	return result
 }
 
-func splitLongWordPrefix(word string, width int) (string, string) {
+func splitLongWordPrefix(word string, width int, urlLike bool) (string, string) {
 	if width < 1 || word == "" {
 		return "", word
 	}
-	urlLike := isURLLike(word)
 	used := 0
 	lastFit := 0
 	lastPunctuation := 0
