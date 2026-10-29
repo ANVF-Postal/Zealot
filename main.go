@@ -2005,8 +2005,9 @@ func wrapText(text string, width int) []string {
 }
 
 // wrapTextVariable wraps prose into rows with a possibly different capacity for
-// the first and second row. Long URL-like tokens are split at punctuation
-// without adding characters; other oversized words are hyphenated repeatedly.
+// the first and second row. It prefers spaces between words; only tokens that
+// cannot fit on an otherwise empty row are split. URL-like tokens prefer
+// punctuation breakpoints and are never given synthetic hyphens.
 func wrapTextVariable(text string, firstWidth, secondWidth, fullWidth int) []string {
 	if firstWidth < 0 {
 		firstWidth = 0
@@ -2063,21 +2064,6 @@ func wrapTextVariable(text string, firstWidth, secondWidth, fullWidth int) []str
 						current = candidate
 						remaining = ""
 						break
-					}
-
-					// Use the remaining cells to hyphenate/split the next word
-					// instead of leaving a ragged gap. This matches novel-style
-					// wrapping ("ri-" + "ght") and helps long URLs progress too.
-					room := capWidth - lipgloss.Width(current) - 1
-					if room > 0 {
-						part, rest := splitLongWordPrefix(remaining, room)
-						urlSplitIsNatural := !isURLLike(remaining) || endsWithBreakPunctuation(part)
-						if part != "" && rest != "" && rest != remaining && urlSplitIsNatural {
-							result = append(result, current+" "+part)
-							current = ""
-							remaining = rest
-							continue
-						}
 					}
 
 					result = append(result, current)
