@@ -2190,23 +2190,6 @@ func isURLLike(word string) bool {
 		strings.ContainsAny(word, "?&=#")
 }
 
-func endsWithBreakPunctuation(s string) bool {
-	var last rune
-	for i := 0; i < len(s); {
-		if s[i] == 0x1b {
-			i = ansiSequenceEnd(s, i)
-			continue
-		}
-		r, size := utf8.DecodeRuneInString(s[i:])
-		if size < 1 {
-			break
-		}
-		last = r
-		i += size
-	}
-	return strings.ContainsRune("./\\-_?:&=#%+@,;~!$'()[]{}", last)
-}
-
 // -----------------------------------------------------------------------------
 // Typing indicator
 // -----------------------------------------------------------------------------
