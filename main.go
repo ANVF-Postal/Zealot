@@ -1518,9 +1518,9 @@ func (m model) Update(
 		if m.usersOpen {
 			switch mouseMsg.Button {
 			case tea.MouseWheelUp:
-				m.usersScroll += 3
-			case tea.MouseWheelDown:
 				m.usersScroll -= 3
+			case tea.MouseWheelDown:
+				m.usersScroll += 3
 			}
 			m.clampUsersScroll()
 			return m, nil
@@ -1572,7 +1572,7 @@ func (m model) Update(
 
 		case "pgup":
 			if m.usersOpen {
-				m.usersScroll += max(1, m.usersPanelHeight())
+				m.usersScroll -= max(1, m.usersPanelHeight())
 				m.clampUsersScroll()
 				return m, nil
 			}
@@ -1583,7 +1583,7 @@ func (m model) Update(
 
 		case "pgdown":
 			if m.usersOpen {
-				m.usersScroll -= max(1, m.usersPanelHeight())
+				m.usersScroll += max(1, m.usersPanelHeight())
 				m.clampUsersScroll()
 				return m, nil
 			}
