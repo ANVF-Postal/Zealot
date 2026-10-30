@@ -1758,7 +1758,9 @@ func (m model) renderUsersPanel() string {
 	visible := append([]string(nil), rows[start:end]...)
 	for len(visible) < panelHeight-2 { visible = append(visible, "") }
 	count := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.AccentColor)).Bold(true).Render(fmt.Sprintf("Online users (%d)", len(m.onlineUsers)))
-	help := m.styles.system.Render("PgUp/PgDn or mouse wheel to scroll  •  Esc to close")
+	helpText := "PgUp/PgDn or wheel: scroll  •  Esc: close"
+	helpLines := wrapText(helpText, width-4)
+	help := m.styles.system.Render(strings.Join(helpLines, "\n"))
 	content := count + "\n" + strings.Join(visible, "\n") + "\n" + help
 	return lipgloss.NewStyle().
 		Width(width).
