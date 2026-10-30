@@ -969,6 +969,7 @@ type typingClearMsg struct {
 type notificationsReadyMsg struct{}
 
 type scrollbarHoldMsg struct{ generation int }
+type usersScrollbarHoldMsg struct{ generation int }
 type usersAnimationMsg struct{}
 
 // -----------------------------------------------------------------------------
@@ -1046,6 +1047,10 @@ type model struct {
 	usersOpen    bool
 	usersScroll  int
 	usersFrame   int
+	usersScrollDragging bool
+	usersScrollDragOffset int
+	usersScrollbarHoldDirection int
+	usersScrollbarHoldGeneration int
 	userActivity map[string]int
 
 	client *wireClient
@@ -1254,6 +1259,7 @@ func (m model) Update(
 			sort.Slice(m.onlineUsers, func(i, j int) bool {
 				return strings.ToLower(m.onlineUsers[i].Name) < strings.ToLower(m.onlineUsers[j].Name)
 			})
+			m.clampUsersScroll()
 
 		case "message", "system", "me", "letter":
 			m.appendMessage(packet)
@@ -1365,16 +1371,51 @@ func (m model) Update(
 	case tea.MouseClickMsg:
 		if m.usersOpen && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width("[X]") && mouse.X < m.width {
 			m.usersOpen = false
+			m.usersScrollDragging = false
+			m.usersScrollbarHoldDirection = 0
+			m.usersScrollbarHoldGeneration++
 			return m, nil
 		}
 		if !m.usersOpen && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width(fmt.Sprintf("Online: %d", m.onlineCount)) && mouse.X < m.width {
 			m.usersOpen = true
 			m.usersScroll = 0
+			m.usersScrollDragging = false
+			m.usersScrollbarHoldDirection = 0
+			m.usersScrollbarHoldGeneration++
 			m.scrollDragging = false
 			m.scrollbarHoldDirection = 0
 			m.scrollbarHoldGeneration++
 			_ = m.client.send(Packet{Type: "who", Room: m.room})
 			return m, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg { return usersAnimationMsg{} })
+		}
+		if m.usersOpen && mouse.Button == tea.MouseLeft && mouse.X == m.width-2 {
+			visible := m.usersPanelHeight()
+			firstUserY := 3
+			lastUserY := firstUserY + visible - 1
+			switch {
+			case mouse.Y == firstUserY:
+				m.usersScrollbarHoldDirection = -1
+				m.usersScrollbarHoldGeneration++
+				m.usersScroll -= 3
+				m.clampUsersScroll()
+				return m, m.usersScrollbarHoldCmd(m.usersScrollbarHoldGeneration)
+			case mouse.Y == lastUserY:
+				m.usersScrollbarHoldDirection = 1
+				m.usersScrollbarHoldGeneration++
+				m.usersScroll += 3
+				m.clampUsersScroll()
+				return m, m.usersScrollbarHoldCmd(m.usersScrollbarHoldGeneration)
+			case mouse.Y > firstUserY && mouse.Y < lastUserY:
+				top, thumbHeight, _ := m.usersScrollbarThumb()
+				trackPosition := mouse.Y - firstUserY - 1
+				if trackPosition >= top && trackPosition < top+thumbHeight {
+					m.usersScrollDragging = true
+					m.usersScrollDragOffset = trackPosition - top
+					return m, nil
+				}
+				m.setUsersScrollFromTrack(trackPosition)
+				return m, nil
+			}
 		}
 		if !m.usersOpen && mouse.Button == tea.MouseLeft && m.scrollbarContains(mouse.X, mouse.Y) && m.maxScroll() > 0 {
 			top, thumbHeight, trackHeight := m.scrollbarThumb()
@@ -1406,6 +1447,14 @@ func (m model) Update(
 		}
 
 	case tea.MouseMotionMsg:
+		if m.usersOpen && m.usersScrollDragging {
+			_, thumbHeight, trackHeight := m.usersScrollbarThumb()
+			target := mouse.Y - 4 - m.usersScrollDragOffset
+			if target < 0 { target = 0 }
+			if target > trackHeight-thumbHeight { target = trackHeight-thumbHeight }
+			m.setUsersScrollFromThumbTop(target)
+			return m, nil
+		}
 		if m.scrollDragging && !m.usersOpen {
 			_, thumbHeight, trackHeight := m.scrollbarThumb()
 			target := mouse.Y - 3 - m.scrollDragOffset
@@ -1419,8 +1468,22 @@ func (m model) Update(
 		m.scrollDragging = false
 		m.scrollbarHoldDirection = 0
 		m.scrollbarHoldGeneration++
+		m.usersScrollDragging = false
+		m.usersScrollbarHoldDirection = 0
+		m.usersScrollbarHoldGeneration++
 		return m, nil
 
+	case usersScrollbarHoldMsg:
+		if m.usersOpen && mouse.generation == m.usersScrollbarHoldGeneration && m.usersScrollbarHoldDirection != 0 {
+			m.usersScroll += m.usersScrollbarHoldDirection * 3
+			m.clampUsersScroll()
+			if m.usersScroll == 0 || m.usersScroll == m.maxUsersScroll() {
+				m.usersScrollbarHoldDirection = 0
+				return m, nil
+			}
+			return m, m.usersScrollbarHoldCmd(mouse.generation)
+		}
+		return m, nil
 	case scrollbarHoldMsg:
 		if !m.usersOpen && mouse.generation == m.scrollbarHoldGeneration && m.scrollbarHoldDirection != 0 {
 			m.scroll += m.scrollbarHoldDirection * 3
@@ -1467,12 +1530,24 @@ func (m model) Update(
 
 	handledNewline := false
 
+	if keyMsg, ok := msg.(tea.KeyPressMsg); ok && m.usersOpen &&
+		(keyMsg.Code == tea.KeyEscape || keyMsg.Code == tea.KeyEsc) {
+		m.usersOpen = false
+		m.usersScrollDragging = false
+		m.usersScrollbarHoldDirection = 0
+		m.usersScrollbarHoldGeneration++
+		return m, nil
+	}
+
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		switch keyMsg.String() {
 
 		case "esc", "escape":
 			if m.usersOpen {
 				m.usersOpen = false
+				m.usersScrollDragging = false
+				m.usersScrollbarHoldDirection = 0
+				m.usersScrollbarHoldGeneration++
 				return m, nil
 			}
 
@@ -1717,7 +1792,10 @@ func (m model) userRows() []string {
 		if nameWidth < 1 { nameWidth = 1 }
 		parts := wrapText(user.Name, nameWidth)
 		if len(parts) == 0 { parts = []string{user.Name} }
-		style := lipgloss.NewStyle().Foreground(lipgloss.Color(user.Color)).Bold(true)
+		style := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(user.Color)).
+			Background(lipgloss.Color(m.cfg.Background)).
+			Bold(true)
 		marker := ""
 		switch {
 		case m.userActivity[user.Name] > 0 && m.usersFrame%2 == 0:
@@ -1725,7 +1803,10 @@ func (m model) userRows() []string {
 		case user.Typing:
 			frames := []string{"·  ", "·· ", "···", " ··", "  ·"}
 			marker = " " + frames[m.usersFrame%len(frames)]
-			style = lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.AccentColor)).Bold(true)
+			style = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(m.cfg.AccentColor)).
+				Background(lipgloss.Color(m.cfg.Background)).
+				Bold(true)
 		}
 		for i, part := range parts {
 			line := "    " + style.Render(part)
@@ -1735,6 +1816,57 @@ func (m model) userRows() []string {
 	}
 	if len(rows) == 0 { rows = []string{m.styles.system.Render("  Nobody else is here yet.")} }
 	return rows
+}
+
+func (m model) usersScrollbarThumb() (top, thumbHeight, trackHeight int) {
+	visible := m.usersPanelHeight()
+	trackHeight = visible - 2
+	if trackHeight < 1 {
+		trackHeight = 1
+	}
+	total := len(m.userRows())
+	if total <= visible {
+		return 0, trackHeight, trackHeight
+	}
+	thumbHeight = visible * trackHeight / total
+	if thumbHeight < 1 {
+		thumbHeight = 1
+	}
+	if thumbHeight > trackHeight {
+		thumbHeight = trackHeight
+	}
+	maxTop := trackHeight - thumbHeight
+	maxScroll := m.maxUsersScroll()
+	if maxScroll > 0 {
+		top = m.usersScroll * maxTop / maxScroll
+	}
+	return
+}
+
+func (m *model) setUsersScrollFromThumbTop(top int) {
+	_, thumbHeight, trackHeight := m.usersScrollbarThumb()
+	maxTop := trackHeight - thumbHeight
+	if top < 0 { top = 0 }
+	if top > maxTop { top = maxTop }
+	if maxTop > 0 {
+		m.usersScroll = top * m.maxUsersScroll() / maxTop
+	} else {
+		m.usersScroll = 0
+	}
+	m.clampUsersScroll()
+}
+
+func (m *model) setUsersScrollFromTrack(trackPosition int) {
+	_, thumbHeight, trackHeight := m.usersScrollbarThumb()
+	if trackPosition < 0 { trackPosition = 0 }
+	if trackPosition >= trackHeight { trackPosition = trackHeight - 1 }
+	m.setUsersScrollFromThumbTop(trackPosition - thumbHeight/2)
+}
+
+func (m model) usersScrollbarHoldCmd(generation int) tea.Cmd {
+	return tea.Tick(120*time.Millisecond, func(time.Time) tea.Msg {
+		return usersScrollbarHoldMsg{generation: generation}
+	})
 }
 
 func (m model) maxUsersScroll() int {
@@ -2499,6 +2631,7 @@ func (m model) renderHeader() string {
 	}
 	online := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(m.cfg.AccentColor)).
+		Background(lipgloss.Color(m.cfg.Background)).
 		Underline(true).
 		Render(rightLabel)
 	padding := m.width - lipgloss.Width(title) - lipgloss.Width(online)
@@ -2511,6 +2644,7 @@ func (m model) renderHeader() string {
 	return lipgloss.NewStyle().
 		Width(m.width).
 		Foreground(lipgloss.Color(m.cfg.AccentColor)).
+		Background(lipgloss.Color(m.cfg.Background)).
 		Render(line)
 }
 
@@ -2555,18 +2689,49 @@ func (m model) View() tea.View {
 
 	if m.usersOpen {
 		// Reuse the normal chat pane instead of creating a separate window.
-		// Keep the heading fixed while scrolling through the user rows.
-		rosterRows := []string{
-			m.styles.accent.Render("  Online users:"),
-		}
+		// The heading remains fixed while the user rows and their scrollbar move.
 		users := m.userRows()
+		visibleUsers := m.usersPanelHeight()
 		userStart := min(m.usersScroll, len(users))
-		userEnd := min(userStart+m.usersPanelHeight(), len(users))
-		rosterRows = append(rosterRows, users[userStart:userEnd]...)
+		userEnd := min(userStart+visibleUsers, len(users))
+		visible := append([]string(nil), users[userStart:userEnd]...)
 
 		rowStyle := lipgloss.NewStyle().
 			Width(max(1, m.width-2)).
 			Background(lipgloss.Color(m.cfg.Background))
+		scrollbarStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(m.cfg.BorderColor)).
+			Background(lipgloss.Color(m.cfg.Background))
+
+		// The first interior row is the fixed heading; the rail begins beside
+		// the first user row and ends beside the last visible user row.
+		railTop, thumbHeight, trackHeight := m.usersScrollbarThumb()
+		_ = railTop
+		_ = thumbHeight
+		_ = trackHeight
+		rosterRows := make([]string, 0, m.messageHeight())
+		heading := truncateANSI(m.styles.accent.Render("  Online users:"), m.width-3)
+		rosterRows = append(rosterRows, heading+" ")
+		for len(visible) < visibleUsers {
+			visible = append(visible, "")
+		}
+		for i, line := range visible {
+			var rail string
+			switch {
+			case i == 0:
+				rail = scrollbarStyle.Render("^")
+			case i == visibleUsers-1:
+				rail = scrollbarStyle.Render("v")
+			default:
+				trackPosition := i - 1
+				glyph := "│"
+				if len(users) > visibleUsers && trackPosition >= railTop && trackPosition < railTop+thumbHeight {
+					glyph = "█"
+				}
+				rail = scrollbarStyle.Render(glyph)
+			}
+			rosterRows = append(rosterRows, truncateANSI(line, m.width-3)+rail)
+		}
 		for len(rosterRows) < m.messageHeight() {
 			rosterRows = append(rosterRows, rowStyle.Render(""))
 		}
@@ -2581,8 +2746,6 @@ func (m model) View() tea.View {
 			Width(m.width).
 			Height(m.messageHeight()).
 			Render(chat)
-
-		// Keep the composer and status line in their normal positions.
 		return m.renderViewWithChat(header, chatBox, true)
 	}
 
@@ -2729,10 +2892,11 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen bool) tea.Vi
 	if usersOpen {
 		shortcuts = "PgUp/PgDn or mouse wheel: scroll  •  Esc: close  •  Ctrl+C: quit"
 	}
+	statusWidth := max(1, m.width-2) // status style adds one cell of padding on each side
 	statusText := m.status + "   " + shortcuts
 	status := m.styles.status.
-		Width(m.width).
-		Render(truncateANSI(statusText, m.width))
+		Width(statusWidth).
+		Render(truncateANSI(statusText, statusWidth))
 
 	// -------------------------------------------------------------------------
 	// Full application
