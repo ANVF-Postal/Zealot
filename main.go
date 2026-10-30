@@ -1372,11 +1372,6 @@ func (m model) Update(
 			}
 			return m, nil
 		}
-		if m.usersOpen && mouse.Button == tea.MouseWheelUp {
-			m.usersScroll += 3
-			m.clampUsersScroll()
-			return m, nil
-		}
 		if mouse.Button == tea.MouseLeft && m.scrollbarContains(mouse.X, mouse.Y) && m.maxScroll() > 0 {
 			top, thumbHeight, trackHeight := m.scrollbarThumb()
 			trackY := mouse.Y - 3 // first draggable track row; arrows occupy y=2 and the final row
