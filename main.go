@@ -943,6 +943,8 @@ type typingClearMsg struct {
 
 type notificationsReadyMsg struct{}
 
+type scrollbarHoldMsg struct{ generation int }
+
 // -----------------------------------------------------------------------------
 // UI styles
 // -----------------------------------------------------------------------------
@@ -1033,6 +1035,11 @@ type model struct {
 	width  int
 	height int
 	scroll int
+
+	scrollDragging bool
+	scrollDragOffset int
+	scrollbarHoldDirection int
+	scrollbarHoldGeneration int
 
 	connected          bool
 	status             string
@@ -1287,6 +1294,70 @@ func (m model) Update(
 			m.sendTyping(false)
 		}
 
+		return m, nil
+	}
+
+	// -------------------------------------------------------------------------
+	// Scrollbar mouse interaction
+	// -------------------------------------------------------------------------
+
+	switch mouse := msg.(type) {
+	case tea.MouseClickMsg:
+		if mouse.Button == tea.MouseLeft && m.scrollbarContains(mouse.X, mouse.Y) && m.maxScroll() > 0 {
+			top, thumbHeight, trackHeight := m.scrollbarThumb()
+			trackY := mouse.Y - 3 // first draggable track row; arrows occupy y=2 and the final row
+			if trackY < 0 { trackY = 0 }
+			if trackY >= trackHeight { trackY = trackHeight - 1 }
+
+			switch {
+			case mouse.Y == 2:
+				m.scrollbarHoldDirection = 1
+				m.scrollbarHoldGeneration++
+				m.scroll += 3
+				m.clampScroll()
+				return m, m.scrollbarHoldCmd(m.scrollbarHoldGeneration)
+			case mouse.Y == 1+m.messageHeight():
+				m.scrollbarHoldDirection = -1
+				m.scrollbarHoldGeneration++
+				m.scroll -= 3
+				m.clampScroll()
+				return m, m.scrollbarHoldCmd(m.scrollbarHoldGeneration)
+			case trackY >= top && trackY < top+thumbHeight:
+				m.scrollDragging = true
+				m.scrollDragOffset = trackY - top
+				return m, nil
+			default:
+				m.setScrollFromTrack(trackY)
+				return m, nil
+			}
+		}
+
+	case tea.MouseMotionMsg:
+		if m.scrollDragging && m.scrollbarContains(mouse.X, mouse.Y) {
+			_, thumbHeight, trackHeight := m.scrollbarThumb()
+			target := mouse.Y - 3 - m.scrollDragOffset
+			if target < 0 { target = 0 }
+			if target > trackHeight-thumbHeight { target = trackHeight-thumbHeight }
+			m.setScrollFromThumbTop(target)
+			return m, nil
+		}
+
+	case tea.MouseReleaseMsg:
+		m.scrollDragging = false
+		m.scrollbarHoldDirection = 0
+		m.scrollbarHoldGeneration++
+		return m, nil
+
+	case scrollbarHoldMsg:
+		if mouse.generation == m.scrollbarHoldGeneration && m.scrollbarHoldDirection != 0 {
+			m.scroll += m.scrollbarHoldDirection * 3
+			m.clampScroll()
+			if m.scroll == 0 || m.scroll == m.maxScroll() {
+				m.scrollbarHoldDirection = 0
+				return m, nil
+			}
+			return m, m.scrollbarHoldCmd(mouse.generation)
+		}
 		return m, nil
 	}
 
@@ -1634,14 +1705,56 @@ func (m model) maxScroll() int {
 
 func (m *model) clampScroll() {
 	max := m.maxScroll()
+	if m.scroll < 0 { m.scroll = 0 }
+	if m.scroll > max { m.scroll = max }
+}
 
-	if m.scroll < 0 {
+func (m model) scrollbarContains(x, y int) bool {
+	return x == m.width-2 && y >= 2 && y <= 1+m.messageHeight()
+}
+
+func (m model) scrollbarThumb() (top, thumbHeight, trackHeight int) {
+	trackHeight = m.messageHeight() - 2
+	if trackHeight < 1 { trackHeight = 1 }
+	total := len(m.renderMessageLines())
+	visible := m.messageHeight() - 1
+	if visible < 1 { visible = 1 }
+	if total <= visible { return 0, trackHeight, trackHeight }
+
+	thumbHeight = visible * trackHeight / total
+	if thumbHeight < 1 { thumbHeight = 1 }
+	if thumbHeight > trackHeight { thumbHeight = trackHeight }
+	maxTop := trackHeight - thumbHeight
+	maxScroll := m.maxScroll()
+	if maxScroll > 0 {
+		top = (maxScroll-m.scroll) * maxTop / maxScroll
+	}
+	return
+}
+
+func (m *model) setScrollFromTrack(trackPosition int) {
+	_, thumbHeight, trackHeight := m.scrollbarThumb()
+	m.setScrollFromThumbTop(trackPosition-thumbHeight/2)
+	_ = trackHeight
+}
+
+func (m *model) setScrollFromThumbTop(top int) {
+	_, thumbHeight, trackHeight := m.scrollbarThumb()
+	maxTop := trackHeight-thumbHeight
+	if top < 0 { top = 0 }
+	if top > maxTop { top = maxTop }
+	if maxTop > 0 {
+		m.scroll = m.maxScroll() - top*m.maxScroll()/maxTop
+	} else {
 		m.scroll = 0
 	}
+	m.clampScroll()
+}
 
-	if m.scroll > max {
-		m.scroll = max
-	}
+func (m model) scrollbarHoldCmd(generation int) tea.Cmd {
+	return tea.Tick(120*time.Millisecond, func(time.Time) tea.Msg {
+		return scrollbarHoldMsg{generation: generation}
+	})
 }
 
 // -----------------------------------------------------------------------------
@@ -2313,6 +2426,35 @@ func (m model) View() tea.View {
 		visible = append(visible, chatBlank)
 	}
 
+	// Reserve the final interior column for a permanent scrollbar rail.
+	// The thumb only appears once the message history exceeds the viewport.
+	_, thumbHeight, trackHeight := m.scrollbarThumb()
+	thumbTop, _, _ := m.scrollbarThumb()
+	scrollbarStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.cfg.BorderColor)).
+		Background(lipgloss.Color(m.cfg.Background))
+	scrollbarRows := make([]string, chatHeight+1)
+	for i := range scrollbarRows {
+		switch {
+		case i == 0:
+			scrollbarRows[i] = scrollbarStyle.Render("^")
+		case i == chatHeight:
+			scrollbarRows[i] = scrollbarStyle.Render("v")
+		default:
+			trackPosition := i-1
+			glyph := "│"
+			if m.maxScroll() > 0 && trackPosition >= thumbTop && trackPosition < thumbTop+thumbHeight {
+				glyph = "█"
+			}
+			if m.maxScroll() == 0 || trackPosition >= trackHeight {
+				glyph = " "
+			}
+			scrollbarRows[i] = scrollbarStyle.Render(glyph)
+		}
+	}
+	for i := range visible {
+		visible[i] = truncateANSI(visible[i], m.width-3) + scrollbarRows[i]
+	}
 	chat := strings.Join(visible, "\n")
 
 	// -------------------------------------------------------------------------
@@ -2322,8 +2464,9 @@ func (m model) View() tea.View {
 	typing := m.typingText()
 	typingLine := chatBlank
 	if typing != "" {
-		typingLine = m.styles.accent.Width(m.width - 2).Render("  " + typing)
+		typingLine = m.styles.accent.Width(m.width - 3).Render("  " + typing)
 	}
+	typingLine = truncateANSI(typingLine, m.width-3) + scrollbarRows[chatHeight]
 	chat += "\n" + typingLine
 
 	chatBox := m.styles.border.
