@@ -973,17 +973,20 @@ type usersScrollbarHoldMsg struct{ generation int }
 type usersAnimationMsg struct{}
 
 func isEscapeKey(key tea.Key) bool {
-	// A bare Escape is the C0 0x1b byte. Some terminal/keyboard protocols
-	// can instead report Ctrl+[ as a modified printable key.
+	// Bubble Tea receives Escape as KeyEscape on legacy terminals, but some
+	// terminal/SSH combinations report the same leading byte as Ctrl+[ or as
+	// an Alt-modified bracket event. Treat all of those common encodings as
+	// the roster's close action.
 	if key.Code == 0x1b || key.Code == tea.KeyEscape || key.Code == tea.KeyEsc ||
 		key.Text == "\x1b" {
 		return true
 	}
-	if key.Mod&tea.ModCtrl != 0 && (key.Code == '[' || key.Text == "[") {
+	if key.Mod&(tea.ModCtrl|tea.ModAlt) != 0 &&
+		(key.Code == '[' || key.Text == "[") {
 		return true
 	}
 	switch key.String() {
-	case "esc", "escape", "ctrl+[":
+	case "esc", "escape", "ctrl+[", "alt+[":
 		return true
 	}
 	return false
@@ -1060,6 +1063,7 @@ type model struct {
 	onlineCount  int
 	onlineUsers  []User
 	usersOpen    bool
+	lastKeyDebug string
 	usersScroll  int
 	usersFrame   int
 	usersScrollDragging bool
@@ -1237,23 +1241,27 @@ func (m model) Update(
 	msg tea.Msg,
 ) (tea.Model, tea.Cmd) {
 
-	// Close the roster before any other component sees an Escape event.
-	// PuTTY/SSH terminals can represent this as either the C0 ESC byte or
-	// Bubble Tea's named Escape key; Ctrl+[ is the equivalent fallback.
+	// Handle close keys before the textarea sees them. KeyMsg is Bubble Tea's
+	// shared interface for both press and release events.
 	if m.usersOpen {
-		closeRoster := false
-		switch keyMsg := msg.(type) {
-		case tea.KeyPressMsg:
-			closeRoster = isEscapeKey(keyMsg.Key())
-		case tea.KeyReleaseMsg:
-			closeRoster = isEscapeKey(keyMsg.Key())
-		}
-		if closeRoster {
-			m.usersOpen = false
-			m.usersScrollDragging = false
-			m.usersScrollbarHoldDirection = 0
-			m.usersScrollbarHoldGeneration++
-			return m, nil
+		if keyMsg, ok := msg.(tea.KeyMsg); ok {
+			key := keyMsg.Key()
+			keyName := keyMsg.String()
+			isCtrlO := key.Mod&tea.ModCtrl != 0 &&
+				(key.Code == 'o' || key.Code == 'O' || key.Text == "o" || key.Text == "O")
+			if isEscapeKey(key) || isCtrlO || keyName == "ctrl+o" {
+				m.usersOpen = false
+				m.lastKeyDebug = ""
+				m.usersScrollDragging = false
+				m.usersScrollbarHoldDirection = 0
+				m.usersScrollbarHoldGeneration++
+				return m, nil
+			}
+
+			// Keep a short diagnostic in the status row if Escape is delivered
+			// in an unexpected form. This makes terminal-specific key encoding
+			// visible without writing to stdout and corrupting the TUI.
+			m.lastKeyDebug = fmt.Sprintf("%q U+%04X mod=%d", keyName, key.Code, key.Mod)
 		}
 	}
 
@@ -1270,6 +1278,14 @@ func (m model) Update(
 			m.rebuildMessageCache()
 			m.clampScroll()
 		}
+		// The roster's row count can change when the terminal width changes,
+		// and its viewport changes when the height changes. Keep the saved
+		// offset within the new valid range so clipped names reappear naturally
+		// when the window is expanded again.
+		m.clampUsersScroll()
+		m.usersScrollDragging = false
+		m.usersScrollbarHoldDirection = 0
+		m.usersScrollbarHoldGeneration++
 
 		return m, nil
 	}
@@ -1569,9 +1585,10 @@ func (m model) Update(
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		switch keyMsg.String() {
 
-		case "esc", "escape":
+		case "esc", "escape", "ctrl+o":
 			if m.usersOpen {
 				m.usersOpen = false
+				m.lastKeyDebug = ""
 				m.usersScrollDragging = false
 				m.usersScrollbarHoldDirection = 0
 				m.usersScrollbarHoldGeneration++
@@ -2923,9 +2940,13 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen bool) tea.Vi
 
 	shortcuts := "Enter: send  •  PgUp/PgDn: scroll  •  Ctrl+C: quit"
 	if usersOpen {
-		shortcuts = "PgUp/PgDn or mouse wheel: scroll  •  Esc: close  •  Ctrl+C: quit"
+		shortcuts = "PgUp/PgDn or mouse wheel: scroll  •  Esc/Ctrl+O: close  •  Ctrl+C: quit"
 	}
-	statusText := " " + m.status + "   " + shortcuts
+	statusLeft := m.status
+	if usersOpen && m.lastKeyDebug != "" {
+		statusLeft = "Key: " + m.lastKeyDebug
+	}
+	statusText := " " + statusLeft + "   " + shortcuts
 	// Keep the row exactly terminal-wide. A final Braille blank is a real
 	// one-cell glyph (but renders visually blank), so terminal renderers do not
 	// trim the trailing fill spaces and leave stale/default-black cells behind.
