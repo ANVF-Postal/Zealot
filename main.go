@@ -1425,24 +1425,25 @@ func (m model) Update(
 		}
 		if m.usersOpen && mouse.Button == tea.MouseLeft && mouse.X == m.width-2 && m.maxUsersScroll() > 0 {
 			visible := m.usersPanelHeight()
-			firstUserY := 3
-			lastUserY := firstUserY + visible - 1
+			firstTrackY := 3
+			topArrowY := 2 // aligned with the Online users heading
+			bottomArrowY := firstTrackY + visible - 1
 			switch {
-			case mouse.Y == firstUserY:
+			case mouse.Y == topArrowY:
 				m.usersScrollbarHoldDirection = -1
 				m.usersScrollbarHoldGeneration++
 				m.usersScroll -= 3
 				m.clampUsersScroll()
 				return m, m.usersScrollbarHoldCmd(m.usersScrollbarHoldGeneration)
-			case mouse.Y == lastUserY:
+			case mouse.Y == bottomArrowY:
 				m.usersScrollbarHoldDirection = 1
 				m.usersScrollbarHoldGeneration++
 				m.usersScroll += 3
 				m.clampUsersScroll()
 				return m, m.usersScrollbarHoldCmd(m.usersScrollbarHoldGeneration)
-			case mouse.Y > firstUserY && mouse.Y < lastUserY:
+			case mouse.Y > topArrowY && mouse.Y < bottomArrowY:
 				top, thumbHeight, _ := m.usersScrollbarThumb()
-				trackPosition := mouse.Y - firstUserY - 1
+				trackPosition := mouse.Y - firstTrackY
 				if trackPosition >= top && trackPosition < top+thumbHeight {
 					m.usersScrollDragging = true
 					m.usersScrollDragOffset = trackPosition - top
@@ -1484,7 +1485,7 @@ func (m model) Update(
 	case tea.MouseMotionMsg:
 		if m.usersOpen && m.usersScrollDragging {
 			_, thumbHeight, trackHeight := m.usersScrollbarThumb()
-			target := mouse.Y - 4 - m.usersScrollDragOffset
+			target := mouse.Y - 3 - m.usersScrollDragOffset
 			if target < 0 { target = 0 }
 			if target > trackHeight-thumbHeight { target = trackHeight-thumbHeight }
 			m.setUsersScrollFromThumbTop(target)
@@ -1848,7 +1849,9 @@ func (m model) userRows() []string {
 
 func (m model) usersScrollbarThumb() (top, thumbHeight, trackHeight int) {
 	visible := m.usersPanelHeight()
-	trackHeight = visible - 2
+	// The heading row carries the top arrow. The final user row carries the
+	// bottom arrow, leaving one track cell for each intervening user row.
+	trackHeight = visible - 1
 	if trackHeight < 1 {
 		trackHeight = 1
 	}
@@ -2744,7 +2747,8 @@ func (m model) View() tea.View {
 
 		rosterRows := make([]string, 0, m.messageHeight())
 		heading := m.styles.accent.Render("  Online users:")
-		rosterRows = append(rosterRows, padANSIToWidth(heading, contentWidth, rowFill))
+		heading = padANSIToWidth(heading, textWidth, rowFill)
+		rosterRows = append(rosterRows, heading+scrollbarStyle.Render("^"))
 
 		for len(visible) < visibleUsers {
 			visible = append(visible, "")
@@ -2752,19 +2756,13 @@ func (m model) View() tea.View {
 		railTop, thumbHeight, trackHeight := m.usersScrollbarThumb()
 		for i, line := range visible {
 			text := padANSIToWidth(line, textWidth, rowFill)
-			var glyph string
+			glyph := "│"
 			switch {
-			case i == 0:
-				glyph = "^"
 			case i == visibleUsers-1:
 				glyph = "v"
-			default:
-				trackPosition := i - 1
-				glyph = "│"
-				if trackPosition < trackHeight && len(users) > visibleUsers &&
-					trackPosition >= railTop && trackPosition < railTop+thumbHeight {
-					glyph = "█"
-				}
+			case len(users) > visibleUsers && i < trackHeight &&
+				i >= railTop && i < railTop+thumbHeight:
+				glyph = "█"
 			}
 			rosterRows = append(rosterRows, text+scrollbarStyle.Render(glyph))
 		}
@@ -2928,9 +2926,15 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen bool) tea.Vi
 		shortcuts = "PgUp/PgDn or mouse wheel: scroll  •  Esc: close  •  Ctrl+C: quit"
 	}
 	statusText := " " + m.status + "   " + shortcuts
-	statusText = truncateANSI(statusText, m.width)
-	if remaining := m.width - lipgloss.Width(statusText); remaining > 0 {
+	// Keep the row exactly terminal-wide. A final Braille blank is a real
+	// one-cell glyph (but renders visually blank), so terminal renderers do not
+	// trim the trailing fill spaces and leave stale/default-black cells behind.
+	statusText = truncateANSI(statusText, max(1, m.width-1))
+	if remaining := m.width - 1 - lipgloss.Width(statusText); remaining > 0 {
 		statusText += strings.Repeat(" ", remaining)
+	}
+	if m.width > 0 {
+		statusText += "⠀" // U+2800 BRAILLE PATTERN BLANK
 	}
 	status := m.styles.status.
 		Width(m.width).
