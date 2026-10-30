@@ -972,6 +972,17 @@ type scrollbarHoldMsg struct{ generation int }
 type usersScrollbarHoldMsg struct{ generation int }
 type usersAnimationMsg struct{}
 
+func isEscapeKey(key tea.Key) bool {
+	if key.Code == 0x1b || key.Code == tea.KeyEscape || key.Code == tea.KeyEsc {
+		return true
+	}
+	switch key.String() {
+	case "esc", "escape", "ctrl+[":
+		return true
+	}
+	return key.Text == "\x1b"
+}
+
 // -----------------------------------------------------------------------------
 // UI styles
 // -----------------------------------------------------------------------------
@@ -1011,9 +1022,7 @@ func makeStyles(cfg Config) uiStyles {
 
 		status: lipgloss.NewStyle().
 			Background(bg).
-			Foreground(lipgloss.Color("#707786")).
-			PaddingLeft(1).
-			PaddingRight(1),
+			Foreground(lipgloss.Color("#707786")),
 
 		border: lipgloss.NewStyle().
 			Background(bg).
@@ -1222,11 +1231,18 @@ func (m model) Update(
 	msg tea.Msg,
 ) (tea.Model, tea.Cmd) {
 
-	// Handle Escape by its key code before any component can consume it.
-	// KeyMsg covers both KeyPressMsg and KeyReleaseMsg.
-	if keyMsg, ok := msg.(tea.KeyMsg); ok && m.usersOpen {
-		code := keyMsg.Key().Code
-		if code == tea.KeyEscape || code == tea.KeyEsc {
+	// Close the roster before any other component sees an Escape event.
+	// PuTTY/SSH terminals can represent this as either the C0 ESC byte or
+	// Bubble Tea's named Escape key; Ctrl+[ is the equivalent fallback.
+	if m.usersOpen {
+		closeRoster := false
+		switch keyMsg := msg.(type) {
+		case tea.KeyPressMsg:
+			closeRoster = isEscapeKey(keyMsg.Key())
+		case tea.KeyReleaseMsg:
+			closeRoster = isEscapeKey(keyMsg.Key())
+		}
+		if closeRoster {
 			m.usersOpen = false
 			m.usersScrollDragging = false
 			m.usersScrollbarHoldDirection = 0
@@ -1401,7 +1417,7 @@ func (m model) Update(
 			_ = m.client.send(Packet{Type: "who", Room: m.room})
 			return m, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg { return usersAnimationMsg{} })
 		}
-		if m.usersOpen && mouse.Button == tea.MouseLeft && mouse.X == m.width-2 {
+		if m.usersOpen && mouse.Button == tea.MouseLeft && mouse.X == m.width-2 && m.maxUsersScroll() > 0 {
 			visible := m.usersPanelHeight()
 			firstUserY := 3
 			lastUserY := firstUserY + visible - 1
@@ -1542,15 +1558,6 @@ func (m model) Update(
 	// -------------------------------------------------------------------------
 
 	handledNewline := false
-
-	if keyMsg, ok := msg.(tea.KeyPressMsg); ok && m.usersOpen &&
-		(keyMsg.Code == tea.KeyEscape || keyMsg.Code == tea.KeyEsc) {
-		m.usersOpen = false
-		m.usersScrollDragging = false
-		m.usersScrollbarHoldDirection = 0
-		m.usersScrollbarHoldGeneration++
-		return m, nil
-	}
 
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		switch keyMsg.String() {
@@ -2068,6 +2075,20 @@ func (m model) renderAllMessageLines() []string {
 		lines = append(lines, m.renderPacketLines(message, m.width)...)
 	}
 	return lines
+}
+
+// padANSIToWidth truncates a styled line safely and paints its remaining
+// cells with the supplied background style.
+func padANSIToWidth(line string, width int, fill lipgloss.Style) string {
+	if width < 1 {
+		return ""
+	}
+	line = truncateANSI(line, width)
+	remaining := width - lipgloss.Width(line)
+	if remaining > 0 {
+		line += fill.Render(strings.Repeat(" ", remaining))
+	}
+	return line
 }
 
 // renderChatRow keeps every rendered chat row inside the chat viewport.
@@ -2633,31 +2654,26 @@ func (m model) renderHeader() string {
 		return ""
 	}
 
-	var title string
+	title := "ZEALOT"
 	if m.roomExplicit {
 		title = "ZEALOT — " + m.room
-	} else {
-		title = "ZEALOT"
 	}
-
 	rightLabel := fmt.Sprintf("Online: %d", m.onlineCount)
 	if m.usersOpen {
 		rightLabel = "[X]"
 	}
-	online := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(m.cfg.AccentColor)).
-		Background(lipgloss.Color(m.cfg.Background)).
-		Underline(true).
-		Render(rightLabel)
-	padding := m.width - lipgloss.Width(title) - lipgloss.Width(online)
-	if padding < 0 {
-		padding = 0
+
+	// Reserve the right edge for the online button, then fill every remaining
+	// cell with the same configured background. No nested styles are used.
+	rightLabel = truncateANSI(rightLabel, m.width)
+	titleWidth := max(0, m.width-lipgloss.Width(rightLabel))
+	title = truncateANSI(title, titleWidth)
+	gapWidth := max(0, m.width-lipgloss.Width(title)-lipgloss.Width(rightLabel))
+	line := title + strings.Repeat(" ", gapWidth) + rightLabel
+	if remaining := m.width - lipgloss.Width(line); remaining > 0 {
+		line += strings.Repeat(" ", remaining)
 	}
-
-	line := truncateANSI(title+strings.Repeat(" ", padding)+online, m.width)
-
 	return lipgloss.NewStyle().
-		Width(m.width).
 		Foreground(lipgloss.Color(m.cfg.AccentColor)).
 		Background(lipgloss.Color(m.cfg.Background)).
 		Render(line)
@@ -2703,56 +2719,57 @@ func (m model) View() tea.View {
 	}
 
 	if m.usersOpen {
-		// Reuse the normal chat pane instead of creating a separate window.
-		// The heading remains fixed while the user rows and their scrollbar move.
+		// The existing chat pane becomes the roster. The heading uses a clean
+		// full-width background row; the scrollbar occupies the far-right
+		// interior cell on user rows only.
 		users := m.userRows()
 		visibleUsers := m.usersPanelHeight()
 		userStart := min(m.usersScroll, len(users))
 		userEnd := min(userStart+visibleUsers, len(users))
 		visible := append([]string(nil), users[userStart:userEnd]...)
 
-		rowStyle := lipgloss.NewStyle().
-			Width(max(1, m.width-2)).
-			Background(lipgloss.Color(m.cfg.Background))
+		bg := lipgloss.Color(m.cfg.Background)
+		rowFill := lipgloss.NewStyle().Background(bg)
 		scrollbarStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color(m.cfg.BorderColor)).
-			Background(lipgloss.Color(m.cfg.Background))
+			Background(bg)
+		contentWidth := max(1, m.width-2)
+		textWidth := max(1, contentWidth-1)
 
-		// The first interior row is the fixed heading; the rail begins beside
-		// the first user row and ends beside the last visible user row.
-		railTop, thumbHeight, trackHeight := m.usersScrollbarThumb()
 		rosterRows := make([]string, 0, m.messageHeight())
-		heading := truncateANSI(m.styles.accent.Render("  Online users:"), m.width-3)
-		rosterRows = append(rosterRows, heading+" ")
+		heading := m.styles.accent.Render("  Online users:")
+		rosterRows = append(rosterRows, padANSIToWidth(heading, contentWidth, rowFill))
+
 		for len(visible) < visibleUsers {
 			visible = append(visible, "")
 		}
+		railTop, thumbHeight, trackHeight := m.usersScrollbarThumb()
 		for i, line := range visible {
-			var rail string
+			text := padANSIToWidth(line, textWidth, rowFill)
+			var glyph string
 			switch {
 			case i == 0:
-				rail = scrollbarStyle.Render("^")
+				glyph = "^"
 			case i == visibleUsers-1:
-				rail = scrollbarStyle.Render("v")
+				glyph = "v"
 			default:
 				trackPosition := i - 1
-				glyph := "│"
+				glyph = "│"
 				if trackPosition < trackHeight && len(users) > visibleUsers &&
 					trackPosition >= railTop && trackPosition < railTop+thumbHeight {
 					glyph = "█"
 				}
-				rail = scrollbarStyle.Render(glyph)
 			}
-			rosterRows = append(rosterRows, truncateANSI(line, m.width-3)+rail)
+			rosterRows = append(rosterRows, text+scrollbarStyle.Render(glyph))
 		}
 		for len(rosterRows) < m.messageHeight() {
-			rosterRows = append(rosterRows, rowStyle.Render(""))
+			rosterRows = append(rosterRows, padANSIToWidth("", contentWidth, rowFill))
 		}
 		if len(rosterRows) > m.messageHeight() {
 			rosterRows = rosterRows[:m.messageHeight()]
 		}
 		for i := range rosterRows {
-			rosterRows[i] = renderChatRow(rowStyle, rosterRows[i], m.width-2)
+			rosterRows[i] = renderChatRow(rowFill.Width(contentWidth), rosterRows[i], contentWidth)
 		}
 		chat := strings.Join(rosterRows, "\n")
 		chatBox := m.styles.border.
@@ -2761,7 +2778,6 @@ func (m model) View() tea.View {
 			Render(chat)
 		return m.renderViewWithChat(header, chatBox, true)
 	}
-
 	start := len(lines) -
 		chatHeight -
 		m.scroll
@@ -2905,12 +2921,14 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen bool) tea.Vi
 	if usersOpen {
 		shortcuts = "PgUp/PgDn or mouse wheel: scroll  •  Esc: close  •  Ctrl+C: quit"
 	}
-	statusContentWidth := max(1, m.width-2) // the status style's horizontal padding uses two cells
-	statusText := m.status + "   " + shortcuts
+	statusText := " " + m.status + "   " + shortcuts
+	statusText = truncateANSI(statusText, m.width)
+	if remaining := m.width - lipgloss.Width(statusText); remaining > 0 {
+		statusText += strings.Repeat(" ", remaining)
+	}
 	status := m.styles.status.
 		Width(m.width).
-		Render(truncateANSI(statusText, statusContentWidth))
-
+		Render(statusText)
 	// -------------------------------------------------------------------------
 	// Full application
 	// -------------------------------------------------------------------------
