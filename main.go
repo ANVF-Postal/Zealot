@@ -2658,75 +2658,6 @@ func (m model) View() tea.View {
 		Height(m.messageHeight()).
 		Render(chat)
 
-	// -------------------------------------------------------------------------
-	// Input
-	// -------------------------------------------------------------------------
-
-	// Input content rows are configurable; borders add two more rows.
-	inputView := strings.Split(strings.TrimSuffix(m.input.View(), "\n"), "\n")
-	if len(inputView) == 0 {
-		inputView = []string{""}
-	}
-	prompt := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(m.cfg.AccentColor)).
-		Background(lipgloss.Color(m.cfg.Background)).
-		Bold(true).
-		Render("> ")
-	inputView[0] = prompt + inputView[0]
-
-	// The textarea emits shorter/unstyled end-of-buffer rows when empty. Fill
-	// every row's remaining columns with the configured background so those
-	// rows match the rest of the composer before the user starts typing.
-	inputInnerWidth := m.width - 4 // border (2) + composer padding (2)
-	if inputInnerWidth < 1 {
-		inputInnerWidth = 1
-	}
-	inputBackground := lipgloss.NewStyle().Background(lipgloss.Color(m.cfg.Background))
-	if strings.TrimSpace(m.input.Value()) == "" {
-		// Bubbles' empty-placeholder view uses EndOfBuffer cells for rows below
-		// the placeholder. Those cells can retain a terminal-default background
-		// through the viewport, even when EndOfBuffer is styled. Replace the
-		// lower empty rows wholesale with explicitly background-painted spaces.
-		for i := 1; i < len(inputView); i++ {
-			inputView[i] = inputBackground.Render(strings.Repeat(" ", inputInnerWidth))
-		}
-	}
-	for i, line := range inputView {
-		remaining := inputInnerWidth - lipgloss.Width(line)
-		if remaining > 0 {
-			inputView[i] = line + inputBackground.Render(strings.Repeat(" ", remaining))
-		}
-	}
-	// The textarea is configured for exactly InputHeight rows; normalize the
-	// slice defensively so a trailing newline never creates an extra row.
-	if len(inputView) > m.cfg.InputHeight {
-		inputView = inputView[:m.cfg.InputHeight]
-	}
-	for len(inputView) < m.cfg.InputHeight {
-		inputView = append(inputView, inputBackground.Render(strings.Repeat(" ", inputInnerWidth)))
-	}
-	inputContent := strings.Join(inputView, "\n")
-	inputBox := m.styles.inputBox.
-		Width(m.width).
-		Height(m.cfg.InputHeight).
-		Render(inputContent)
-
-	// -------------------------------------------------------------------------
-	// Status
-	// -------------------------------------------------------------------------
-
-	status := m.styles.status.
-		Width(m.width).
-		Render(
-			m.status +
-				"   " +
-				map[bool]string{true: "PgUp/PgDn or mouse wheel: scroll  •  Esc: close  •  Ctrl+C: quit", false: "Enter: send  •  PgUp/PgDn: scroll  •  Ctrl+C: quit"}[usersOpen],
-		)
-
-	// -------------------------------------------------------------------------
-	// Full application
-	// -------------------------------------------------------------------------
-
 	return m.renderViewWithChat(header, chatBox, false)
 }
 
@@ -2792,13 +2723,13 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen bool) tea.Vi
 	// Status
 	// -------------------------------------------------------------------------
 
+	shortcuts := "Enter: send  •  PgUp/PgDn: scroll  •  Ctrl+C: quit"
+	if usersOpen {
+		shortcuts = "PgUp/PgDn or mouse wheel: scroll  •  Esc: close  •  Ctrl+C: quit"
+	}
 	status := m.styles.status.
 		Width(m.width).
-		Render(
-			m.status +
-				"   " +
-				"Enter: send  •  PgUp/PgDn: scroll  •  Ctrl+C: quit",
-		)
+		Render(m.status + "   " + shortcuts)
 
 	// -------------------------------------------------------------------------
 	// Full application
