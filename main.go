@@ -530,6 +530,7 @@ func (s *server) handle(conn net.Conn) {
 				User:   user,
 				Typing: false,
 			})
+			s.broadcastRoster(roomName)
 
 		case "rename":
 			requested := strings.TrimSpace(packet.User.Name)
@@ -558,6 +559,7 @@ func (s *server) handle(conn net.Conn) {
 			}
 			s.systemMessage(roomName, fmt.Sprintf("%s is now %s", oldName, requested))
 			client.send(Packet{Type: "identity", Room: roomName, User: client.user})
+			s.broadcastRoster(roomName)
 
 		case "color":
 			color := strings.TrimSpace(packet.User.Color)
@@ -571,6 +573,7 @@ func (s *server) handle(conn net.Conn) {
 			s.mu.Unlock()
 			client.send(Packet{Type: "identity", Room: roomName, User: client.user})
 			s.systemMessage(roomName, fmt.Sprintf("%s changed their color.", user.Name))
+			s.broadcastRoster(roomName)
 
 		case "me":
 			text := strings.TrimSpace(packet.Text)
@@ -590,6 +593,7 @@ func (s *server) handle(conn net.Conn) {
 			s.mu.Unlock()
 			s.broadcast(roomName, action)
 			s.broadcast(roomName, Packet{Type: "typing", Room: roomName, User: user, Typing: false})
+			s.broadcastRoster(roomName)
 
 		case "typing":
 			typing := packet.Typing
@@ -1302,18 +1306,15 @@ func (m model) Update(
 		}
 
 		next := readPacket(m.client)
+		var commands []tea.Cmd
+		commands = append(commands, next)
 		if packet.Type == "message" && packet.User.Name != m.user.Name {
-			return m, tea.Batch(next, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg { return usersAnimationMsg{} }))
+			commands = append(commands, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg { return usersAnimationMsg{} }))
+			if m.notificationsReady && m.cfg.Bell {
+				commands = append(commands, terminalBellCmd())
+			}
 		}
-
-		if packet.Type == "message" &&
-			packet.User.Name != m.user.Name &&
-			m.notificationsReady &&
-			(m.cfg.Bell) {
-			return m, tea.Batch(next, terminalBellCmd())
-		}
-
-		return m, next
+		return m, tea.Batch(commands...)
 	}
 
 	if _, ok := msg.(usersAnimationMsg); ok {
@@ -1439,6 +1440,16 @@ func (m model) Update(
 	// -------------------------------------------------------------------------
 
 	if mouseMsg, ok := msg.(tea.MouseWheelMsg); ok {
+		if m.usersOpen {
+			switch mouseMsg.Button {
+			case tea.MouseWheelUp:
+				m.usersScroll += 3
+			case tea.MouseWheelDown:
+				m.usersScroll -= 3
+			}
+			m.clampUsersScroll()
+			return m, nil
+		}
 		switch mouseMsg.Button {
 		case tea.MouseWheelUp:
 			m.scroll += 3
@@ -2508,7 +2519,7 @@ func (m model) renderHeader() string {
 		title = "ZEALOT"
 	}
 
-	online := fmt.Sprintf("Online: %d", m.onlineCount)
+	online := lipgloss.NewStyle().Underline(true).Render(fmt.Sprintf("Online: %d", m.onlineCount))
 	padding := m.width - lipgloss.Width(title) - lipgloss.Width(online)
 
 	if padding < 1 {
