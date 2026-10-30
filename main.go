@@ -973,14 +973,20 @@ type usersScrollbarHoldMsg struct{ generation int }
 type usersAnimationMsg struct{}
 
 func isEscapeKey(key tea.Key) bool {
-	if key.Code == 0x1b || key.Code == tea.KeyEscape || key.Code == tea.KeyEsc {
+	// A bare Escape is the C0 0x1b byte. Some terminal/keyboard protocols
+	// can instead report Ctrl+[ as a modified printable key.
+	if key.Code == 0x1b || key.Code == tea.KeyEscape || key.Code == tea.KeyEsc ||
+		key.Text == "\x1b" {
+		return true
+	}
+	if key.Mod&tea.ModCtrl != 0 && (key.Code == '[' || key.Text == "[") {
 		return true
 	}
 	switch key.String() {
 	case "esc", "escape", "ctrl+[":
 		return true
 	}
-	return key.Text == "\x1b"
+	return false
 }
 
 // -----------------------------------------------------------------------------
