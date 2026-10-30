@@ -1370,10 +1370,13 @@ func (m model) Update(
 		if !m.usersOpen && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width(fmt.Sprintf("Online: %d", m.onlineCount)) && mouse.X < m.width {
 			m.usersOpen = true
 			m.usersScroll = 0
+			m.scrollDragging = false
+			m.scrollbarHoldDirection = 0
+			m.scrollbarHoldGeneration++
 			_ = m.client.send(Packet{Type: "who", Room: m.room})
 			return m, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg { return usersAnimationMsg{} })
 		}
-		if mouse.Button == tea.MouseLeft && m.scrollbarContains(mouse.X, mouse.Y) && m.maxScroll() > 0 {
+		if !m.usersOpen && mouse.Button == tea.MouseLeft && m.scrollbarContains(mouse.X, mouse.Y) && m.maxScroll() > 0 {
 			top, thumbHeight, trackHeight := m.scrollbarThumb()
 			trackY := mouse.Y - 3 // first draggable track row; arrows occupy y=2 and the final row
 			if trackY < 0 { trackY = 0 }
@@ -1403,7 +1406,7 @@ func (m model) Update(
 		}
 
 	case tea.MouseMotionMsg:
-		if m.scrollDragging {
+		if m.scrollDragging && !m.usersOpen {
 			_, thumbHeight, trackHeight := m.scrollbarThumb()
 			target := mouse.Y - 3 - m.scrollDragOffset
 			if target < 0 { target = 0 }
@@ -1419,7 +1422,7 @@ func (m model) Update(
 		return m, nil
 
 	case scrollbarHoldMsg:
-		if mouse.generation == m.scrollbarHoldGeneration && m.scrollbarHoldDirection != 0 {
+		if !m.usersOpen && mouse.generation == m.scrollbarHoldGeneration && m.scrollbarHoldDirection != 0 {
 			m.scroll += m.scrollbarHoldDirection * 3
 			m.clampScroll()
 			if m.scroll == 0 || m.scroll == m.maxScroll() {
@@ -2727,9 +2730,10 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen bool) tea.Vi
 	if usersOpen {
 		shortcuts = "PgUp/PgDn or mouse wheel: scroll  •  Esc: close  •  Ctrl+C: quit"
 	}
+	statusText := m.status + "   " + shortcuts
 	status := m.styles.status.
 		Width(m.width).
-		Render(m.status + "   " + shortcuts)
+		Render(truncateANSI(statusText, m.width))
 
 	// -------------------------------------------------------------------------
 	// Full application
