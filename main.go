@@ -2005,8 +2005,9 @@ func wrapText(text string, width int) []string {
 }
 
 // wrapTextVariable wraps prose into rows with a possibly different capacity for
-// the first and second row. Long URL-like tokens are split at punctuation
-// without adding characters; other oversized words are hyphenated repeatedly.
+// the first and second row. It prefers spaces between words; only tokens that
+// cannot fit on an otherwise empty row are split. URL-like tokens prefer
+// punctuation breakpoints and are never given synthetic hyphens.
 func wrapTextVariable(text string, firstWidth, secondWidth, fullWidth int) []string {
 	if firstWidth < 0 {
 		firstWidth = 0
@@ -2065,21 +2066,6 @@ func wrapTextVariable(text string, firstWidth, secondWidth, fullWidth int) []str
 						break
 					}
 
-					// Use the remaining cells to hyphenate/split the next word
-					// instead of leaving a ragged gap. This matches novel-style
-					// wrapping ("ri-" + "ght") and helps long URLs progress too.
-					room := capWidth - lipgloss.Width(current) - 1
-					if room > 0 {
-						part, rest := splitLongWordPrefix(remaining, room)
-						urlSplitIsNatural := !isURLLike(remaining) || endsWithBreakPunctuation(part)
-						if part != "" && rest != "" && rest != remaining && urlSplitIsNatural {
-							result = append(result, current+" "+part)
-							current = ""
-							remaining = rest
-							continue
-						}
-					}
-
 					result = append(result, current)
 					current = ""
 					continue
@@ -2091,7 +2077,7 @@ func wrapTextVariable(text string, firstWidth, secondWidth, fullWidth int) []str
 					break
 				}
 
-				part, rest := splitLongWordPrefix(remaining, capWidth)
+				part, rest := splitLongWordPrefix(remaining, capWidth, isURLLike(token))
 				if part == "" || rest == remaining {
 					// Progress even for unusual zero-width/control-only tokens.
 					_, size := utf8.DecodeRuneInString(remaining)
@@ -2119,11 +2105,10 @@ func wrapTextVariable(text string, firstWidth, secondWidth, fullWidth int) []str
 	return result
 }
 
-func splitLongWordPrefix(word string, width int) (string, string) {
+func splitLongWordPrefix(word string, width int, urlLike bool) (string, string) {
 	if width < 1 || word == "" {
 		return "", word
 	}
-	urlLike := isURLLike(word)
 	used := 0
 	lastFit := 0
 	lastPunctuation := 0
@@ -2203,23 +2188,6 @@ func isURLLike(word string) bool {
 		strings.Contains(word, ".") ||
 		strings.Contains(word, "/") ||
 		strings.ContainsAny(word, "?&=#")
-}
-
-func endsWithBreakPunctuation(s string) bool {
-	var last rune
-	for i := 0; i < len(s); {
-		if s[i] == 0x1b {
-			i = ansiSequenceEnd(s, i)
-			continue
-		}
-		r, size := utf8.DecodeRuneInString(s[i:])
-		if size < 1 {
-			break
-		}
-		last = r
-		i += size
-	}
-	return strings.ContainsRune("./\\-_?:&=#%+@,;~!$'()[]{}", last)
 }
 
 // -----------------------------------------------------------------------------
