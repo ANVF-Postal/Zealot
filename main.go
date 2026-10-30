@@ -1372,7 +1372,7 @@ func (m model) Update(
 			}
 			return m, nil
 		}
-		if m.usersOpen && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-5 {
+		if m.usersOpen && mouse.Button == tea.MouseLeft && mouse.Y == 1 && mouse.X >= m.width-5 {
 			m.usersOpen = false
 			return m, nil
 		}
