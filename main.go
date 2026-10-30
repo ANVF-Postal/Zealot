@@ -1333,7 +1333,7 @@ func (m model) Update(
 		}
 
 	case tea.MouseMotionMsg:
-		if m.scrollDragging && m.scrollbarContains(mouse.X, mouse.Y) {
+		if m.scrollDragging {
 			_, thumbHeight, trackHeight := m.scrollbarThumb()
 			target := mouse.Y - 3 - m.scrollDragOffset
 			if target < 0 { target = 0 }
