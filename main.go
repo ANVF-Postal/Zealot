@@ -213,8 +213,9 @@ func terminalBellCmd() tea.Cmd {
 // -----------------------------------------------------------------------------
 
 type User struct {
-	Name  string `json:"name"`
-	Color string `json:"color"`
+	Name   string `json:"name"`
+	Color  string `json:"color"`
+	Typing bool   `json:"typing,omitempty"`
 }
 
 type Packet struct {
@@ -226,6 +227,7 @@ type Packet struct {
 	Typing     bool      `json:"typing,omitempty"`
 	AddHistory bool      `json:"add_history,omitempty"`
 	Ephemeral  bool      `json:"ephemeral,omitempty"`
+	Users      []User    `json:"users,omitempty"`
 }
 
 // -----------------------------------------------------------------------------
@@ -296,6 +298,26 @@ func (s *server) broadcast(
 	for _, c := range clients {
 		c.send(packet)
 	}
+}
+
+// broadcastRoster sends a current, alphabetized room roster to every client.
+func (s *server) broadcastRoster(roomName string) {
+	s.mu.Lock()
+	room := s.rooms[roomName]
+	users := make([]User, 0)
+	if room != nil {
+		for _, client := range room.clients {
+			user := client.user
+			user.Typing = client.typing
+			users = append(users, user)
+		}
+	}
+	s.mu.Unlock()
+
+	sort.Slice(users, func(i, j int) bool {
+		return strings.ToLower(users[i].Name) < strings.ToLower(users[j].Name)
+	})
+	s.broadcast(roomName, Packet{Type: "users", Room: roomName, Users: users})
 }
 
 func (c *serverClient) send(packet Packet) {
@@ -433,6 +455,7 @@ func (s *server) handle(conn net.Conn) {
 		Type: "online",
 		Text: strconv.Itoa(onlineCount),
 	})
+	s.broadcastRoster(roomName)
 
 	for {
 		var packet Packet
@@ -581,28 +604,25 @@ func (s *server) handle(conn net.Conn) {
 				User:   user,
 				Typing: typing,
 			})
+			s.broadcastRoster(roomName)
 
 		case "who":
-			// Return the current room roster only to the requesting client.
+			// Return a structured roster snapshot only to the requesting client.
 			s.mu.Lock()
 			room := s.rooms[roomName]
-			var names []string
+			users := make([]User, 0)
 			if room != nil {
 				for _, connected := range room.clients {
-					names = append(names, connected.user.Name)
+					user := connected.user
+					user.Typing = connected.typing
+					users = append(users, user)
 				}
 			}
 			s.mu.Unlock()
-
-			sort.Slice(names, func(i, j int) bool {
-				return strings.ToLower(names[i]) < strings.ToLower(names[j])
+			sort.Slice(users, func(i, j int) bool {
+				return strings.ToLower(users[i].Name) < strings.ToLower(users[j].Name)
 			})
-
-			text := fmt.Sprintf("Connected users (%d):", len(names))
-			for _, name := range names {
-				text += "\n  • " + name
-			}
-			client.send(Packet{Type: "system", Room: roomName, Text: text, Time: time.Now().UTC()})
+			client.send(Packet{Type: "users", Room: roomName, Users: users})
 
 		case "history_status":
 			s.mu.Lock()
@@ -669,6 +689,7 @@ func (s *server) removeClient(
 			Type: "online",
 			Text: strconv.Itoa(onlineCount),
 		})
+		s.broadcastRoster(client.room)
 
 	}
 }
@@ -944,6 +965,7 @@ type typingClearMsg struct {
 type notificationsReadyMsg struct{}
 
 type scrollbarHoldMsg struct{ generation int }
+type usersAnimationMsg struct{}
 
 // -----------------------------------------------------------------------------
 // UI styles
@@ -1016,6 +1038,11 @@ type model struct {
 	roomExplicit bool
 	user         User
 	onlineCount  int
+	onlineUsers  []User
+	usersOpen    bool
+	usersScroll  int
+	usersFrame   int
+	userActivity map[string]int
 
 	client *wireClient
 
@@ -1116,6 +1143,7 @@ func newModel(
 		user:         user,
 		client:       client,
 		typing:       make(map[string]User),
+		userActivity: make(map[string]int),
 		input:        input,
 		connected:    true,
 		status:       "Connected",
@@ -1217,8 +1245,17 @@ func (m model) Update(
 				m.onlineCount = count
 			}
 
+		case "users":
+			m.onlineUsers = append([]User(nil), packet.Users...)
+			sort.Slice(m.onlineUsers, func(i, j int) bool {
+				return strings.ToLower(m.onlineUsers[i].Name) < strings.ToLower(m.onlineUsers[j].Name)
+			})
+
 		case "message", "system", "me", "letter":
 			m.appendMessage(packet)
+			if packet.Type == "message" && packet.User.Name != m.user.Name {
+				m.userActivity[packet.User.Name] = 6
+			}
 
 		case "identity":
 			if packet.User.Name != "" {
@@ -1265,6 +1302,9 @@ func (m model) Update(
 		}
 
 		next := readPacket(m.client)
+		if packet.Type == "message" && packet.User.Name != m.user.Name {
+			return m, tea.Batch(next, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg { return usersAnimationMsg{} }))
+		}
 
 		if packet.Type == "message" &&
 			packet.User.Name != m.user.Name &&
@@ -1274,6 +1314,25 @@ func (m model) Update(
 		}
 
 		return m, next
+	}
+
+	if _, ok := msg.(usersAnimationMsg); ok {
+		m.usersFrame++
+		active := m.usersOpen
+		for name, remaining := range m.userActivity {
+			if remaining <= 1 {
+				delete(m.userActivity, name)
+			} else {
+				m.userActivity[name] = remaining - 1
+				active = true
+			}
+		}
+		if active {
+			return m, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg {
+				return usersAnimationMsg{}
+			})
+		}
+		return m, nil
 	}
 
 	if _, ok := msg.(connectionClosedMsg); ok {
@@ -1303,6 +1362,20 @@ func (m model) Update(
 
 	switch mouse := msg.(type) {
 	case tea.MouseClickMsg:
+		if mouse.Button == tea.MouseLeft && mouse.Y == 1 && mouse.X >= m.width-lipgloss.Width(fmt.Sprintf("Online: %d", m.onlineCount))-1 {
+			m.usersOpen = !m.usersOpen
+			if m.usersOpen {
+				m.usersScroll = 0
+				_ = m.client.send(Packet{Type: "who", Room: m.room})
+				return m, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg { return usersAnimationMsg{} })
+			}
+			return m, nil
+		}
+		if m.usersOpen && mouse.Button == tea.MouseWheelUp {
+			m.usersScroll += 3
+			m.clampUsersScroll()
+			return m, nil
+		}
 		if mouse.Button == tea.MouseLeft && m.scrollbarContains(mouse.X, mouse.Y) && m.maxScroll() > 0 {
 			top, thumbHeight, trackHeight := m.scrollbarThumb()
 			trackY := mouse.Y - 3 // first draggable track row; arrows occupy y=2 and the final row
@@ -1387,6 +1460,12 @@ func (m model) Update(
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		switch keyMsg.String() {
 
+		case "esc":
+			if m.usersOpen {
+				m.usersOpen = false
+				return m, nil
+			}
+
 		case "ctrl+c", "ctrl+q":
 			m.sendTyping(false)
 			_ = m.client.conn.Close()
@@ -1394,12 +1473,22 @@ func (m model) Update(
 			return m, tea.Quit
 
 		case "pgup":
+			if m.usersOpen {
+				m.usersScroll += max(1, m.usersPanelHeight()-2)
+				m.clampUsersScroll()
+				return m, nil
+			}
 			m.scroll += m.messageHeight() / 2
 			m.clampScroll()
 
 			return m, nil
 
 		case "pgdown":
+			if m.usersOpen {
+				m.usersScroll -= max(1, m.usersPanelHeight()-2)
+				m.clampUsersScroll()
+				return m, nil
+			}
 			m.scroll -= m.messageHeight() / 2
 			m.clampScroll()
 
@@ -1601,6 +1690,78 @@ func (m *model) sendMessage(text string) {
 		return
 	}
 	_ = m.client.send(Packet{Type: "message", Room: m.room, User: m.user, Text: text})
+}
+
+// usersPanelHeight is the available inner height for the online roster.
+func (m model) usersPanelHeight() int {
+	height := m.height - 6
+	if height < 3 { height = 3 }
+	if height > m.messageHeight() { height = m.messageHeight() }
+	return height
+}
+
+func (m model) userRows() []string {
+	width := m.width - 10
+	if width < 8 { width = 8 }
+	rows := []string{}
+	for _, user := range m.onlineUsers {
+		nameWidth := width - 5
+		if nameWidth < 1 { nameWidth = 1 }
+		parts := wrapText(user.Name, nameWidth)
+		if len(parts) == 0 { parts = []string{user.Name} }
+		style := lipgloss.NewStyle().Foreground(lipgloss.Color(user.Color)).Bold(true)
+		marker := ""
+		switch {
+		case m.userActivity[user.Name] > 0 && m.usersFrame%2 == 0:
+			marker = " [!]"
+		case user.Typing:
+			frames := []string{"·  ", "·· ", "···", " ··", "  ·"}
+			marker = " " + frames[m.usersFrame%len(frames)]
+			style = lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.AccentColor)).Bold(true)
+		}
+		for i, part := range parts {
+			line := "  " + style.Render(part)
+			if i == len(parts)-1 { line += marker }
+			rows = append(rows, line)
+		}
+	}
+	if len(rows) == 0 { rows = []string{m.styles.system.Render("  Nobody else is here yet.")} }
+	return rows
+}
+
+func (m model) maxUsersScroll() int {
+	maxScroll := len(m.userRows()) - (m.usersPanelHeight()-2)
+	if maxScroll < 0 { return 0 }
+	return maxScroll
+}
+
+func (m *model) clampUsersScroll() {
+	if m.usersScroll < 0 { m.usersScroll = 0 }
+	if m.usersScroll > m.maxUsersScroll() { m.usersScroll = m.maxUsersScroll() }
+}
+
+func (m model) renderUsersPanel() string {
+	width := m.width - 4
+	if width < 12 { width = 12 }
+	panelHeight := m.usersPanelHeight()
+	rows := m.userRows()
+	start := m.usersScroll
+	if start > len(rows) { start = len(rows) }
+	end := start + panelHeight - 2
+	if end > len(rows) { end = len(rows) }
+	visible := append([]string(nil), rows[start:end]...)
+	for len(visible) < panelHeight-2 { visible = append(visible, "") }
+	count := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.AccentColor)).Bold(true).Render(fmt.Sprintf("Online users (%d)", len(m.onlineUsers)))
+	help := m.styles.system.Render("PgUp/PgDn or mouse wheel to scroll  •  Esc to close")
+	content := count + "\n" + strings.Join(visible, "\n") + "\n" + help
+	return lipgloss.NewStyle().
+		Width(width).
+		Height(panelHeight).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(m.cfg.BorderColor)).
+		Background(lipgloss.Color(m.cfg.Background)).
+		Padding(0, 1).
+		Render(content)
 }
 
 // -----------------------------------------------------------------------------
@@ -2375,6 +2536,10 @@ func appView(content string) tea.View {
 func (m model) View() tea.View {
 	if m.width == 0 || m.height == 0 {
 		return appView("Starting Zealot…")
+	}
+	if m.usersOpen {
+		panel := lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.renderUsersPanel())
+		return appView(m.styles.app.Width(m.width).Height(m.height).Render(panel))
 	}
 
 	// -------------------------------------------------------------------------
