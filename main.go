@@ -1363,18 +1363,15 @@ func (m model) Update(
 
 	switch mouse := msg.(type) {
 	case tea.MouseClickMsg:
-		if mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width(fmt.Sprintf("Online: %d", m.onlineCount)) && mouse.X < m.width {
-			m.usersOpen = !m.usersOpen
-			if m.usersOpen {
-				m.usersScroll = 0
-				_ = m.client.send(Packet{Type: "who", Room: m.room})
-				return m, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg { return usersAnimationMsg{} })
-			}
-			return m, nil
-		}
-		if m.usersOpen && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-5 {
+		if m.usersOpen && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width("[X]") && mouse.X < m.width {
 			m.usersOpen = false
 			return m, nil
+		}
+		if !m.usersOpen && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width(fmt.Sprintf("Online: %d", m.onlineCount)) && mouse.X < m.width {
+			m.usersOpen = true
+			m.usersScroll = 0
+			_ = m.client.send(Packet{Type: "who", Room: m.room})
+			return m, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg { return usersAnimationMsg{} })
 		}
 		if mouse.Button == tea.MouseLeft && m.scrollbarContains(mouse.X, mouse.Y) && m.maxScroll() > 0 {
 			top, thumbHeight, trackHeight := m.scrollbarThumb()
@@ -1704,10 +1701,8 @@ func (m *model) sendMessage(text string) {
 
 // usersPanelHeight is the available inner height for the online roster.
 func (m model) usersPanelHeight() int {
-	panelHeight := min(12, max(5, m.height-2))
-	visible := panelHeight - 4
-	if visible < 1 { visible = 1 }
-	return visible
+	// The roster heading takes one row in the existing chat viewport.
+	return max(1, m.messageHeight()-1)
 }
 
 func (m model) userRows() []string {
@@ -1750,56 +1745,6 @@ func (m *model) clampUsersScroll() {
 	if m.usersScroll > m.maxUsersScroll() { m.usersScroll = m.maxUsersScroll() }
 }
 
-func (m model) renderUsersPanel() string {
-	// The close control and help line sit outside a compact, centered roster.
-	screenWidth := max(1, m.width)
-	screenHeight := max(1, m.height)
-	panelWidth := min(48, max(12, screenWidth-4))
-	if panelWidth > screenWidth { panelWidth = screenWidth }
-	panelHeight := min(12, max(5, screenHeight-2))
-	if panelHeight > screenHeight-2 { panelHeight = max(1, screenHeight-2) }
-	visibleHeight := max(1, panelHeight-4)
-
-	rows := m.userRows()
-	start := min(m.usersScroll, len(rows))
-	end := min(start+visibleHeight, len(rows))
-	visible := append([]string(nil), rows[start:end]...)
-	for len(visible) < visibleHeight { visible = append(visible, "") }
-
-	title := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(m.cfg.AccentColor)).
-		Bold(true).
-		Render("Online users:")
-	content := title + "\n" + strings.Join(visible, "\n")
-	panel := lipgloss.NewStyle().
-		Width(max(1, panelWidth-4)).
-		Height(max(1, panelHeight-2)).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(m.cfg.BorderColor)).
-		Background(lipgloss.Color(m.cfg.Background)).
-		Padding(0, 1).
-		Render(content)
-	panel = lipgloss.NewStyle().
-		Width(panelWidth).
-		Height(panelHeight).
-		Background(lipgloss.Color(m.cfg.Background)).
-		Render(panel)
-
-	closeButton := lipgloss.NewStyle().
-		Width(screenWidth).
-		Align(lipgloss.Right).
-		Foreground(lipgloss.Color(m.cfg.AccentColor)).
-		Bold(true).
-		Render("[X]")
-	help := lipgloss.NewStyle().
-		Width(screenWidth).
-		Align(lipgloss.Center).
-		Foreground(lipgloss.Color(m.cfg.TextColor)).
-		Render("PgUp/PgDn or mouse wheel: scroll  •  Esc: close")
-
-	centeredPanel := lipgloss.Place(screenWidth, max(1, screenHeight-2), lipgloss.Center, lipgloss.Center, panel)
-	return closeButton + "\n" + centeredPanel + "\n" + help
-}
 
 // -----------------------------------------------------------------------------
 // UI layout
@@ -2545,10 +2490,14 @@ func (m model) renderHeader() string {
 		title = "ZEALOT"
 	}
 
+	rightLabel := fmt.Sprintf("Online: %d", m.onlineCount)
+	if m.usersOpen {
+		rightLabel = "[X]"
+	}
 	online := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(m.cfg.AccentColor)).
 		Underline(true).
-		Render(fmt.Sprintf("Online: %d", m.onlineCount))
+		Render(rightLabel)
 	padding := m.width - lipgloss.Width(title) - lipgloss.Width(online)
 
 	if padding < 1 {
@@ -2578,9 +2527,6 @@ func (m model) View() tea.View {
 	if m.width == 0 || m.height == 0 {
 		return appView("Starting Zealot…")
 	}
-	if m.usersOpen {
-		return appView(m.renderUsersPanel())
-	}
 
 	// -------------------------------------------------------------------------
 	// Header
@@ -2603,6 +2549,39 @@ func (m model) View() tea.View {
 
 	if chatHeight < 1 {
 		chatHeight = 1
+	}
+
+	if m.usersOpen {
+		// Reuse the normal chat pane instead of creating a separate window.
+		// Keep the heading fixed while scrolling through the user rows.
+		rosterRows := []string{
+			m.styles.accent.Render("  Online users:"),
+		}
+		users := m.userRows()
+		userStart := min(m.usersScroll, len(users))
+		userEnd := min(userStart+m.usersPanelHeight(), len(users))
+		rosterRows = append(rosterRows, users[userStart:userEnd]...)
+
+		rowStyle := lipgloss.NewStyle().
+			Width(max(1, m.width-2)).
+			Background(lipgloss.Color(m.cfg.Background))
+		for len(rosterRows) < m.messageHeight() {
+			rosterRows = append(rosterRows, rowStyle.Render(""))
+		}
+		if len(rosterRows) > m.messageHeight() {
+			rosterRows = rosterRows[:m.messageHeight()]
+		}
+		for i := range rosterRows {
+			rosterRows[i] = renderChatRow(rowStyle, rosterRows[i], m.width-2)
+		}
+		chat := strings.Join(rosterRows, "\n")
+		chatBox := m.styles.border.
+			Width(m.width).
+			Height(m.messageHeight()).
+			Render(chat)
+
+		// Keep the composer and status line in their normal positions.
+		return m.renderViewWithChat(header, chatBox, true)
 	}
 
 	start := len(lines) -
@@ -2679,6 +2658,83 @@ func (m model) View() tea.View {
 		Height(m.messageHeight()).
 		Render(chat)
 
+	// -------------------------------------------------------------------------
+	// Input
+	// -------------------------------------------------------------------------
+
+	// Input content rows are configurable; borders add two more rows.
+	inputView := strings.Split(strings.TrimSuffix(m.input.View(), "\n"), "\n")
+	if len(inputView) == 0 {
+		inputView = []string{""}
+	}
+	prompt := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.cfg.AccentColor)).
+		Background(lipgloss.Color(m.cfg.Background)).
+		Bold(true).
+		Render("> ")
+	inputView[0] = prompt + inputView[0]
+
+	// The textarea emits shorter/unstyled end-of-buffer rows when empty. Fill
+	// every row's remaining columns with the configured background so those
+	// rows match the rest of the composer before the user starts typing.
+	inputInnerWidth := m.width - 4 // border (2) + composer padding (2)
+	if inputInnerWidth < 1 {
+		inputInnerWidth = 1
+	}
+	inputBackground := lipgloss.NewStyle().Background(lipgloss.Color(m.cfg.Background))
+	if strings.TrimSpace(m.input.Value()) == "" {
+		// Bubbles' empty-placeholder view uses EndOfBuffer cells for rows below
+		// the placeholder. Those cells can retain a terminal-default background
+		// through the viewport, even when EndOfBuffer is styled. Replace the
+		// lower empty rows wholesale with explicitly background-painted spaces.
+		for i := 1; i < len(inputView); i++ {
+			inputView[i] = inputBackground.Render(strings.Repeat(" ", inputInnerWidth))
+		}
+	}
+	for i, line := range inputView {
+		remaining := inputInnerWidth - lipgloss.Width(line)
+		if remaining > 0 {
+			inputView[i] = line + inputBackground.Render(strings.Repeat(" ", remaining))
+		}
+	}
+	// The textarea is configured for exactly InputHeight rows; normalize the
+	// slice defensively so a trailing newline never creates an extra row.
+	if len(inputView) > m.cfg.InputHeight {
+		inputView = inputView[:m.cfg.InputHeight]
+	}
+	for len(inputView) < m.cfg.InputHeight {
+		inputView = append(inputView, inputBackground.Render(strings.Repeat(" ", inputInnerWidth)))
+	}
+	inputContent := strings.Join(inputView, "\n")
+	inputBox := m.styles.inputBox.
+		Width(m.width).
+		Height(m.cfg.InputHeight).
+		Render(inputContent)
+
+	// -------------------------------------------------------------------------
+	// Status
+	// -------------------------------------------------------------------------
+
+	status := m.styles.status.
+		Width(m.width).
+		Render(
+			m.status +
+				"   " +
+				map[bool]string{true: "PgUp/PgDn or mouse wheel: scroll  •  Esc: close  •  Ctrl+C: quit", false: "Enter: send  •  PgUp/PgDn: scroll  •  Ctrl+C: quit"}[usersOpen],
+		)
+
+	// -------------------------------------------------------------------------
+	// Full application
+	// -------------------------------------------------------------------------
+
+	return m.renderViewWithChat(header, chatBox, false)
+}
+
+
+ 
+// renderViewWithChat keeps the application shell unchanged while swapping the
+// contents of the chat pane for the online roster.
+func (m model) renderViewWithChat(header, chatBox string, usersOpen bool) tea.View {
 	// -------------------------------------------------------------------------
 	// Input
 	// -------------------------------------------------------------------------
