@@ -2446,7 +2446,7 @@ func (m model) View() tea.View {
 			if m.maxScroll() > 0 && trackPosition >= thumbTop && trackPosition < thumbTop+thumbHeight {
 				glyph = "█"
 			}
-			if m.maxScroll() == 0 || trackPosition >= trackHeight {
+			if trackPosition >= trackHeight {
 				glyph = " "
 			}
 			scrollbarRows[i] = scrollbarStyle.Render(glyph)
