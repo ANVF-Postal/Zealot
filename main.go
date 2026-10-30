@@ -2502,12 +2502,11 @@ func (m model) renderHeader() string {
 		Underline(true).
 		Render(rightLabel)
 	padding := m.width - lipgloss.Width(title) - lipgloss.Width(online)
-
-	if padding < 1 {
-		padding = 1
+	if padding < 0 {
+		padding = 0
 	}
 
-	line := title + strings.Repeat(" ", padding) + online
+	line := truncateANSI(title+strings.Repeat(" ", padding)+online, m.width)
 
 	return lipgloss.NewStyle().
 		Width(m.width).
