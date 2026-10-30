@@ -1363,13 +1363,17 @@ func (m model) Update(
 
 	switch mouse := msg.(type) {
 	case tea.MouseClickMsg:
-		if mouse.Button == tea.MouseLeft && mouse.Y == 1 && mouse.X >= m.width-lipgloss.Width(fmt.Sprintf("Online: %d", m.onlineCount))-1 {
+		if mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width(fmt.Sprintf("Online: %d", m.onlineCount)) && mouse.X < m.width {
 			m.usersOpen = !m.usersOpen
 			if m.usersOpen {
 				m.usersScroll = 0
 				_ = m.client.send(Packet{Type: "who", Room: m.room})
 				return m, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg { return usersAnimationMsg{} })
 			}
+			return m, nil
+		}
+		if m.usersOpen && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-5 {
+			m.usersOpen = false
 			return m, nil
 		}
 		if mouse.Button == tea.MouseLeft && m.scrollbarContains(mouse.X, mouse.Y) && m.maxScroll() > 0 {
@@ -1466,7 +1470,7 @@ func (m model) Update(
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		switch keyMsg.String() {
 
-		case "esc":
+		case "esc", "escape":
 			if m.usersOpen {
 				m.usersOpen = false
 				return m, nil
@@ -1747,29 +1751,46 @@ func (m *model) clampUsersScroll() {
 }
 
 func (m model) renderUsersPanel() string {
-	width := m.width - 4
-	if width < 12 { width = 12 }
-	panelHeight := m.usersPanelHeight()
+	panelWidth := max(1, m.width)
+	panelHeight := max(1, m.height-1) // leave one terminal row for the hint below the border
 	rows := m.userRows()
-	start := m.usersScroll
-	if start > len(rows) { start = len(rows) }
-	end := start + panelHeight - 2
-	if end > len(rows) { end = len(rows) }
+	visibleHeight := max(1, panelHeight-4) // top/bottom border, title, and spacing
+	start := min(m.usersScroll, len(rows))
+	end := min(start+visibleHeight, len(rows))
 	visible := append([]string(nil), rows[start:end]...)
-	for len(visible) < panelHeight-2 { visible = append(visible, "") }
-	count := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.AccentColor)).Bold(true).Render(fmt.Sprintf("Online users (%d)", len(m.onlineUsers)))
-	helpText := "PgUp/PgDn or wheel: scroll  •  Esc: close"
-	helpLines := wrapText(helpText, width-4)
-	help := m.styles.system.Render(strings.Join(helpLines, "\n"))
-	content := count + "\n" + strings.Join(visible, "\n") + "\n" + help
-	return lipgloss.NewStyle().
-		Width(width).
-		Height(panelHeight).
+	for len(visible) < visibleHeight {
+		visible = append(visible, "")
+	}
+
+	title := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.cfg.AccentColor)).
+		Bold(true).
+		Render("ONLINE USERS")
+	closeButton := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.cfg.AccentColor)).
+		Bold(true).
+		Render("[X]")
+	titleGap := max(1, panelWidth-4-lipgloss.Width(title)-lipgloss.Width(closeButton))
+	header := title + strings.Repeat(" ", titleGap) + closeButton
+	content := header + "\n\n" + strings.Join(visible, "\n")
+	panel := lipgloss.NewStyle().
+		Width(panelWidth-2).
+		Height(panelHeight-2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(m.cfg.BorderColor)).
 		Background(lipgloss.Color(m.cfg.Background)).
 		Padding(0, 1).
 		Render(content)
+	panel = lipgloss.NewStyle().
+		Width(panelWidth).
+		Height(panelHeight).
+		Background(lipgloss.Color(m.cfg.Background)).
+		Render(panel)
+	help := lipgloss.NewStyle().
+		Width(panelWidth).
+		Foreground(lipgloss.Color(m.cfg.TextColor)).
+		Render("PgUp/PgDn or mouse wheel: scroll  •  Esc: close")
+	return panel + "\n" + help
 }
 
 // -----------------------------------------------------------------------------
@@ -2516,7 +2537,10 @@ func (m model) renderHeader() string {
 		title = "ZEALOT"
 	}
 
-	online := lipgloss.NewStyle().Underline(true).Render(fmt.Sprintf("Online: %d", m.onlineCount))
+	online := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.cfg.AccentColor)).
+		Underline(true).
+		Render(fmt.Sprintf("Online: %d", m.onlineCount))
 	padding := m.width - lipgloss.Width(title) - lipgloss.Width(online)
 
 	if padding < 1 {
@@ -2525,8 +2549,9 @@ func (m model) renderHeader() string {
 
 	line := title + strings.Repeat(" ", padding) + online
 
-	return m.styles.accent.
+	return lipgloss.NewStyle().
 		Width(m.width).
+		Foreground(lipgloss.Color(m.cfg.AccentColor)).
 		Render(line)
 }
 
@@ -2546,8 +2571,7 @@ func (m model) View() tea.View {
 		return appView("Starting Zealot…")
 	}
 	if m.usersOpen {
-		panel := lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.renderUsersPanel())
-		return appView(m.styles.app.Width(m.width).Height(m.height).Render(panel))
+		return appView(m.renderUsersPanel())
 	}
 
 	// -------------------------------------------------------------------------
