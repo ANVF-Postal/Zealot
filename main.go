@@ -1222,6 +1222,19 @@ func (m model) Update(
 	msg tea.Msg,
 ) (tea.Model, tea.Cmd) {
 
+	// Handle Escape by its key code before any component can consume it.
+	// KeyMsg covers both KeyPressMsg and KeyReleaseMsg.
+	if keyMsg, ok := msg.(tea.KeyMsg); ok && m.usersOpen {
+		code := keyMsg.Key().Code
+		if code == tea.KeyEscape || code == tea.KeyEsc {
+			m.usersOpen = false
+			m.usersScrollDragging = false
+			m.usersScrollbarHoldDirection = 0
+			m.usersScrollbarHoldGeneration++
+			return m, nil
+		}
+	}
+
 	// -------------------------------------------------------------------------
 	// Window resize
 	// -------------------------------------------------------------------------
@@ -1809,9 +1822,11 @@ func (m model) userRows() []string {
 				Bold(true)
 		}
 		for i, part := range parts {
-			line := "    " + style.Render(part)
-			if i == len(parts)-1 { line += marker }
-			rows = append(rows, line)
+			text := part
+			if i == len(parts)-1 {
+				text += marker
+			}
+			rows = append(rows, "    "+style.Render(text))
 		}
 	}
 	if len(rows) == 0 { rows = []string{m.styles.system.Render("  Nobody else is here yet.")} }
@@ -2706,9 +2721,6 @@ func (m model) View() tea.View {
 		// The first interior row is the fixed heading; the rail begins beside
 		// the first user row and ends beside the last visible user row.
 		railTop, thumbHeight, trackHeight := m.usersScrollbarThumb()
-		_ = railTop
-		_ = thumbHeight
-		_ = trackHeight
 		rosterRows := make([]string, 0, m.messageHeight())
 		heading := truncateANSI(m.styles.accent.Render("  Online users:"), m.width-3)
 		rosterRows = append(rosterRows, heading+" ")
@@ -2725,7 +2737,8 @@ func (m model) View() tea.View {
 			default:
 				trackPosition := i - 1
 				glyph := "│"
-				if len(users) > visibleUsers && trackPosition >= railTop && trackPosition < railTop+thumbHeight {
+				if trackPosition < trackHeight && len(users) > visibleUsers &&
+					trackPosition >= railTop && trackPosition < railTop+thumbHeight {
 					glyph = "█"
 				}
 				rail = scrollbarStyle.Render(glyph)
