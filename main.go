@@ -2905,11 +2905,11 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen bool) tea.Vi
 	if usersOpen {
 		shortcuts = "PgUp/PgDn or mouse wheel: scroll  •  Esc: close  •  Ctrl+C: quit"
 	}
-	statusWidth := max(1, m.width-2) // status style adds one cell of padding on each side
+	statusContentWidth := max(1, m.width-2) // the status style's horizontal padding uses two cells
 	statusText := m.status + "   " + shortcuts
 	status := m.styles.status.
-		Width(statusWidth).
-		Render(truncateANSI(statusText, statusWidth))
+		Width(m.width).
+		Render(truncateANSI(statusText, statusContentWidth))
 
 	// -------------------------------------------------------------------------
 	// Full application
