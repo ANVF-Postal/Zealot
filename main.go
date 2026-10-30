@@ -1372,7 +1372,7 @@ func (m model) Update(
 			}
 			return m, nil
 		}
-		if m.usersOpen && mouse.Button == tea.MouseLeft && mouse.Y == 1 && mouse.X >= m.width-5 {
+		if m.usersOpen && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-5 {
 			m.usersOpen = false
 			return m, nil
 		}
@@ -1484,7 +1484,7 @@ func (m model) Update(
 
 		case "pgup":
 			if m.usersOpen {
-				m.usersScroll += max(1, m.usersPanelHeight()-2)
+				m.usersScroll += max(1, m.usersPanelHeight())
 				m.clampUsersScroll()
 				return m, nil
 			}
@@ -1495,7 +1495,7 @@ func (m model) Update(
 
 		case "pgdown":
 			if m.usersOpen {
-				m.usersScroll -= max(1, m.usersPanelHeight()-2)
+				m.usersScroll -= max(1, m.usersPanelHeight())
 				m.clampUsersScroll()
 				return m, nil
 			}
@@ -1740,7 +1740,7 @@ func (m model) userRows() []string {
 }
 
 func (m model) maxUsersScroll() int {
-	maxScroll := len(m.userRows()) - (m.usersPanelHeight()-2)
+	maxScroll := len(m.userRows()) - m.usersPanelHeight()
 	if maxScroll < 0 { return 0 }
 	return maxScroll
 }
