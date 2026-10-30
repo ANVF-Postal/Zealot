@@ -1704,14 +1704,14 @@ func (m *model) sendMessage(text string) {
 
 // usersPanelHeight is the available inner height for the online roster.
 func (m model) usersPanelHeight() int {
-	height := m.height - 6
-	if height < 3 { height = 3 }
-	if height > m.messageHeight() { height = m.messageHeight() }
-	return height
+	panelHeight := min(12, max(5, m.height-2))
+	visible := panelHeight - 4
+	if visible < 1 { visible = 1 }
+	return visible
 }
 
 func (m model) userRows() []string {
-	width := m.width - 10
+	width := m.width - 12
 	if width < 8 { width = 8 }
 	rows := []string{}
 	for _, user := range m.onlineUsers {
@@ -1730,7 +1730,7 @@ func (m model) userRows() []string {
 			style = lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.AccentColor)).Bold(true)
 		}
 		for i, part := range parts {
-			line := "  " + style.Render(part)
+			line := "    " + style.Render(part)
 			if i == len(parts)-1 { line += marker }
 			rows = append(rows, line)
 		}
@@ -1751,31 +1751,29 @@ func (m *model) clampUsersScroll() {
 }
 
 func (m model) renderUsersPanel() string {
-	panelWidth := max(1, m.width)
-	panelHeight := max(1, m.height-1) // leave one terminal row for the hint below the border
+	// The close control and help line sit outside a compact, centered roster.
+	screenWidth := max(1, m.width)
+	screenHeight := max(1, m.height)
+	panelWidth := min(48, max(12, screenWidth-4))
+	if panelWidth > screenWidth { panelWidth = screenWidth }
+	panelHeight := min(12, max(5, screenHeight-2))
+	if panelHeight > screenHeight-2 { panelHeight = max(1, screenHeight-2) }
+	visibleHeight := max(1, panelHeight-4)
+
 	rows := m.userRows()
-	visibleHeight := max(1, panelHeight-4) // top/bottom border, title, and spacing
 	start := min(m.usersScroll, len(rows))
 	end := min(start+visibleHeight, len(rows))
 	visible := append([]string(nil), rows[start:end]...)
-	for len(visible) < visibleHeight {
-		visible = append(visible, "")
-	}
+	for len(visible) < visibleHeight { visible = append(visible, "") }
 
 	title := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(m.cfg.AccentColor)).
 		Bold(true).
-		Render("ONLINE USERS")
-	closeButton := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(m.cfg.AccentColor)).
-		Bold(true).
-		Render("[X]")
-	titleGap := max(1, panelWidth-4-lipgloss.Width(title)-lipgloss.Width(closeButton))
-	header := title + strings.Repeat(" ", titleGap) + closeButton
-	content := header + "\n\n" + strings.Join(visible, "\n")
+		Render("Online users:")
+	content := title + "\n" + strings.Join(visible, "\n")
 	panel := lipgloss.NewStyle().
-		Width(panelWidth-2).
-		Height(panelHeight-2).
+		Width(max(1, panelWidth-4)).
+		Height(max(1, panelHeight-2)).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(m.cfg.BorderColor)).
 		Background(lipgloss.Color(m.cfg.Background)).
@@ -1786,11 +1784,21 @@ func (m model) renderUsersPanel() string {
 		Height(panelHeight).
 		Background(lipgloss.Color(m.cfg.Background)).
 		Render(panel)
+
+	closeButton := lipgloss.NewStyle().
+		Width(screenWidth).
+		Align(lipgloss.Right).
+		Foreground(lipgloss.Color(m.cfg.AccentColor)).
+		Bold(true).
+		Render("[X]")
 	help := lipgloss.NewStyle().
-		Width(panelWidth).
+		Width(screenWidth).
+		Align(lipgloss.Center).
 		Foreground(lipgloss.Color(m.cfg.TextColor)).
 		Render("PgUp/PgDn or mouse wheel: scroll  •  Esc: close")
-	return panel + "\n" + help
+
+	centeredPanel := lipgloss.Place(screenWidth, max(1, screenHeight-2), lipgloss.Center, lipgloss.Center, panel)
+	return closeButton + "\n" + centeredPanel + "\n" + help
 }
 
 // -----------------------------------------------------------------------------
