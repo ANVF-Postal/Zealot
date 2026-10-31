@@ -972,26 +972,6 @@ type scrollbarHoldMsg struct{ generation int }
 type usersScrollbarHoldMsg struct{ generation int }
 type usersAnimationMsg struct{}
 
-func isEscapeKey(key tea.Key) bool {
-	// Bubble Tea receives Escape as KeyEscape on legacy terminals, but some
-	// terminal/SSH combinations report the same leading byte as Ctrl+[ or as
-	// an Alt-modified bracket event. Treat all of those common encodings as
-	// the roster's close action.
-	if key.Code == 0x1b || key.Code == tea.KeyEscape || key.Code == tea.KeyEsc ||
-		key.Text == "\x1b" {
-		return true
-	}
-	if key.Mod&(tea.ModCtrl|tea.ModAlt) != 0 &&
-		(key.Code == '[' || key.Text == "[") {
-		return true
-	}
-	switch key.String() {
-	case "esc", "escape", "ctrl+[", "alt+[":
-		return true
-	}
-	return false
-}
-
 // -----------------------------------------------------------------------------
 // UI styles
 // -----------------------------------------------------------------------------
