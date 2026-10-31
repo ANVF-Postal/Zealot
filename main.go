@@ -2228,9 +2228,10 @@ func wrapANSIHardLine(s string, width int) []string {
 }
 
 func (m model) renderPacketLines(msg Packet, width int) []string {
-	// The chat box has a one-column border on each side. Lip Gloss Width is
-	// the final outer width, so the interior rows must be exactly width-2.
-	contentWidth := width - 2
+	// The chat box has a one-column border on each side, and the final
+	// interior column is reserved for the permanent scrollbar. Lip Gloss Width
+	// is the final outer width, so message content must be exactly width-3.
+	contentWidth := width - 3
 	if contentWidth < 1 {
 		contentWidth = 1
 	}
