@@ -1063,8 +1063,6 @@ type model struct {
 	onlineCount  int
 	onlineUsers  []User
 	usersOpen    bool
-	lastKeyDebug string
-	keyboardInfo string
 	usersScroll  int
 	usersFrame   int
 	usersScrollDragging bool
@@ -1242,39 +1240,6 @@ func (m model) Update(
 	msg tea.Msg,
 ) (tea.Model, tea.Cmd) {
 
-	// Record the terminal's keyboard-protocol response while the roster is
-	// open. This tells us whether VTM acknowledged Bubble Tea's request for
-	// key-release reporting.
-	if keyboardMsg, ok := msg.(tea.KeyboardEnhancementsMsg); ok {
-		m.keyboardInfo = fmt.Sprintf("Keyboard: flags=0x%X events=%t",
-			keyboardMsg.Flags, keyboardMsg.SupportsEventTypes())
-		return m, nil
-	}
-
-	// Handle close keys before the textarea sees them. KeyMsg is Bubble Tea's
-	// shared interface for both press and release events.
-	if m.usersOpen {
-		if keyMsg, ok := msg.(tea.KeyMsg); ok {
-			key := keyMsg.Key()
-			keyName := keyMsg.String()
-			isCtrlO := key.Mod&tea.ModCtrl != 0 &&
-				(key.Code == 'o' || key.Code == 'O' || key.Text == "o" || key.Text == "O")
-			if isEscapeKey(key) || isCtrlO || keyName == "ctrl+o" {
-				m.usersOpen = false
-				m.lastKeyDebug = ""
-				m.usersScrollDragging = false
-				m.usersScrollbarHoldDirection = 0
-				m.usersScrollbarHoldGeneration++
-				return m, nil
-			}
-
-			// Keep a short diagnostic in the status row if Escape is delivered
-			// in an unexpected form. This makes terminal-specific key encoding
-			// visible without writing to stdout and corrupting the TUI.
-			m.lastKeyDebug = fmt.Sprintf("%T %q U+%04X mod=%d", msg, keyName, key.Code, key.Mod)
-		}
-	}
-
 	// -------------------------------------------------------------------------
 	// Window resize
 	// -------------------------------------------------------------------------
@@ -1439,7 +1404,6 @@ func (m model) Update(
 		}
 		if !m.usersOpen && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width(fmt.Sprintf("Online: %d", m.onlineCount)) && mouse.X < m.width {
 			m.usersOpen = true
-			m.lastKeyDebug = ""
 			m.usersScroll = 0
 			m.usersScrollDragging = false
 			m.usersScrollbarHoldDirection = 0
@@ -1599,7 +1563,6 @@ func (m model) Update(
 		case "esc", "escape", "ctrl+o":
 			if m.usersOpen {
 				m.usersOpen = false
-				m.lastKeyDebug = ""
 				m.usersScrollDragging = false
 				m.usersScrollbarHoldDirection = 0
 				m.usersScrollbarHoldGeneration++
@@ -2724,10 +2687,6 @@ func appView(content string) tea.View {
 	v := tea.NewView(content)
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
-	// VTM reports its standalone Escape key through an injected press/release
-	// pair after the physical key is released. Request key event types so
-	// Bubble Tea v2 receives that release event instead of only basic presses.
-	v.KeyboardEnhancements.ReportEventTypes = true
 	return v
 }
 
@@ -2957,18 +2916,7 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen bool) tea.Vi
 	if usersOpen {
 		shortcuts = "PgUp/PgDn or mouse wheel: scroll  •  Esc/Ctrl+O: close  •  Ctrl+C: quit"
 	}
-	statusLeft := m.status
-	if usersOpen {
-		switch {
-		case m.lastKeyDebug != "":
-			statusLeft = "Key: " + m.lastKeyDebug
-		case m.keyboardInfo != "":
-			statusLeft = m.keyboardInfo
-		default:
-			statusLeft = "Keyboard: no capability report"
-		}
-	}
-	statusText := " " + statusLeft + "   " + shortcuts
+	statusText := " " + m.status + "   " + shortcuts
 	// Keep the row exactly terminal-wide. A final Braille blank is a real
 	// one-cell glyph (but renders visually blank), so terminal renderers do not
 	// trim the trailing fill spaces and leave stale/default-black cells behind.
