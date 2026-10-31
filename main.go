@@ -2713,6 +2713,10 @@ func appView(content string) tea.View {
 	v := tea.NewView(content)
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
+	// VTM reports its standalone Escape key through an injected press/release
+	// pair after the physical key is released. Request key event types so
+	// Bubble Tea v2 receives that release event instead of only basic presses.
+	v.KeyboardEnhancements.ReportEventTypes = true
 	return v
 }
 
