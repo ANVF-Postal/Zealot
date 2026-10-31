@@ -1439,6 +1439,7 @@ func (m model) Update(
 		}
 		if !m.usersOpen && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width(fmt.Sprintf("Online: %d", m.onlineCount)) && mouse.X < m.width {
 			m.usersOpen = true
+			m.lastKeyDebug = ""
 			m.usersScroll = 0
 			m.usersScrollDragging = false
 			m.usersScrollbarHoldDirection = 0
