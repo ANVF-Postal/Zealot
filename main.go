@@ -2315,14 +2315,10 @@ func (m *model) clampUsersScroll() {
 // UI layout
 // -----------------------------------------------------------------------------
 
-// statusBarVisible keeps the shortcut row until the composer has reached
-// one content row. Static mode reserves a slightly larger chat viewport, so
-// its final compact layout is chat-first; adaptive mode retains two chat rows.
+// statusBarVisible keeps the keyboard-shortcut row while the terminal is
+// at least 15 rows tall. Below that, the chat and composer get the space.
 func (m model) statusBarVisible() bool {
-	if m.cfg.AdaptiveHeight {
-		return m.height >= 9
-	}
-	return m.height >= 10
+	return m.height >= 15
 }
 
 // resizeInput recalculates the textarea width and its available height.
