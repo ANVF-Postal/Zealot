@@ -2337,6 +2337,15 @@ func (m *model) resizeInput() {
 		baseHeight = 8
 	}
 
+	// In static mode, begin giving the chat pane more room as soon as the
+	// terminal drops below 17 rows. Reduce the composer by one content row
+	// for every terminal row below that threshold, down to its one-row floor.
+	// This makes the configured height the starting height, not a hard minimum.
+	if !m.cfg.AdaptiveHeight && baseHeight > 1 {
+		rowsBelowThreshold := max(0, 17-m.height)
+		baseHeight = max(1, baseHeight-rowsBelowThreshold)
+	}
+
 	minChatHeight := 3
 	if m.cfg.AdaptiveHeight {
 		minChatHeight = 2
