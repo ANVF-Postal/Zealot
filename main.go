@@ -2965,7 +2965,7 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 		if msg.XKeyscore == 3 {
 			// Give the compact one-off variant a solid blue tile, with one
 			// extra blue column on the left and bottom padding only.
-			boxWidth := 21
+			boxWidth := 22
 			indent := strings.Repeat(" ", logoIndent)
 			for _, artLine := range logo {
 				padded := "  " + artLine + strings.Repeat(" ", max(0, boxWidth-lipgloss.Width(artLine)-2))
