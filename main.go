@@ -2837,7 +2837,7 @@ func rainbowColor(text string, phase float64, offset int) string {
 // rainbowLogoColor paints each logo glyph with an explicit message background.
 // Unlike ordinary rainbow chat text, logo artwork contains negative-space cells
 // whose background must remain the configured chat colour.
-func rainbowLogoColor(text string, phase float64, offset int, background lipgloss.Color) string {
+func rainbowLogoColor(text string, phase float64, offset int, background string) string {
 	var out strings.Builder
 	position := offset
 	for _, ch := range text {
@@ -3053,7 +3053,7 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 						}
 						continue
 					}
-					styled.WriteString(rainbowLogoColor(string(glyph), msg.RainbowPhase, row+column, bg))
+					styled.WriteString(rainbowLogoColor(string(glyph), msg.RainbowPhase, row+column, m.cfg.Background))
 				}
 			} else if msg.XKeyscore == 2 {
 				for _, glyph := range artLine {
