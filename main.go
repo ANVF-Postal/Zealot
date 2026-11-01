@@ -2907,13 +2907,25 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 
 	if msg.XKeyscore {
 		var lines []string
-		if width <= 48 {
+		logoIndent := 0
+		compactHeader := width <= 48
+		if compactHeader {
 			header := msg
 			header.Text = ""
 			lines = renderCompactMessage(rowFill, bodyStyle, nameStyle, m.styles.time, header, timeText, contentWidth)
 		} else {
 			prefix := m.styles.time.Render("[" + timeText + "]") + bodyStyle.Render(" ") + nameStyle.Render(msg.User.Name) + bodyStyle.Render(":")
-			lines = append(lines, renderChatRow(rowFill, prefix, contentWidth))
+			if lipgloss.Width(prefix) >= contentWidth {
+				// Match the ordinary message layout when the timestamp and
+				// username no longer fit together on one row.
+				header := msg
+				header.Text = ""
+				lines = renderCompactMessage(rowFill, bodyStyle, nameStyle, m.styles.time, header, timeText, contentWidth)
+				compactHeader = true
+			} else {
+				logoIndent = lipgloss.Width(prefix)
+				lines = append(lines, renderChatRow(rowFill, prefix, contentWidth))
+			}
 		}
 		logo := []string{
 			"░██    ░██ ", " ░██  ░██  ", "  ░██░██   ",
@@ -2923,9 +2935,10 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 		shadow := lipgloss.NewStyle().Foreground(lipgloss.Color("#8993A5")).Background(bg)
 		blue := lipgloss.NewStyle().Foreground(lipgloss.Color("#2589FF")).Background(bg).Bold(true)
 		for _, artLine := range logo {
-			// Keep the logo at the message body's left edge, like wrapped
-			// continuation lines in an ordinary chat message.
+			// On a normal-width header, align the logo beneath the timestamp
+			// and username. If the header has wrapped, start below the name.
 			var styled strings.Builder
+			styled.WriteString(strings.Repeat(" ", logoIndent))
 			if strings.Contains(artLine, "XKEYSCORE") {
 				leading := len(artLine) - len(strings.TrimLeft(artLine, " "))
 				styled.WriteString(strings.Repeat(" ", leading))
