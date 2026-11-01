@@ -20,7 +20,7 @@ func (m model) splashRows() []string {
 		".###.....    ###......    ###...###    ###......    ###...###    ....###..",
 		"#########    #########    ###...###    #########    .#######.    ....###..",
 	}
-	width := max(1, m.width-3)
+	width := chatContentWidth(m.width)
 	center := func(value string) string {
 		value = truncateANSI(value, width)
 		padding := max(0, (width-lipgloss.Width(value))/2)
@@ -302,7 +302,10 @@ func (m *model) resizeInput() {
 	// SetWidth so DynamicHeight recalculates after a vertical resize.
 	width := m.input.Width()
 	if m.width >= 20 {
-		width = m.width - 6 // Box border + padding + the two-column first-row prompt.
+		width = m.width - 6 // Side borders + padding + the two-column first-row prompt.
+		if narrowBordersHidden(m.width) {
+			width += 2
+		}
 	}
 	if width < 10 {
 		width = 10
@@ -394,7 +397,7 @@ func (m *model) clampScroll() {
 }
 
 func (m model) scrollbarContains(x, y int) bool {
-	return x == m.width-2 && y >= 2 && y <= 1+m.messageHeight()
+	return x == m.chatScrollbarX() && y >= 2 && y <= 1+m.messageHeight()
 }
 
 func (m model) scrollbarThumb() (top, thumbHeight, trackHeight int) {
