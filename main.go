@@ -3016,10 +3016,25 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 			return lines
 		}
 
-		for _, artLine := range logo {
+		for row, artLine := range logo {
 			var styled strings.Builder
 			styled.WriteString(strings.Repeat(" ", logoIndent))
-			if msg.XKeyscore == 2 {
+			if msg.Rainbow {
+				// Rainbow-colour the artwork while preserving the logo's central
+				// XKEYSCORE word in its original variant-specific colour.
+				wordStart := strings.Index(artLine, "XKEYSCORE")
+				for column, glyph := range []rune(artLine) {
+					if wordStart >= 0 && column >= wordStart && column < wordStart+len("XKEYSCORE") {
+						if msg.XKeyscore == 2 {
+							styled.WriteString(bright.Render(string(glyph)))
+						} else {
+							styled.WriteString(blueWord.Render(string(glyph)))
+						}
+						continue
+					}
+					styled.WriteString(rainbowColor(string(glyph), msg.RainbowPhase, row+column))
+				}
+			} else if msg.XKeyscore == 2 {
 				for _, glyph := range artLine {
 					if glyph == '#' {
 						styled.WriteString(red.Render(string(glyph)))
