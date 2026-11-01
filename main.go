@@ -2755,13 +2755,13 @@ func wrapANSIHardLine(s string, width int) []string {
 func rainbowColor(text string, phase float64, offset int) string {
 	var out strings.Builder
 	position := offset
-	for _, r := range text {
+	for _, ch := range text {
 		hue := math.Mod(phase+float64(position)*0.1, 1)
 		if hue < 0 {
 			hue++
 		}
-		r, g, b := hsvToRGB(hue, 1, 1)
-		out.WriteString(fmt.Sprintf("\x1b[38;2;%d;%d;%dm%c", r, g, b, r))
+		red, green, blue := hsvToRGB(hue, 1, 1)
+		out.WriteString(fmt.Sprintf("\x1b[38;2;%d;%d;%dm%c", red, green, blue, ch))
 		position++
 	}
 	if out.Len() > 0 {
