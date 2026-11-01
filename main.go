@@ -36,26 +36,30 @@ var appVersion = "0.0.0-dev"
 // -----------------------------------------------------------------------------
 
 type Config struct {
-	Name        string
-	UserColor   string
-	Bell        bool
-	InputHeight int
-	Background  string
-	TextColor   string
-	BorderColor string
-	AccentColor string
+	Name             string
+	UserColor        string
+	Bell             bool
+	InputHeight      int
+	AdaptiveHeight    bool
+	HeightMaxPercent  int
+	Background       string
+	TextColor        string
+	BorderColor      string
+	AccentColor      string
 }
 
 func defaultConfig() Config {
 	return Config{
-		Name:        "Anonymous",
-		Bell:        true,
-		InputHeight: 1,
-		UserColor:   "#7CFFCB",
-		Background:  "#111318",
-		TextColor:   "#E6E6E6",
-		BorderColor: "#444B5A",
-		AccentColor: "#7C5CFC",
+		Name:            "Anonymous",
+		Bell:            true,
+		InputHeight:     1,
+		AdaptiveHeight:   false,
+		HeightMaxPercent: 30,
+		UserColor:       "#7CFFCB",
+		Background:      "#111318",
+		TextColor:       "#E6E6E6",
+		BorderColor:     "#444B5A",
+		AccentColor:     "#7C5CFC",
 	}
 }
 
@@ -132,6 +136,14 @@ func loadConfig() (Config, error) {
 			if height, err := strconv.Atoi(value); err == nil {
 				cfg.InputHeight = height
 			}
+		case "adaptive_height", "adaptive_input": // Keep accepting the earlier key as an alias.
+			if enabled, err := strconv.ParseBool(value); err == nil {
+				cfg.AdaptiveHeight = enabled
+			}
+		case "height_max_percent", "input_max_percent": // Keep accepting the earlier key as an alias.
+			if percent, err := strconv.Atoi(value); err == nil {
+				cfg.HeightMaxPercent = percent
+			}
 		}
 	}
 
@@ -140,6 +152,12 @@ func loadConfig() (Config, error) {
 	}
 	if cfg.InputHeight > 8 {
 		cfg.InputHeight = 8
+	}
+	if cfg.HeightMaxPercent < 1 {
+		cfg.HeightMaxPercent = 1
+	}
+	if cfg.HeightMaxPercent > 100 {
+		cfg.HeightMaxPercent = 100
 	}
 
 	if strings.TrimSpace(cfg.Name) == "" {
@@ -161,8 +179,14 @@ user_color = "#7CFFCB"
 
 bell = true
 
-# Visible text rows in the composer (1-8). Longer messages wrap onto new rows.
+# Minimum visible text rows in the composer (1-8).
 input_height = 1
+
+# Grow the composer as you type (true/false).
+adaptive_height = false
+
+# Maximum share of terminal height used by the composer (1-100).
+height_max_percent = 30
 
 background = "#111318"
 text_color = "#E6E6E6"
@@ -183,11 +207,13 @@ name = %q
 user_color = %q
 bell = %t
 input_height = %d
+adaptive_height = %t
+height_max_percent = %d
 background = %q
 text_color = %q
 border_color = %q
 accent_color = %q
-`, cfg.Name, cfg.UserColor, cfg.Bell, cfg.InputHeight, cfg.Background, cfg.TextColor, cfg.BorderColor, cfg.AccentColor)
+`, cfg.Name, cfg.UserColor, cfg.Bell, cfg.InputHeight, cfg.AdaptiveHeight, cfg.HeightMaxPercent, cfg.Background, cfg.TextColor, cfg.BorderColor, cfg.AccentColor)
 	return os.WriteFile(path, []byte(content), 0600)
 }
 
@@ -1019,6 +1045,14 @@ type typingClearMsg struct {
 
 type notificationsReadyMsg struct{}
 
+type quitConfirmTimeoutMsg struct {
+	generation int
+}
+
+type sendFeedbackTimeoutMsg struct {
+	generation int
+}
+
 type scrollbarHoldMsg struct{ generation int }
 type usersScrollbarHoldMsg struct{ generation int }
 type splashScrollbarHoldMsg struct{ generation int }
@@ -1058,6 +1092,7 @@ func makeStyles(cfg Config) uiStyles {
 			Foreground(text).
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(border).
+			BorderBackground(bg).
 			PaddingLeft(1).
 			PaddingRight(1),
 
@@ -1069,7 +1104,8 @@ func makeStyles(cfg Config) uiStyles {
 			Background(bg).
 			Foreground(text).
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(border),
+			BorderForeground(border).
+			BorderBackground(bg),
 
 		accent: lipgloss.NewStyle().
 			Background(bg).
@@ -1138,6 +1174,11 @@ type model struct {
 	connected          bool
 	status             string
 	notificationsReady bool
+
+	quitConfirm           bool
+	quitConfirmGeneration int
+	sendFeedback           bool
+	sendFeedbackGeneration int
 
 	typingGeneration int
 	isTyping         bool
@@ -1295,8 +1336,8 @@ func (m model) Update(
 		m.resizeInput()
 		if oldWidth != m.width || !m.renderCacheValid {
 			m.rebuildMessageCache()
-			m.clampScroll()
 		}
+		m.clampScroll()
 		// The roster's row count can change when the terminal width changes,
 		// and its viewport changes when the height changes. Keep the saved
 		// offset within the new valid range so clipped names reappear naturally
@@ -1434,6 +1475,20 @@ func (m model) Update(
 		return m, nil
 	}
 
+	if timeoutMsg, ok := msg.(quitConfirmTimeoutMsg); ok {
+		if timeoutMsg.generation == m.quitConfirmGeneration {
+			m.quitConfirm = false
+		}
+		return m, nil
+	}
+
+	if timeoutMsg, ok := msg.(sendFeedbackTimeoutMsg); ok {
+		if timeoutMsg.generation == m.sendFeedbackGeneration {
+			m.sendFeedback = false
+		}
+		return m, nil
+	}
+
 	if clearMsg, ok := msg.(typingClearMsg); ok {
 		if clearMsg.generation == m.typingGeneration {
 			m.isTyping = false
@@ -1449,6 +1504,43 @@ func (m model) Update(
 
 	switch mouse := msg.(type) {
 	case tea.MouseClickMsg:
+		// Footer actions occupy the final terminal row. Their hitboxes are
+		// calculated by the same layout helper used to render the row.
+		if m.statusBarVisible() && mouse.Button == tea.MouseLeft && mouse.Y == m.height-1 {
+			_, targets := m.renderStatusBar(m.usersOpen, m.splashOpen)
+			if targets.hasSend && mouse.X >= targets.sendStart && mouse.X < targets.sendEnd {
+				m.sendCurrentMessage()
+				m.sendFeedback = true
+				m.sendFeedbackGeneration++
+				generation := m.sendFeedbackGeneration
+				return m, tea.Tick(350*time.Millisecond, func(time.Time) tea.Msg {
+					return sendFeedbackTimeoutMsg{generation: generation}
+				})
+			}
+			if targets.hasPageScroll && mouse.X >= targets.pgUpStart && mouse.X < targets.pgUpEnd {
+				m.scrollPage(true)
+				return m, nil
+			}
+			if targets.hasPageScroll && mouse.X >= targets.pgDnStart && mouse.X < targets.pgDnEnd {
+				m.scrollPage(false)
+				return m, nil
+			}
+			if mouse.X >= targets.quitStart && mouse.X < targets.quitEnd {
+				if m.quitConfirm {
+					m.quitConfirm = false
+					m.quitConfirmGeneration++
+					m.sendTyping(false)
+					_ = m.client.conn.Close()
+					return m, tea.Quit
+				}
+				m.quitConfirm = true
+				m.quitConfirmGeneration++
+				generation := m.quitConfirmGeneration
+				return m, tea.Tick(4*time.Second, func(time.Time) tea.Msg {
+					return quitConfirmTimeoutMsg{generation: generation}
+				})
+			}
+		}
 		if (m.usersOpen || m.splashOpen) && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width("[X]") && mouse.X < m.width {
 			m.usersOpen = false
 			m.splashOpen = false
@@ -1734,35 +1826,11 @@ func (m model) Update(
 			return m, tea.Quit
 
 		case "pgup":
-			if m.splashOpen {
-				m.splashScroll -= max(1, m.splashPanelHeight()/2)
-				m.clampSplashScroll()
-				return m, nil
-			}
-			if m.usersOpen {
-				m.usersScroll -= max(1, m.usersPanelHeight())
-				m.clampUsersScroll()
-				return m, nil
-			}
-			m.scroll += m.messageHeight() / 2
-			m.clampScroll()
-
+			m.scrollPage(true)
 			return m, nil
 
 		case "pgdown":
-			if m.splashOpen {
-				m.splashScroll += max(1, m.splashPanelHeight()/2)
-				m.clampSplashScroll()
-				return m, nil
-			}
-			if m.usersOpen {
-				m.usersScroll += max(1, m.usersPanelHeight())
-				m.clampUsersScroll()
-				return m, nil
-			}
-			m.scroll -= m.messageHeight() / 2
-			m.clampScroll()
-
+			m.scrollPage(false)
 			return m, nil
 
 		case "ctrl+home":
@@ -1786,25 +1854,7 @@ func (m model) Update(
 			handledNewline = true
 
 		case "enter":
-			text := strings.TrimSpace(
-				m.input.Value(),
-			)
-
-			if text != "" && m.connected {
-				m.sendMessage(text)
-
-				m.input.Reset()
-
-				// Sending leaves the input empty, so return
-				// the cursor to its static state.
-				m.stopCursorBlink()
-
-				if m.isTyping {
-					m.isTyping = false
-					m.sendTyping(false)
-				}
-			}
-
+			m.sendCurrentMessage()
 			return m, nil
 		}
 	}
@@ -1826,6 +1876,11 @@ func (m model) Update(
 
 	if !handledNewline {
 		m.input, inputCmd = m.input.Update(msg)
+	}
+	if m.cfg.AdaptiveHeight {
+		m.clampScroll()
+		m.clampUsersScroll()
+		m.clampSplashScroll()
 	}
 
 	// -------------------------------------------------------------------------
@@ -1874,6 +1929,36 @@ func (m model) Update(
 	return m, inputCmd
 }
 
+// scrollPage applies the same viewport movement for keyboard and footer clicks.
+func (m *model) scrollPage(up bool) {
+	if m.splashOpen {
+		step := max(1, m.splashPanelHeight()/2)
+		if up {
+			m.splashScroll -= step
+		} else {
+			m.splashScroll += step
+		}
+		m.clampSplashScroll()
+		return
+	}
+	if m.usersOpen {
+		step := max(1, m.usersPanelHeight())
+		if up {
+			m.usersScroll -= step
+		} else {
+			m.usersScroll += step
+		}
+		m.clampUsersScroll()
+		return
+	}
+	if up {
+		m.scroll += m.messageHeight() / 2
+	} else {
+		m.scroll -= m.messageHeight() / 2
+	}
+	m.clampScroll()
+}
+
 func isTextInputKey(
 	msg tea.KeyPressMsg,
 ) bool {
@@ -1904,6 +1989,26 @@ func (m model) sendTyping(
 		User:   m.user,
 		Typing: typing,
 	})
+}
+
+// sendCurrentMessage is shared by Enter and the clickable footer action.
+func (m *model) sendCurrentMessage() {
+	text := strings.TrimSpace(m.input.Value())
+	if text == "" || !m.connected {
+		return
+	}
+
+	m.sendMessage(text)
+	m.input.Reset()
+	m.clampScroll()
+	m.clampUsersScroll()
+	m.clampSplashScroll()
+	m.stopCursorBlink()
+
+	if m.isTyping {
+		m.isTyping = false
+		m.sendTyping(false)
+	}
 }
 
 func (m *model) sendMessage(text string) {
@@ -2212,40 +2317,111 @@ func (m *model) clampUsersScroll() {
 // UI layout
 // -----------------------------------------------------------------------------
 
+// statusBarVisible keeps the keyboard-shortcut row while the terminal is
+// at least 15 rows tall. Below that, the chat and composer get the space.
+func (m model) statusBarVisible() bool {
+	return m.height >= 15
+}
+
+// resizeInput recalculates the textarea width and its available height.
+// Static mode protects a three-row chat viewport before reducing the composer.
+// Adaptive mode keeps two chat rows while allowing the composer to grow.
 func (m *model) resizeInput() {
-	if m.width < 20 {
-		return
+	baseHeight := m.cfg.InputHeight
+	if baseHeight < 1 {
+		baseHeight = 1
+	}
+	if baseHeight > 8 {
+		baseHeight = 8
 	}
 
-	width := m.width - 6 // Box border + padding + the two-column first-row prompt.
+	// In static mode, begin giving the chat pane more room as soon as the
+	// terminal drops below 17 rows. Reduce the composer by one content row
+	// for every terminal row below that threshold, down to its one-row floor.
+	// This makes the configured height the starting height, not a hard minimum.
+	if !m.cfg.AdaptiveHeight && baseHeight > 1 {
+		rowsBelowThreshold := max(0, 17-m.height)
+		baseHeight = max(1, baseHeight-rowsBelowThreshold)
+	}
 
+	minChatHeight := 3
+	if m.cfg.AdaptiveHeight {
+		minChatHeight = 2
+	}
+
+	// Header + borders around the chat and composer. The shortcut row is
+	// removed only after the composer has been reduced to one content row.
+	fixedChrome := 5
+	if m.statusBarVisible() {
+		fixedChrome++
+	}
+	layoutMax := m.height - fixedChrome - minChatHeight
+	if layoutMax < 1 {
+		layoutMax = 1
+	}
+	if baseHeight > layoutMax {
+		baseHeight = layoutMax
+	}
+
+	if m.cfg.AdaptiveHeight {
+		percent := m.cfg.HeightMaxPercent
+		if percent < 1 {
+			percent = 1
+		}
+		if percent > 100 {
+			percent = 100
+		}
+
+		// The percentage applies to the full composer, including its borders.
+		maxHeight := (m.height*percent)/100 - 2
+		if maxHeight < baseHeight {
+			maxHeight = baseHeight
+		}
+		if maxHeight > layoutMax {
+			maxHeight = layoutMax
+		}
+
+		m.input.DynamicHeight = true
+		m.input.MinHeight = baseHeight
+		m.input.MaxHeight = maxHeight
+		// MaxHeight controls the visible viewport. Keep the full message
+		// editable up to Zealot's existing character limit.
+		m.input.MaxContentHeight = maxMessage
+	} else {
+		m.input.DynamicHeight = false
+		m.input.MinHeight = baseHeight
+		m.input.MaxHeight = 0
+		m.input.MaxContentHeight = 0
+		m.input.SetHeight(baseHeight)
+	}
+
+	// Preserve the previous narrow-terminal width behavior, but still call
+	// SetWidth so DynamicHeight recalculates after a vertical resize.
+	width := m.input.Width()
+	if m.width >= 20 {
+		width = m.width - 6 // Box border + padding + the two-column first-row prompt.
+	}
 	if width < 10 {
 		width = 10
 	}
-
 	m.input.SetWidth(width)
 }
 
 func (m model) messageHeight() int {
-	// Header:       1 line
-	// Chat:         variable (includes the permanent typing line)
-	// Input box: configured content rows plus its top/bottom borders
-	// Status:       1 line
-	//
-	// Lip Gloss Height() sizes the content area; borders add their own rows.
-	inputHeight := m.cfg.InputHeight
+	// The chat pane takes what remains after the header, composer, borders,
+	// and the keyboard-shortcut row when that row is visible.
+	inputHeight := m.input.Height()
 	if inputHeight < 1 {
 		inputHeight = 1
 	}
-	if inputHeight > 8 {
-		inputHeight = 8
+	fixedChrome := 5
+	if m.statusBarVisible() {
+		fixedChrome++
 	}
-	h := m.height - inputHeight - 6
-
-	if h < 3 {
-		return 3
+	h := m.height - inputHeight - fixedChrome
+	if h < 2 {
+		return 2
 	}
-
 	return h
 }
 
@@ -3213,6 +3389,193 @@ func (m model) renderSplashPanel() string {
 		Render(strings.Join(rows, "\n"))
 }
 
+type footerTargets struct {
+	quitStart int
+	quitEnd   int
+	sendStart int
+	sendEnd   int
+	pgUpStart int
+	pgUpEnd   int
+	pgDnStart int
+	pgDnEnd   int
+	hasSend   bool
+	hasPageScroll bool
+}
+
+// compactFooterStatusLead shortens the Connected label from the right while
+// preserving its bullet separator from the page-scroll controls.
+func compactFooterStatusLead(status string, maxWidth int) string {
+	const separator = " • "
+	fixedWidth := 1 + len([]rune(separator)) // leading space + separator
+	statusWidth := maxWidth - fixedWidth
+	if statusWidth < 1 {
+		return ""
+	}
+	shortStatus := truncateANSI(status, statusWidth)
+	if shortStatus == "" {
+		return ""
+	}
+	// truncateANSI appends a reset when it clips text. Remove that reset
+	// before adding the separator so the surrounding status style continues
+	// to paint the separator spaces with the configured background.
+	shortStatus = strings.TrimSuffix(shortStatus, "\x1b[0m")
+	return " " + shortStatus + separator
+}
+
+// renderStatusBar keeps the ordinary shortcuts on the left and anchors the
+// send action to the right edge. The same measured layout supplies mouse
+// hitboxes, so clickable areas stay aligned with the rendered text.
+func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTargets) {
+	availableWidth := max(1, m.width-1) // reserve one final cell as a styled blank
+	lead := " " + m.status + " • "
+	scrollLabel := "PgUp/PgDn"
+	scrollTail := ": Scroll • Ctrl+C: "
+	if usersOpen || splashOpen {
+		// Keep the secondary views' keyboard shortcut wording identical.
+		scrollTail = ": Scroll • Esc: close • Ctrl+C: "
+	}
+	prefix := lead + scrollLabel + scrollTail
+
+	quitText := "Quit"
+	if m.quitConfirm {
+		quitText = "Sure?"
+	}
+
+	targets := footerTargets{}
+	includeSend := !usersOpen && !splashOpen
+	sendPrefix := "Enter: "
+	sendText := "[Send]"
+	quitWidth := lipgloss.Width(quitText)
+	fullSendWidth := lipgloss.Width(sendPrefix + sendText)
+	shortSendWidth := lipgloss.Width(sendText)
+	quitLeftPad := 1
+	quitRightPad := 1
+
+	// The Enter hint is always the first thing sacrificed.
+	if includeSend && lipgloss.Width(prefix)+quitWidth+2+fullSendWidth > availableWidth {
+		sendPrefix = ""
+	}
+
+	sendWidth := 0
+	if includeSend {
+		sendWidth = lipgloss.Width(sendPrefix) + shortSendWidth
+		// Preserve both clickable actions; relax Quit padding before dropping
+		// the Send action at the physical width limit.
+		for availableWidth < quitWidth+sendWidth+quitLeftPad+quitRightPad {
+			if quitLeftPad > 0 {
+				quitLeftPad = 0
+				continue
+			}
+			if quitRightPad > 0 {
+				quitRightPad = 0
+				continue
+			}
+			break
+		}
+		if availableWidth < quitWidth+sendWidth {
+			includeSend = false
+			sendPrefix = ""
+			sendWidth = 0
+		}
+	}
+
+	quitButtonWidth := quitWidth + quitLeftPad + quitRightPad
+	maxPrefixWidth := availableWidth - quitButtonWidth - sendWidth
+	if maxPrefixWidth < 0 {
+		maxPrefixWidth = 0
+	}
+
+	pageLabelWidth := lipgloss.Width(scrollLabel)
+	if !usersOpen && !splashOpen {
+		// Compression order in the main view:
+		// 1. Enter: is removed above.
+		// 2. The explanatory shortcut tail is clipped from its right edge.
+		// 3. Connected is shortened, one character at a time, as the last resort.
+		if lipgloss.Width(prefix) > maxPrefixWidth {
+			tailBudget := maxPrefixWidth - lipgloss.Width(lead) - pageLabelWidth
+			if tailBudget >= 0 {
+				prefix = lead + scrollLabel
+				if tailBudget > 0 {
+					prefix += truncateANSI(scrollTail, tailBudget)
+				}
+			} else if maxPrefixWidth >= pageLabelWidth {
+				statusBudget := maxPrefixWidth - pageLabelWidth
+				prefix = compactFooterStatusLead(m.status, statusBudget) + scrollLabel
+			} else {
+				// Never show a partial label as though it were clickable.
+				prefix = ""
+			}
+		}
+	} else {
+		// Keep the existing panel-specific footer behavior.
+		pageLabelStart := lipgloss.Width(lead)
+		if maxPrefixWidth < pageLabelStart+pageLabelWidth+1 {
+			prefix = ""
+		} else {
+			prefix = truncateANSI(prefix, maxPrefixWidth)
+		}
+	}
+
+	prefixVisible := strings.TrimRight(prefix, " ")
+	prefixWidth := lipgloss.Width(prefixVisible)
+
+	// Highlight PgUp/PgDn and derive the mouse hitboxes from the final
+	// compacted prefix so the clickable areas always match the rendered text.
+	renderedPrefix := m.styles.status.Render(prefixVisible)
+	pageStartByte := strings.Index(prefixVisible, scrollLabel)
+	if pageStartByte >= 0 {
+		pageStart := lipgloss.Width(prefixVisible[:pageStartByte])
+		pageEndByte := pageStartByte + len(scrollLabel)
+		renderedPrefix = m.styles.status.Render(prefixVisible[:pageStartByte]) +
+			m.styles.accent.Render("PgUp") +
+			m.styles.status.Render("/") +
+			m.styles.accent.Render("PgDn") +
+			m.styles.status.Render(prefixVisible[pageEndByte:])
+		targets.hasPageScroll = true
+		targets.pgUpStart = pageStart
+		targets.pgUpEnd = pageStart + lipgloss.Width("PgUp")
+		targets.pgDnStart = pageStart + lipgloss.Width("PgUp/")
+		targets.pgDnEnd = targets.pgDnStart + lipgloss.Width("PgDn")
+	}
+
+	gapWidth := availableWidth - prefixWidth - quitButtonWidth - sendWidth
+	if gapWidth < 0 {
+		gapWidth = 0
+	}
+
+	targets.quitStart = prefixWidth + quitLeftPad
+	targets.quitEnd = targets.quitStart + quitWidth
+	var line strings.Builder
+	line.WriteString(renderedPrefix)
+	if quitLeftPad > 0 {
+		line.WriteString(m.styles.status.Render(strings.Repeat(" ", quitLeftPad)))
+	}
+	line.WriteString(m.styles.accent.Render(quitText))
+	if quitRightPad > 0 {
+		line.WriteString(m.styles.status.Render(strings.Repeat(" ", quitRightPad)))
+	}
+	// Styled braille blanks force repainting when the footer changes length.
+	line.WriteString(m.styles.status.Render(strings.Repeat("⠀", gapWidth)))
+
+	if includeSend {
+		targets.hasSend = true
+		targets.sendStart = availableWidth - shortSendWidth
+		targets.sendEnd = availableWidth
+		if sendPrefix != "" {
+			line.WriteString(m.styles.status.Render(sendPrefix))
+		}
+		if m.sendFeedback {
+			line.WriteString(m.styles.status.Render(sendText))
+		} else {
+			line.WriteString(m.styles.accent.Render(sendText))
+		}
+	}
+
+	// Paint the final inset cell while keeping [Send] one cell from the edge.
+	line.WriteString(m.styles.status.Render("⠀"))
+	return line.String(), targets
+}
+
 // renderViewWithChat keeps the application shell unchanged while swapping the
 // contents of the chat pane for the online roster or splash page.
 func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen bool) tea.View {
@@ -3255,44 +3618,30 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen 
 			inputView[i] = line + inputBackground.Render(strings.Repeat(" ", remaining))
 		}
 	}
-	// The textarea is configured for exactly InputHeight rows; normalize the
-	// slice defensively so a trailing newline never creates an extra row.
-	if len(inputView) > m.cfg.InputHeight {
-		inputView = inputView[:m.cfg.InputHeight]
+	inputHeight := max(1, m.input.Height())
+	if len(inputView) > inputHeight {
+		inputView = inputView[:inputHeight]
 	}
-	for len(inputView) < m.cfg.InputHeight {
+	for len(inputView) < inputHeight {
 		inputView = append(inputView, inputBackground.Render(strings.Repeat(" ", inputInnerWidth)))
 	}
 	inputContent := strings.Join(inputView, "\n")
 	inputBox := m.styles.inputBox.
 		Width(m.width).
-		Height(m.cfg.InputHeight).
+		Height(inputHeight).
 		Render(inputContent)
 
 	// -------------------------------------------------------------------------
 	// Status
 	// -------------------------------------------------------------------------
 
-	shortcuts := "Enter: send  •  PgUp/PgDn: scroll  •  Ctrl+C: quit"
-	if usersOpen {
-		shortcuts = "PgUp/PgDn or mouse wheel: scroll  •  Esc/Ctrl+O: close  •  Ctrl+C: quit"
-	} else if splashOpen {
-		shortcuts = "PgUp/PgDn or mouse wheel: scroll  •  Esc: close  •  Ctrl+C: quit"
+	parts := []string{header, chatBox, inputBox}
+	if m.statusBarVisible() {
+		statusText, _ := m.renderStatusBar(usersOpen, splashOpen)
+		status := m.styles.status.Render(statusText)
+		parts = append(parts, status)
 	}
-	statusText := " " + m.status + "   " + shortcuts
-	// Keep the row exactly terminal-wide. A final Braille blank is a real
-	// one-cell glyph (but renders visually blank), so terminal renderers do not
-	// trim the trailing fill spaces and leave stale/default-black cells behind.
-	statusText = truncateANSI(statusText, max(1, m.width-1))
-	if remaining := m.width - 1 - lipgloss.Width(statusText); remaining > 0 {
-		statusText += strings.Repeat(" ", remaining)
-	}
-	if m.width > 0 {
-		statusText += "⠀" // U+2800 BRAILLE PATTERN BLANK
-	}
-	status := m.styles.status.
-		Width(m.width).
-		Render(statusText)
+
 	// -------------------------------------------------------------------------
 	// Full application
 	// -------------------------------------------------------------------------
@@ -3300,15 +3649,7 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen 
 	content := m.styles.app.
 		Width(m.width).
 		Height(m.height).
-		Render(
-			lipgloss.JoinVertical(
-				lipgloss.Left,
-				header,
-				chatBox,
-				inputBox,
-				status,
-			),
-		)
+		Render(lipgloss.JoinVertical(lipgloss.Left, parts...))
 	return appView(content)
 }
 
