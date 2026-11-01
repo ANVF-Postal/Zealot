@@ -2053,7 +2053,16 @@ func (m *model) sendMessage(text string) {
 		if variant == 0 {
 			variant = rand.Intn(3) + 1
 		}
-		_ = m.client.send(Packet{Type: "message", Room: m.room, User: m.user, Text: "XKEYSCORE", XKeyscore: variant})
+		packet := Packet{
+			Type:         "message",
+			Room:         m.room,
+			User:         m.user,
+			Text:         "XKEYSCORE",
+			XKeyscore:    variant,
+			Rainbow:      m.rainbowMode,
+			RainbowPhase: rand.Float64(),
+		}
+		_ = m.client.send(packet)
 		return
 	case "/rainbow":
 		if len(fields) != 1 {
@@ -2782,6 +2791,26 @@ func wrapANSIHardLine(s string, width int) []string {
 	return lines
 }
 
+// rainbowTileLine paints every cell of an XKeyscore tile row with a smooth
+// rainbow background while keeping the logo glyphs black.
+func rainbowTileLine(text string, phase float64, offset int) string {
+	var out strings.Builder
+	position := offset
+	for _, ch := range text {
+		hue := math.Mod(phase+float64(position)*0.015, 1)
+		if hue < 0 {
+			hue++
+		}
+		red, green, blue := hsvToRGB(hue, 1, 1)
+		out.WriteString(fmt.Sprintf("\x1b[38;2;0;0;0;48;2;%d;%d;%dm%c", red, green, blue, ch))
+		position++
+	}
+	if out.Len() > 0 {
+		out.WriteString("\x1b[0m")
+	}
+	return out.String()
+}
+
 // rainbowColor applies lolcat-style HSV cycling: each successive rune advances
 // by a small fraction of the hue wheel, creating gradual color transitions.
 // Each message starts at a random phase.
@@ -2963,15 +2992,25 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 		blueBlock := lipgloss.NewStyle().Foreground(lipgloss.Color("#000000")).Background(lipgloss.Color("#2589FF"))
 
 		if msg.XKeyscore == 3 {
-			// Give the compact one-off variant a solid blue tile, with one
-			// extra blue column on the left and bottom padding only.
+			// Keep the lettering black; rainbow mode changes only the tile background.
 			boxWidth := 22
 			indent := strings.Repeat(" ", logoIndent)
-			for _, artLine := range logo {
+			for row, artLine := range logo {
 				padded := "  " + artLine + strings.Repeat(" ", max(0, boxWidth-lipgloss.Width(artLine)-2))
-				lines = append(lines, renderChatRow(rowFill, indent+blueBlock.Render(padded), contentWidth))
+				if msg.Rainbow {
+					padded = rainbowTileLine(padded, msg.RainbowPhase, row*boxWidth)
+					lines = append(lines, renderChatRow(rowFill, indent+padded, contentWidth))
+				} else {
+					lines = append(lines, renderChatRow(rowFill, indent+blueBlock.Render(padded), contentWidth))
+				}
 			}
-			lines = append(lines, renderChatRow(rowFill, indent+blueBlock.Render(strings.Repeat(" ", boxWidth)), contentWidth))
+			bottom := strings.Repeat(" ", boxWidth)
+			if msg.Rainbow {
+				bottom = rainbowTileLine(bottom, msg.RainbowPhase, len(logo)*boxWidth)
+				lines = append(lines, renderChatRow(rowFill, indent+bottom, contentWidth))
+			} else {
+				lines = append(lines, renderChatRow(rowFill, indent+blueBlock.Render(bottom), contentWidth))
+			}
 			return lines
 		}
 
