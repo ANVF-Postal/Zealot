@@ -128,13 +128,10 @@ func rainbowParts(parts []string, phase float64) []string {
 }
 
 func (m model) renderPacketLines(msg Packet, width int) []string {
-	// The chat box has a one-column border on each side, and the final
-	// interior column is reserved for the permanent scrollbar. Lip Gloss Width
-	// is the final outer width, so message content must be exactly width-3.
-	contentWidth := width - 3
-	if contentWidth < 1 {
-		contentWidth = 1
-	}
+	// The final interior column is reserved for the permanent scrollbar.
+	// When the side borders disappear at narrow widths, those two columns
+	// become available to message content.
+	contentWidth := chatContentWidth(width)
 
 	bg := lipgloss.Color(m.cfg.Background)
 	text := lipgloss.Color(m.cfg.TextColor)
