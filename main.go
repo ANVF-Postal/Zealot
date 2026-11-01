@@ -3415,6 +3415,10 @@ func compactFooterStatusLead(status string, maxWidth int) string {
 	if shortStatus == "" {
 		return ""
 	}
+	// truncateANSI appends a reset when it clips text. Remove that reset
+	// before adding the separator so the surrounding status style continues
+	// to paint the separator spaces with the configured background.
+	shortStatus = strings.TrimSuffix(shortStatus, "\x1b[0m")
 	return " " + shortStatus + separator
 }
 
