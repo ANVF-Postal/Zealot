@@ -2963,13 +2963,12 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 		blueBlock := lipgloss.NewStyle().Foreground(lipgloss.Color("#000000")).Background(lipgloss.Color("#2589FF"))
 
 		if msg.XKeyscore == 3 {
-			// Give the compact one-off variant a solid blue tile, including
-			// the padding around every line, with black lettering on top.
-			boxWidth := 18
+			// Give the compact one-off variant a solid blue tile, with one
+			// extra blue column on the left and bottom padding only.
+			boxWidth := 19
 			indent := strings.Repeat(" ", logoIndent)
-			lines = append(lines, renderChatRow(rowFill, indent+blueBlock.Render(strings.Repeat(" ", boxWidth)), contentWidth))
 			for _, artLine := range logo {
-				padded := " " + artLine + strings.Repeat(" ", max(0, boxWidth-lipgloss.Width(artLine)-1))
+				padded := "  " + artLine + strings.Repeat(" ", max(0, boxWidth-lipgloss.Width(artLine)-2))
 				lines = append(lines, renderChatRow(rowFill, indent+blueBlock.Render(padded), contentWidth))
 			}
 			lines = append(lines, renderChatRow(rowFill, indent+blueBlock.Render(strings.Repeat(" ", boxWidth)), contentWidth))
@@ -2999,7 +2998,9 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 					case '░':
 						styled.WriteString(shadow.Render(string(glyph)))
 					default:
-						styled.WriteRune(glyph)
+						// Explicitly paint negative space with the normal message
+						// background so the terminal default cannot show through.
+						styled.WriteString(bright.Render(string(glyph)))
 					}
 				}
 			}
