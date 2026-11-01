@@ -1250,6 +1250,9 @@ func (m model) Update(
 		// when the window is expanded again.
 		m.clampUsersScroll()
 		m.clampSplashScroll()
+		m.splashScrollDragging = false
+		m.splashScrollbarHoldDirection = 0
+		m.splashScrollbarHoldGeneration++
 		m.usersScrollDragging = false
 		m.usersScrollbarHoldDirection = 0
 		m.usersScrollbarHoldGeneration++
