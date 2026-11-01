@@ -3455,12 +3455,9 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	// allowing the right-aligned Quit and Send buttons to crowd the hitboxes.
 	pageLabelStart := lipgloss.Width(lead)
 	pageLabelWidth := lipgloss.Width(scrollLabel)
-	if !usersOpen && !splashOpen {
-		minimumStatusWidth := pageLabelStart + pageLabelWidth + lipgloss.Width(": Scroll")
-		if maxPrefixWidth < minimumStatusWidth {
-			prefix = scrollLabel + scrollTail
-			pageLabelStart = 0
-		}
+	if !usersOpen && !splashOpen && maxPrefixWidth < lipgloss.Width(prefix) {
+		prefix = scrollLabel + scrollTail
+		pageLabelStart = 0
 	}
 
 	// Do not render a partial PgUp/PgDn label as if it were actionable. The
