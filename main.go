@@ -3486,7 +3486,10 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	var line strings.Builder
 	line.WriteString(renderedPrefix)
 	line.WriteString(m.styles.accent.Render(quitText))
-	line.WriteString(m.styles.status.Render(strings.Repeat(" ", gapWidth)))
+	// Use styled one-cell blank glyphs instead of ordinary spaces. The
+	// renderer can skip trailing/changed spaces, leaving stale footer cells
+	// when switching between the shorter panel-specific shortcut labels.
+	line.WriteString(m.styles.status.Render(strings.Repeat("⠀", gapWidth)))
 
 	if includeSend {
 		targets.hasSend = true
@@ -3504,10 +3507,10 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		}
 	}
 
-	// Fill the complete row explicitly. The remaining final cell stays blank,
-	// preserving the one-column inset after [Send] without leaving stale cells
-	// when the shortcut text changes between panels.
-	return padANSIToWidth(line.String(), m.width, m.styles.status), targets
+	// Paint the final inset cell with a styled blank glyph. This forces the
+	// terminal to repaint it while keeping [Send] one cell away from the edge.
+	line.WriteString(m.styles.status.Render("⠀"))
+	return line.String(), targets
 }
 
 // renderViewWithChat keeps the application shell unchanged while swapping the
