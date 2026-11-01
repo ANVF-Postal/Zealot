@@ -2923,12 +2923,13 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 		shadow := lipgloss.NewStyle().Foreground(lipgloss.Color("#8993A5")).Background(bg)
 		blue := lipgloss.NewStyle().Foreground(lipgloss.Color("#2589FF")).Background(bg).Bold(true)
 		for _, artLine := range logo {
-			padding := max(0, (contentWidth-12)/2)
+			// Keep the logo at the message body's left edge, like wrapped
+			// continuation lines in an ordinary chat message.
 			var styled strings.Builder
-			styled.WriteString(strings.Repeat(" ", padding))
 			if strings.Contains(artLine, "XKEYSCORE") {
-				styled.WriteString(" ")
-				styled.WriteString(blue.Render("XKEYSCORE"))
+				leading := len(artLine) - len(strings.TrimLeft(artLine, " "))
+				styled.WriteString(strings.Repeat(" ", leading))
+				styled.WriteString(blue.Render(strings.TrimLeft(artLine, " ")))
 			} else {
 				for _, glyph := range artLine {
 					switch glyph {
