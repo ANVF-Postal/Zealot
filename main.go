@@ -384,16 +384,18 @@ func (s *server) handle(conn net.Conn) {
 
 	s.mu.Lock()
 	room, exists := s.rooms[roomName]
-	if exists && room.historyEnabled != hello.AddHistory {
+	// --add-history only establishes policy when creating a room. A normal
+	// join always inherits the existing room's policy; it must not need to
+	// repeat the creation flag. Passing the flag to an existing room is
+	// rejected so nobody can use it to alter that room's history setting.
+	if exists && hello.AddHistory {
 		existingPolicy := "disabled"
-		instruction := "Remove the --add-history flag and relaunch to join it."
 		if room.historyEnabled {
 			existingPolicy = "enabled"
-			instruction = "Relaunch with --add-history to join it."
 		}
 		_ = encoder.Encode(Packet{
 			Type: "history_mismatch",
-			Text: fmt.Sprintf("This room already exists with history %s. %s", existingPolicy, instruction),
+			Text: fmt.Sprintf("This room already exists with history %s. Remove the --add-history flag and relaunch to join it.", existingPolicy),
 		})
 		s.mu.Unlock()
 		return
