@@ -3410,10 +3410,9 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	lead := " " + m.status + " • "
 	scrollLabel := "PgUp/PgDn"
 	scrollTail := ": Scroll • Ctrl+C: "
-	if usersOpen {
-		scrollTail = " or mouse wheel: Scroll • Esc/Ctrl+O: close • Ctrl+C: "
-	} else if splashOpen {
-		scrollTail = " or mouse wheel: Scroll • Esc: close • Ctrl+C: "
+	if usersOpen || splashOpen {
+		// Keep the secondary views' keyboard shortcut wording identical.
+		scrollTail = ": Scroll • Esc: close • Ctrl+C: "
 	}
 	prefix := lead + scrollLabel + scrollTail
 
@@ -3450,29 +3449,55 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	if maxPrefixWidth < 0 {
 		maxPrefixWidth = 0
 	}
+
+	// The Connected label is informational; the clickable controls are not.
+	// In the main view, give PgUp/PgDn room first and drop Connected before
+	// allowing the right-aligned Quit and Send buttons to crowd the hitboxes.
+	pageLabelStart := lipgloss.Width(lead)
+	pageLabelWidth := lipgloss.Width(scrollLabel)
+	if !usersOpen && !splashOpen {
+		minimumStatusWidth := pageLabelStart + pageLabelWidth + lipgloss.Width(": Scroll")
+		if maxPrefixWidth < minimumStatusWidth {
+			prefix = scrollLabel + scrollTail
+			pageLabelStart = 0
+		}
+	}
+
+	// Do not render a partial PgUp/PgDn label as if it were actionable. The
+	// right-side buttons retain priority once there is no room for the pair.
+	if maxPrefixWidth < pageLabelStart+pageLabelWidth+1 {
+		prefix = ""
+		pageLabelStart = -1
+	}
+
 	prefixVisible := truncateANSI(prefix, maxPrefixWidth)
+	// Keep a separating cell before Quit when the prefix is clipped.
+	if prefixVisible != "" && !strings.HasSuffix(prefixVisible, " ") {
+		prefixVisible = truncateANSI(prefixVisible, max(0, maxPrefixWidth-1)) + " "
+	}
 	prefixWidth := lipgloss.Width(prefixVisible)
 
-	// Highlight the two actionable page-scroll labels. If a compact width
-	// clips any part of the pair, leave the visible prefix un-highlighted and
-	// don't create partial click targets.
-	leadWidth := lipgloss.Width(lead)
-	scrollLabelWidth := lipgloss.Width(scrollLabel)
+	// Highlight the page-scroll labels and derive their mouse hitboxes from
+	// the final, possibly compacted prefix so rendered controls and clicks
+	// always use the same coordinates.
 	renderedPrefix := m.styles.status.Render(prefixVisible)
-	if maxPrefixWidth >= leadWidth+scrollLabelWidth {
-		tailWidth := maxPrefixWidth - leadWidth - scrollLabelWidth
-		tailVisible := truncateANSI(scrollTail, tailWidth)
-		renderedPrefix = m.styles.status.Render(lead) +
-			m.styles.accent.Render("PgUp") +
-			m.styles.status.Render("/") +
-			m.styles.accent.Render("PgDn") +
-			m.styles.status.Render(tailVisible)
-		targets.hasPageScroll = true
-		targets.pgUpStart = leadWidth
-		targets.pgUpEnd = leadWidth + lipgloss.Width("PgUp")
-		targets.pgDnStart = leadWidth + lipgloss.Width("PgUp/")
-		targets.pgDnEnd = targets.pgDnStart + lipgloss.Width("PgDn")
-		prefixWidth = leadWidth + scrollLabelWidth + lipgloss.Width(tailVisible)
+	if pageLabelStart >= 0 && prefixWidth >= pageLabelStart+pageLabelWidth {
+		pageStartByte := strings.Index(prefixVisible, scrollLabel)
+		if pageStartByte >= 0 {
+			pageStart := lipgloss.Width(prefixVisible[:pageStartByte])
+			pageEndByte := pageStartByte + len(scrollLabel)
+			tailVisible := prefixVisible[pageEndByte:]
+			renderedPrefix = m.styles.status.Render(prefixVisible[:pageStartByte]) +
+				m.styles.accent.Render("PgUp") +
+				m.styles.status.Render("/") +
+				m.styles.accent.Render("PgDn") +
+				m.styles.status.Render(tailVisible)
+			targets.hasPageScroll = true
+			targets.pgUpStart = pageStart
+			targets.pgUpEnd = pageStart + lipgloss.Width("PgUp")
+			targets.pgDnStart = pageStart + lipgloss.Width("PgUp/")
+			targets.pgDnEnd = targets.pgDnStart + lipgloss.Width("PgDn")
+		}
 	}
 
 	leftWidth := prefixWidth + quitWidth
