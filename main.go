@@ -28,6 +28,9 @@ const (
 	maxMessage = 4000
 )
 
+// appVersion can be set by release builds with -ldflags "-X main.appVersion=1.2.3".
+var appVersion = "0.0.0-dev"
+
 // -----------------------------------------------------------------------------
 // Configuration
 // -----------------------------------------------------------------------------
@@ -970,6 +973,7 @@ type notificationsReadyMsg struct{}
 
 type scrollbarHoldMsg struct{ generation int }
 type usersScrollbarHoldMsg struct{ generation int }
+type splashScrollbarHoldMsg struct{ generation int }
 type usersAnimationMsg struct{}
 
 // -----------------------------------------------------------------------------
@@ -1045,6 +1049,13 @@ type model struct {
 	usersOpen    bool
 	usersScroll  int
 	usersFrame   int
+
+	splashOpen                       bool
+	splashScroll                     int
+	splashScrollDragging             bool
+	splashScrollDragOffset           int
+	splashScrollbarHoldDirection     int
+	splashScrollbarHoldGeneration    int
 	usersScrollDragging bool
 	usersScrollDragOffset int
 	usersScrollbarHoldDirection int
@@ -1375,14 +1386,40 @@ func (m model) Update(
 
 	switch mouse := msg.(type) {
 	case tea.MouseClickMsg:
-		if m.usersOpen && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width("[X]") && mouse.X < m.width {
+		if (m.usersOpen || m.splashOpen) && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width("[X]") && mouse.X < m.width {
 			m.usersOpen = false
+			m.splashOpen = false
 			m.usersScrollDragging = false
 			m.usersScrollbarHoldDirection = 0
 			m.usersScrollbarHoldGeneration++
+			m.splashScrollDragging = false
+			m.splashScrollbarHoldDirection = 0
+			m.splashScrollbarHoldGeneration++
 			return m, nil
 		}
-		if !m.usersOpen && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width(fmt.Sprintf("Online: %d", m.onlineCount)) && mouse.X < m.width {
+		if mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= 0 && mouse.X < lipgloss.Width("ZEALOT") {
+			if m.splashOpen {
+				m.splashOpen = false
+				m.splashScrollDragging = false
+				m.splashScrollbarHoldDirection = 0
+				m.splashScrollbarHoldGeneration++
+			} else {
+				m.splashOpen = true
+				m.usersOpen = false
+				m.splashScroll = 0
+				m.splashScrollDragging = false
+				m.splashScrollbarHoldDirection = 0
+				m.splashScrollbarHoldGeneration++
+				m.usersScrollDragging = false
+				m.usersScrollbarHoldDirection = 0
+				m.usersScrollbarHoldGeneration++
+				m.scrollDragging = false
+				m.scrollbarHoldDirection = 0
+				m.scrollbarHoldGeneration++
+			}
+			return m, nil
+		}
+		if !m.usersOpen && !m.splashOpen && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width(fmt.Sprintf("Online: %d", m.onlineCount)) && mouse.X < m.width {
 			m.usersOpen = true
 			m.usersScroll = 0
 			m.usersScrollDragging = false
@@ -1424,7 +1461,37 @@ func (m model) Update(
 				return m, nil
 			}
 		}
-		if !m.usersOpen && mouse.Button == tea.MouseLeft && m.scrollbarContains(mouse.X, mouse.Y) && m.maxScroll() > 0 {
+		if m.splashOpen && mouse.Button == tea.MouseLeft && mouse.X == m.width-2 && m.maxSplashScroll() > 0 {
+			visible := m.splashPanelHeight()
+			firstTrackY := 3
+			topArrowY := 2
+			bottomArrowY := 1 + visible
+			switch {
+			case mouse.Y == topArrowY:
+				m.splashScrollbarHoldDirection = -1
+				m.splashScrollbarHoldGeneration++
+				m.splashScroll -= 3
+				m.clampSplashScroll()
+				return m, m.splashScrollbarHoldCmd(m.splashScrollbarHoldGeneration)
+			case mouse.Y == bottomArrowY:
+				m.splashScrollbarHoldDirection = 1
+				m.splashScrollbarHoldGeneration++
+				m.splashScroll += 3
+				m.clampSplashScroll()
+				return m, m.splashScrollbarHoldCmd(m.splashScrollbarHoldGeneration)
+			case mouse.Y > topArrowY && mouse.Y < bottomArrowY:
+				top, thumbHeight, _ := m.splashScrollbarThumb()
+				trackPosition := mouse.Y - firstTrackY
+				if trackPosition >= top && trackPosition < top+thumbHeight {
+					m.splashScrollDragging = true
+					m.splashScrollDragOffset = trackPosition - top
+					return m, nil
+				}
+				m.setSplashScrollFromTrack(trackPosition)
+				return m, nil
+			}
+		}
+		if !m.usersOpen && !m.splashOpen && mouse.Button == tea.MouseLeft && m.scrollbarContains(mouse.X, mouse.Y) && m.maxScroll() > 0 {
 			top, thumbHeight, trackHeight := m.scrollbarThumb()
 			trackY := mouse.Y - 3 // first draggable track row; arrows occupy y=2 and the final row
 			if trackY < 0 { trackY = 0 }
@@ -1454,6 +1521,14 @@ func (m model) Update(
 		}
 
 	case tea.MouseMotionMsg:
+		if m.splashOpen && m.splashScrollDragging {
+			_, thumbHeight, trackHeight := m.splashScrollbarThumb()
+			target := mouse.Y - 3 - m.splashScrollDragOffset
+			if target < 0 { target = 0 }
+			if target > trackHeight-thumbHeight { target = trackHeight-thumbHeight }
+			m.setSplashScrollFromThumbTop(target)
+			return m, nil
+		}
 		if m.usersOpen && m.usersScrollDragging {
 			_, thumbHeight, trackHeight := m.usersScrollbarThumb()
 			target := mouse.Y - 3 - m.usersScrollDragOffset
@@ -1472,6 +1547,9 @@ func (m model) Update(
 		}
 
 	case tea.MouseReleaseMsg:
+		m.splashScrollDragging = false
+		m.splashScrollbarHoldDirection = 0
+		m.splashScrollbarHoldGeneration++
 		m.scrollDragging = false
 		m.scrollbarHoldDirection = 0
 		m.scrollbarHoldGeneration++
@@ -1491,8 +1569,19 @@ func (m model) Update(
 			return m, m.usersScrollbarHoldCmd(mouse.generation)
 		}
 		return m, nil
+	case splashScrollbarHoldMsg:
+		if m.splashOpen && mouse.generation == m.splashScrollbarHoldGeneration && m.splashScrollbarHoldDirection != 0 {
+			m.splashScroll += m.splashScrollbarHoldDirection * 3
+			m.clampSplashScroll()
+			if m.splashScroll == 0 || m.splashScroll == m.maxSplashScroll() {
+				m.splashScrollbarHoldDirection = 0
+				return m, nil
+			}
+			return m, m.splashScrollbarHoldCmd(mouse.generation)
+		}
+		return m, nil
 	case scrollbarHoldMsg:
-		if !m.usersOpen && mouse.generation == m.scrollbarHoldGeneration && m.scrollbarHoldDirection != 0 {
+		if !m.usersOpen && !m.splashOpen && mouse.generation == m.scrollbarHoldGeneration && m.scrollbarHoldDirection != 0 {
 			m.scroll += m.scrollbarHoldDirection * 3
 			m.clampScroll()
 			if m.scroll == 0 || m.scroll == m.maxScroll() {
@@ -1509,6 +1598,16 @@ func (m model) Update(
 	// -------------------------------------------------------------------------
 
 	if mouseMsg, ok := msg.(tea.MouseWheelMsg); ok {
+		if m.splashOpen {
+			switch mouseMsg.Button {
+			case tea.MouseWheelUp:
+				m.splashScroll -= 3
+			case tea.MouseWheelDown:
+				m.splashScroll += 3
+			}
+			m.clampSplashScroll()
+			return m, nil
+		}
 		if m.usersOpen {
 			switch mouseMsg.Button {
 			case tea.MouseWheelUp:
@@ -1540,7 +1639,23 @@ func (m model) Update(
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		switch keyMsg.String() {
 
-		case "esc", "escape", "ctrl+o":
+		case "esc", "escape":
+			if m.splashOpen {
+				m.splashOpen = false
+				m.splashScrollDragging = false
+				m.splashScrollbarHoldDirection = 0
+				m.splashScrollbarHoldGeneration++
+				return m, nil
+			}
+			if m.usersOpen {
+				m.usersOpen = false
+				m.usersScrollDragging = false
+				m.usersScrollbarHoldDirection = 0
+				m.usersScrollbarHoldGeneration++
+				return m, nil
+			}
+
+		case "ctrl+o":
 			if m.usersOpen {
 				m.usersOpen = false
 				m.usersScrollDragging = false
@@ -1556,6 +1671,11 @@ func (m model) Update(
 			return m, tea.Quit
 
 		case "pgup":
+			if m.splashOpen {
+				m.splashScroll -= max(1, m.splashPanelHeight()/2)
+				m.clampSplashScroll()
+				return m, nil
+			}
 			if m.usersOpen {
 				m.usersScroll -= max(1, m.usersPanelHeight())
 				m.clampUsersScroll()
@@ -1567,6 +1687,11 @@ func (m model) Update(
 			return m, nil
 
 		case "pgdown":
+			if m.splashOpen {
+				m.splashScroll += max(1, m.splashPanelHeight()/2)
+				m.clampSplashScroll()
+				return m, nil
+			}
 			if m.usersOpen {
 				m.usersScroll += max(1, m.usersPanelHeight())
 				m.clampUsersScroll()
@@ -1578,10 +1703,18 @@ func (m model) Update(
 			return m, nil
 
 		case "ctrl+home":
+			if m.splashOpen {
+				m.splashScroll = 0
+				return m, nil
+			}
 			m.scroll = m.maxScroll()
 			return m, nil
 
 		case "ctrl+end":
+			if m.splashOpen {
+				m.splashScroll = m.maxSplashScroll()
+				return m, nil
+			}
 			m.scroll = 0
 			return m, nil
 
@@ -1621,6 +1754,10 @@ func (m model) Update(
 	// The textarea must receive the key event or the character won't
 	// actually appear in the input box.
 	// -------------------------------------------------------------------------
+
+	if m.splashOpen {
+		return m, nil
+	}
 
 	var inputCmd tea.Cmd
 
@@ -1773,6 +1910,103 @@ func (m *model) sendMessage(text string) {
 		return
 	}
 	_ = m.client.send(Packet{Type: "message", Room: m.room, User: m.user, Text: text})
+}
+
+// splashRows builds the splash content at the current terminal width. The
+// fixed-width block lettering is 64 columns wide and is centered in the
+// 77-column content area available in a standard 80-column terminal.
+func (m model) splashRows() []string {
+	const logoWidth = 64
+	logo := []string{
+		"#########  #########  ..#####..  ###......  .#######.  #########",
+		"......###  ###......  .###.###.  ###......  ###...###  ....###..",
+		".....###.  ###......  ###...###  ###......  ###...###  ....###..",
+		"....###..  ########.  #########  ###......  ###...###  ....###..",
+		"..###....  ###......  ###...###  ###......  ###...###  ....###..",
+		".###.....  ###......  ###...###  ###......  ###...###  ....###..",
+		"#########  #########  ###...###  #########  .#######.  ....###..",
+	}
+	width := max(1, m.width-3)
+	center := func(value string) string {
+		value = truncateANSI(value, width)
+		padding := max(0, (width-lipgloss.Width(value))/2)
+		return strings.Repeat(" ", padding) + value
+	}
+
+	room := m.room
+	if !m.roomExplicit {
+		room = "default"
+	}
+
+	rows := []string{""}
+	for _, line := range logo {
+		if lipgloss.Width(line) != logoWidth {
+			// Keep the layout predictable if the artwork is edited later.
+			line = truncateANSI(line, logoWidth)
+		}
+		rows = append(rows, m.styles.accent.Render(center(line)))
+	}
+	rows = append(rows, "")
+	rows = append(rows, m.styles.app.Render(center("v"+appVersion)))
+	rows = append(rows, "")
+	rows = append(rows, m.styles.app.Render(center("Connected to: "+room)))
+	rows = append(rows, m.styles.app.Render(center(fmt.Sprintf("Online users: %d", m.onlineCount))))
+	return rows
+}
+
+func (m model) splashPanelHeight() int {
+	return max(1, m.messageHeight())
+}
+
+func (m model) maxSplashScroll() int {
+	return max(0, len(m.splashRows())-m.splashPanelHeight())
+}
+
+func (m *model) clampSplashScroll() {
+	if m.splashScroll < 0 { m.splashScroll = 0 }
+	if maxScroll := m.maxSplashScroll(); m.splashScroll > maxScroll { m.splashScroll = maxScroll }
+}
+
+func (m model) splashScrollbarThumb() (top, thumbHeight, trackHeight int) {
+	visible := m.splashPanelHeight()
+	trackHeight = visible - 2
+	if trackHeight < 1 { trackHeight = 1 }
+	total := len(m.splashRows())
+	if total <= visible { return 0, trackHeight, trackHeight }
+	thumbHeight = visible * trackHeight / total
+	if thumbHeight < 1 { thumbHeight = 1 }
+	if thumbHeight > trackHeight { thumbHeight = trackHeight }
+	maxTop := trackHeight - thumbHeight
+	if maxScroll := m.maxSplashScroll(); maxScroll > 0 {
+		top = m.splashScroll * maxTop / maxScroll
+	}
+	return
+}
+
+func (m *model) setSplashScrollFromThumbTop(top int) {
+	_, thumbHeight, trackHeight := m.splashScrollbarThumb()
+	maxTop := trackHeight - thumbHeight
+	if top < 0 { top = 0 }
+	if top > maxTop { top = maxTop }
+	if maxTop > 0 {
+		m.splashScroll = top * m.maxSplashScroll() / maxTop
+	} else {
+		m.splashScroll = 0
+	}
+	m.clampSplashScroll()
+}
+
+func (m *model) setSplashScrollFromTrack(trackPosition int) {
+	_, thumbHeight, trackHeight := m.splashScrollbarThumb()
+	if trackPosition < 0 { trackPosition = 0 }
+	if trackPosition >= trackHeight { trackPosition = trackHeight - 1 }
+	m.setSplashScrollFromThumbTop(trackPosition - thumbHeight/2)
+}
+
+func (m model) splashScrollbarHoldCmd(generation int) tea.Cmd {
+	return tea.Tick(120*time.Millisecond, func(time.Time) tea.Msg {
+		return splashScrollbarHoldMsg{generation: generation}
+	})
 }
 
 // usersPanelHeight is the available inner height for the online roster.
@@ -2640,7 +2874,7 @@ func (m model) renderHeader() string {
 		title = "ZEALOT — " + m.room
 	}
 	rightLabel := fmt.Sprintf("Online: %d", m.onlineCount)
-	if m.usersOpen {
+	if m.usersOpen || m.splashOpen {
 		rightLabel = "[X]"
 	}
 
@@ -2752,8 +2986,14 @@ func (m model) View() tea.View {
 			Width(m.width).
 			Height(m.messageHeight()).
 			Render(chat)
-		return m.renderViewWithChat(header, chatBox, true)
+		return m.renderViewWithChat(header, chatBox, true, false)
 	}
+
+	if m.splashOpen {
+		chatBox := m.renderSplashPanel()
+		return m.renderViewWithChat(header, chatBox, false, true)
+	}
+
 	start := len(lines) -
 		chatHeight -
 		m.scroll
@@ -2828,14 +3068,63 @@ func (m model) View() tea.View {
 		Height(m.messageHeight()).
 		Render(chat)
 
-	return m.renderViewWithChat(header, chatBox, false)
+	return m.renderViewWithChat(header, chatBox, false, false)
 }
 
 
  
+// renderSplashPanel replaces only the chat pane with the splash page. Its
+// logo uses the header accent; all information below it uses normal chat text.
+func (m model) renderSplashPanel() string {
+	lines := m.splashRows()
+	visibleHeight := m.splashPanelHeight()
+	start := m.splashScroll
+	if start < 0 { start = 0 }
+	if maxStart := max(0, len(lines)-visibleHeight); start > maxStart { start = maxStart }
+	end := min(start+visibleHeight, len(lines))
+	visible := append([]string(nil), lines[start:end]...)
+
+	bg := lipgloss.Color(m.cfg.Background)
+	rowFill := lipgloss.NewStyle().Background(bg)
+	scrollbarStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.cfg.BorderColor)).
+		Background(bg)
+	contentWidth := max(1, m.width-2)
+	textWidth := max(1, contentWidth-1)
+
+	for len(visible) < visibleHeight {
+		visible = append(visible, "")
+	}
+	top, thumbHeight, trackHeight := m.splashScrollbarThumb()
+	rows := make([]string, 0, visibleHeight)
+	for i, line := range visible {
+		glyph := "│"
+		switch {
+		case i == 0:
+			glyph = "^"
+		case i == visibleHeight-1:
+			glyph = "v"
+		default:
+			trackPosition := i - 1
+			if m.maxSplashScroll() > 0 && trackPosition >= top && trackPosition < top+thumbHeight {
+				glyph = "█"
+			}
+			if trackPosition >= trackHeight {
+				glyph = " "
+			}
+		}
+		text := padANSIToWidth(line, textWidth, rowFill)
+		rows = append(rows, renderChatRow(rowFill.Width(contentWidth), text+scrollbarStyle.Render(glyph), contentWidth))
+	}
+	return m.styles.border.
+		Width(m.width).
+		Height(m.messageHeight()).
+		Render(strings.Join(rows, "\n"))
+}
+
 // renderViewWithChat keeps the application shell unchanged while swapping the
-// contents of the chat pane for the online roster.
-func (m model) renderViewWithChat(header, chatBox string, usersOpen bool) tea.View {
+// contents of the chat pane for the online roster or splash page.
+func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen bool) tea.View {
 	// -------------------------------------------------------------------------
 	// Input
 	// -------------------------------------------------------------------------
@@ -2896,6 +3185,8 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen bool) tea.Vi
 	shortcuts := "Enter: send  •  PgUp/PgDn: scroll  •  Ctrl+C: quit"
 	if usersOpen {
 		shortcuts = "PgUp/PgDn or mouse wheel: scroll  •  Esc/Ctrl+O: close  •  Ctrl+C: quit"
+	} else if splashOpen {
+		shortcuts = "PgUp/PgDn or mouse wheel: scroll  •  Esc: close  •  Ctrl+C: quit"
 	}
 	statusText := " " + m.status + "   " + shortcuts
 	// Keep the row exactly terminal-wide. A final Braille blank is a real
