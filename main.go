@@ -2848,7 +2848,7 @@ func rainbowLogoColor(text string, phase float64, offset int, background string)
 		red, green, blue := hsvToRGB(hue, 1, 1)
 		style := lipgloss.NewStyle().
 			Foreground(lipgloss.Color(fmt.Sprintf("#%02X%02X%02X", red, green, blue))).
-			Background(background)
+			Background(lipgloss.Color(background))
 		out.WriteString(style.Render(string(ch)))
 		position++
 	}
