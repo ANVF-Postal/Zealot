@@ -6,6 +6,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math"
+	"math/rand"
 	"net"
 	"os"
 	"os/exec"
@@ -255,8 +257,11 @@ type Packet struct {
 	Time       time.Time `json:"time,omitempty"`
 	Typing     bool      `json:"typing,omitempty"`
 	AddHistory bool      `json:"add_history,omitempty"`
-	Ephemeral  bool      `json:"ephemeral,omitempty"`
-	Users      []User    `json:"users,omitempty"`
+	Ephemeral   bool      `json:"ephemeral,omitempty"`
+	Rainbow     bool      `json:"rainbow,omitempty"`
+	RainbowPhase float64   `json:"rainbow_phase,omitempty"`
+	XKeyscore    int       `json:"xkeyscore,omitempty"`
+	Users       []User    `json:"users,omitempty"`
 }
 
 // -----------------------------------------------------------------------------
@@ -558,11 +563,14 @@ func (s *server) handle(conn net.Conn) {
 			}
 
 			message := Packet{
-				Type: "message",
-				Room: roomName,
-				User: user,
-				Text: text,
-				Time: time.Now().UTC(),
+				Type:        "message",
+				Room:        roomName,
+				User:        user,
+				Text:        text,
+				Time:        time.Now().UTC(),
+				Rainbow:      packet.Rainbow,
+				RainbowPhase: packet.RainbowPhase,
+				XKeyscore:    packet.XKeyscore,
 			}
 
 			s.mu.Lock()
@@ -1160,7 +1168,8 @@ type model struct {
 	typing      map[string]User
 	typingOrder []string
 
-	input textarea.Model
+	input       textarea.Model
+	rainbowMode bool
 
 	width  int
 	height int
@@ -2018,6 +2027,55 @@ func (m *model) sendMessage(text string) {
 		return
 	}
 	switch strings.ToLower(fields[0]) {
+	case "/rb":
+		body := strings.TrimSpace(strings.TrimPrefix(trimmed, fields[0]))
+		if body == "" {
+			m.appendMessage(Packet{Type: "system", Text: "Usage: /rb message", Time: time.Now().UTC()})
+			return
+		}
+		packet := Packet{
+			Type:         "message",
+			Room:         m.room,
+			User:         m.user,
+			Text:         body,
+			Rainbow:      true,
+			RainbowPhase: rand.Float64(),
+		}
+		_ = m.client.send(packet)
+		return
+	case "/xkeyscore":
+		var variant int
+		if len(fields) == 2 {
+			if requested, err := strconv.Atoi(fields[1]); err == nil && requested >= 1 && requested <= 3 {
+				variant = requested
+			}
+		}
+		if variant == 0 {
+			variant = rand.Intn(3) + 1
+		}
+		packet := Packet{
+			Type:         "message",
+			Room:         m.room,
+			User:         m.user,
+			Text:         "XKEYSCORE",
+			XKeyscore:    variant,
+			Rainbow:      m.rainbowMode,
+			RainbowPhase: rand.Float64(),
+		}
+		_ = m.client.send(packet)
+		return
+	case "/rainbow":
+		if len(fields) != 1 {
+			m.appendMessage(Packet{Type: "system", Text: "Usage: /rainbow", Time: time.Now()})
+			return
+		}
+		m.rainbowMode = !m.rainbowMode
+		status := "enabled"
+		if !m.rainbowMode {
+			status = "disabled"
+		}
+		m.appendMessage(Packet{Type: "system", Text: "Rainbow mode " + status + " for your messages.", Time: time.Now().UTC()})
+		return
 	case "/who":
 		if len(fields) != 1 {
 			m.appendMessage(Packet{Type: "system", Text: "Usage: /who", Time: time.Now()})
@@ -2100,7 +2158,12 @@ func (m *model) sendMessage(text string) {
 		_ = m.client.send(Packet{Type: "me", Room: m.room, User: m.user, Text: body})
 		return
 	}
-	_ = m.client.send(Packet{Type: "message", Room: m.room, User: m.user, Text: text})
+	packet := Packet{Type: "message", Room: m.room, User: m.user, Text: text}
+	if m.rainbowMode {
+		packet.Rainbow = true
+		packet.RainbowPhase = rand.Float64()
+	}
+	_ = m.client.send(packet)
 }
 
 // splashRows builds the splash content at the current terminal width. The
@@ -2728,6 +2791,106 @@ func wrapANSIHardLine(s string, width int) []string {
 	return lines
 }
 
+// rainbowTileLine paints every cell of an XKeyscore tile row with a smooth
+// rainbow background while keeping the logo glyphs black.
+// rainbowTileLine paints a tile row with a diagonal rainbow background.
+// Advancing the phase by one cell per row makes the gradient flow from the
+// top-left toward the bottom-right, like lolcat's line-by-line offset.
+func rainbowTileLine(text string, phase float64, row int) string {
+	var out strings.Builder
+	for column, ch := range text {
+		position := row + column
+		hue := math.Mod(phase+float64(position)*0.015, 1)
+		if hue < 0 {
+			hue++
+		}
+		red, green, blue := hsvToRGB(hue, 1, 1)
+		out.WriteString(fmt.Sprintf("\x1b[38;2;0;0;0;48;2;%d;%d;%dm%c", red, green, blue, ch))
+	}
+	if out.Len() > 0 {
+		out.WriteString("\x1b[0m")
+	}
+	return out.String()
+}
+
+// rainbowColor applies lolcat-style HSV cycling: each successive rune advances
+// by a small fraction of the hue wheel, creating gradual color transitions.
+// Each message starts at a random phase.
+func rainbowColor(text string, phase float64, offset int) string {
+	var out strings.Builder
+	position := offset
+	for _, ch := range text {
+		hue := math.Mod(phase+float64(position)*0.015, 1)
+		if hue < 0 {
+			hue++
+		}
+		red, green, blue := hsvToRGB(hue, 1, 1)
+		out.WriteString(fmt.Sprintf("\x1b[38;2;%d;%d;%dm%c", red, green, blue, ch))
+		position++
+	}
+	if out.Len() > 0 {
+		out.WriteString("\x1b[0m")
+	}
+	return out.String()
+}
+
+// rainbowLogoColor paints each logo glyph with an explicit message background.
+// Unlike ordinary rainbow chat text, logo artwork contains negative-space cells
+// whose background must remain the configured chat colour.
+func rainbowLogoColor(text string, phase float64, offset int, background string) string {
+	var out strings.Builder
+	position := offset
+	for _, ch := range text {
+		hue := math.Mod(phase+float64(position)*0.015, 1)
+		if hue < 0 {
+			hue++
+		}
+		red, green, blue := hsvToRGB(hue, 1, 1)
+		style := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(fmt.Sprintf("#%02X%02X%02X", red, green, blue))).
+			Background(lipgloss.Color(background))
+		out.WriteString(style.Render(string(ch)))
+		position++
+	}
+	return out.String()
+}
+
+func hsvToRGB(h, s, v float64) (int, int, int) {
+	i := int(math.Floor(h * 6))
+	f := h*6 - float64(i)
+	p := v * (1 - s)
+	q := v * (1 - f*s)
+	t := v * (1 - (1-f)*s)
+	var r, g, b float64
+	switch i % 6 {
+	case 0:
+		r, g, b = v, t, p
+	case 1:
+		r, g, b = q, v, p
+	case 2:
+		r, g, b = p, v, t
+	case 3:
+		r, g, b = p, q, v
+	case 4:
+		r, g, b = t, p, v
+	default:
+		r, g, b = v, p, q
+	}
+	return int(math.Round(r * 255)), int(math.Round(g * 255)), int(math.Round(b * 255))
+}
+
+// rainbowParts colors wrapped body text while carrying the hue position from
+// one visual row to the next.
+func rainbowParts(parts []string, phase float64) []string {
+	colored := make([]string, len(parts))
+	offset := 0
+	for i, part := range parts {
+		colored[i] = rainbowColor(part, phase, offset)
+		offset += utf8.RuneCountInString(part) + 1
+	}
+	return colored
+}
+
 func (m model) renderPacketLines(msg Packet, width int) []string {
 	// The chat box has a one-column border on each side, and the final
 	// interior column is reserved for the permanent scrollbar. Lip Gloss Width
@@ -2799,6 +2962,129 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 		Background(bg).
 		Bold(true)
 
+	if msg.XKeyscore > 0 {
+		var lines []string
+		logoIndent := 0
+		if width <= 48 {
+			header := msg
+			header.Text = ""
+			lines = renderCompactMessage(rowFill, bodyStyle, nameStyle, m.styles.time, header, timeText, contentWidth)
+		} else {
+			prefix := m.styles.time.Render("[" + timeText + "]") + bodyStyle.Render(" ") + nameStyle.Render(msg.User.Name) + bodyStyle.Render(":")
+			if lipgloss.Width(prefix) >= contentWidth {
+				header := msg
+				header.Text = ""
+				lines = renderCompactMessage(rowFill, bodyStyle, nameStyle, m.styles.time, header, timeText, contentWidth)
+			} else {
+				logoIndent = lipgloss.Width(prefix)
+				lines = append(lines, renderChatRow(rowFill, prefix, contentWidth))
+			}
+		}
+
+		var logo []string
+		switch msg.XKeyscore {
+		case 2:
+			logo = []string{
+				" /##   /##",
+				"| ##  / ##",
+				"|  ##/ ##/",
+				" XKEYSCORE",
+				"  >##  ## ",
+				" /##/\\  ##",
+				"| ##  \\ ##",
+				"|__/  |__/",
+			}
+		case 3:
+			logo = []string{
+				" __  __",
+				" \\ \\/ /",
+				"  >  <  XKEYSCORE",
+				" /_/\\_\\",
+			}
+		default:
+			logo = []string{
+				"░██    ░██ ", " ░██  ░██  ", "  ░██░██   ",
+				" XKEYSCORE", "  ░██░██   ", " ░██  ░██  ", "░██    ░██ ",
+			}
+		}
+
+		bright := lipgloss.NewStyle().Foreground(lipgloss.Color("#E6E6E6")).Background(bg)
+		shadow := lipgloss.NewStyle().Foreground(lipgloss.Color("#8993A5")).Background(bg)
+		blueWord := lipgloss.NewStyle().Foreground(lipgloss.Color("#2589FF")).Background(bg).Bold(true)
+		red := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF3B3B")).Background(bg)
+		blueBlock := lipgloss.NewStyle().Foreground(lipgloss.Color("#000000")).Background(lipgloss.Color("#2589FF"))
+
+		if msg.XKeyscore == 3 {
+			// Keep the lettering black; rainbow mode changes only the tile background.
+			boxWidth := 22
+			indent := strings.Repeat(" ", logoIndent)
+			for row, artLine := range logo {
+				padded := "  " + artLine + strings.Repeat(" ", max(0, boxWidth-lipgloss.Width(artLine)-2))
+				if msg.Rainbow {
+					padded = rainbowTileLine(padded, msg.RainbowPhase, row)
+					lines = append(lines, renderChatRow(rowFill, indent+padded, contentWidth))
+				} else {
+					lines = append(lines, renderChatRow(rowFill, indent+blueBlock.Render(padded), contentWidth))
+				}
+			}
+			bottom := strings.Repeat(" ", boxWidth)
+			if msg.Rainbow {
+				bottom = rainbowTileLine(bottom, msg.RainbowPhase, len(logo))
+				lines = append(lines, renderChatRow(rowFill, indent+bottom, contentWidth))
+			} else {
+				lines = append(lines, renderChatRow(rowFill, indent+blueBlock.Render(bottom), contentWidth))
+			}
+			return lines
+		}
+
+		for row, artLine := range logo {
+			var styled strings.Builder
+			styled.WriteString(strings.Repeat(" ", logoIndent))
+			if msg.Rainbow {
+				// Rainbow-colour the artwork while preserving the logo's central
+				// XKEYSCORE word in its original variant-specific colour.
+				wordStart := strings.Index(artLine, "XKEYSCORE")
+				for column, glyph := range []rune(artLine) {
+					if wordStart >= 0 && column >= wordStart && column < wordStart+len("XKEYSCORE") {
+						if msg.XKeyscore == 2 {
+							styled.WriteString(bright.Render(string(glyph)))
+						} else {
+							styled.WriteString(blueWord.Render(string(glyph)))
+						}
+						continue
+					}
+					styled.WriteString(rainbowLogoColor(string(glyph), msg.RainbowPhase, row+column, m.cfg.Background))
+				}
+			} else if msg.XKeyscore == 2 {
+				for _, glyph := range artLine {
+					if glyph == '#' {
+						styled.WriteString(red.Render(string(glyph)))
+					} else {
+						styled.WriteString(bright.Render(string(glyph)))
+					}
+				}
+			} else if strings.Contains(artLine, "XKEYSCORE") {
+				leading := len(artLine) - len(strings.TrimLeft(artLine, " "))
+				styled.WriteString(strings.Repeat(" ", leading))
+				styled.WriteString(blueWord.Render(strings.TrimLeft(artLine, " ")))
+			} else {
+				for _, glyph := range artLine {
+					switch glyph {
+					case '█':
+						styled.WriteString(bright.Render(string(glyph)))
+					case '░':
+						styled.WriteString(shadow.Render(string(glyph)))
+					default:
+						// Explicitly paint negative space with the normal message
+						// background so the terminal default cannot show through.
+						styled.WriteString(bright.Render(string(glyph)))
+					}
+				}
+			}
+			lines = append(lines, renderChatRow(rowFill, styled.String(), contentWidth))
+		}
+		return lines
+	}
 	// In narrow terminals, lead with the username and move the timestamp to
 	// the next row. This preserves room for readable body text instead of
 	// allowing the timestamp + username prefix to consume the entire width.
@@ -2817,6 +3103,9 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 	}
 
 	wrapped := wrapText(msg.Text, contentWidth-prefixWidth)
+	if msg.Rainbow {
+		wrapped = rainbowParts(wrapped, msg.RainbowPhase)
+	}
 	if len(wrapped) == 0 {
 		wrapped = []string{""}
 	}
@@ -2863,7 +3152,10 @@ func renderCompactMessage(
 			lines = append(lines, renderChatRow(rowFill, nameStyle.Render(part), contentWidth))
 		}
 		lines = append(lines, renderChatRow(rowFill, nameStyle.Render(nameParts[len(nameParts)-1]+":"), contentWidth))
-		wrapped := wrapTextVariable(msg.Text, 0, contentWidth-lipgloss.Width(stamp)-1, contentWidth)
+			wrapped := wrapTextVariable(msg.Text, 0, contentWidth-lipgloss.Width(stamp)-1, contentWidth)
+		if msg.Rainbow {
+			wrapped = rainbowParts(wrapped, msg.RainbowPhase)
+		}
 		if len(wrapped) < 2 {
 			lines = append(lines, renderChatRow(rowFill, timeStyle.Render(stamp), contentWidth))
 			return lines
@@ -2882,6 +3174,9 @@ func renderCompactMessage(
 	label := nameParts[0] + ": "
 	firstWidth := contentWidth - lipgloss.Width(label)
 	wrapped := wrapTextVariable(msg.Text, firstWidth, contentWidth-lipgloss.Width(stamp)-1, contentWidth)
+	if msg.Rainbow {
+		wrapped = rainbowParts(wrapped, msg.RainbowPhase)
+	}
 	if len(wrapped) == 0 {
 		wrapped = []string{""}
 	}
