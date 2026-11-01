@@ -254,30 +254,20 @@ type roomState struct {
 }
 
 type server struct {
-	mu         sync.Mutex
-	rooms      map[string]*roomState
-	addHistory bool
+	mu    sync.Mutex
+	rooms map[string]*roomState
 }
 
-func newServer(addHistory bool) *server {
-	return &server{
-		rooms:      make(map[string]*roomState),
-		addHistory: addHistory,
-	}
+func newServer() *server {
+	return &server{rooms: make(map[string]*roomState)}
 }
 
-func (s *server) room(name string) *roomState {
-	r, ok := s.rooms[name]
-
-	if !ok {
-		r = &roomState{
-			clients:       make(map[string]*serverClient),
-			historyEnabled: s.addHistory,
-		}
-
-		s.rooms[name] = r
+func (s *server) room(name string, historyEnabled bool) *roomState {
+	r := &roomState{
+		clients:       make(map[string]*serverClient),
+		historyEnabled: historyEnabled,
 	}
-
+	s.rooms[name] = r
 	return r
 }
 
@@ -393,7 +383,24 @@ func (s *server) handle(conn net.Conn) {
 	}
 
 	s.mu.Lock()
-	room := s.room(roomName)
+	room, exists := s.rooms[roomName]
+	if exists && room.historyEnabled != hello.AddHistory {
+		existingPolicy := "disabled"
+		instruction := "Remove the --add-history flag and relaunch to join it."
+		if room.historyEnabled {
+			existingPolicy = "enabled"
+			instruction = "Relaunch with --add-history to join it."
+		}
+		_ = encoder.Encode(Packet{
+			Type: "history_mismatch",
+			Text: fmt.Sprintf("This room already exists with history %s. %s", existingPolicy, instruction),
+		})
+		s.mu.Unlock()
+		return
+	}
+	if !exists {
+		room = s.room(roomName, hello.AddHistory)
+	}
 	user.Name = uniqueUserName(room, user.Name)
 	client.user = user
 	room.clients[client.id] = client
@@ -421,6 +428,14 @@ func (s *server) handle(conn net.Conn) {
 				break
 			}
 		}
+	}
+	if writeErr == nil && historyEnabled {
+		writeErr = client.enc.Encode(Packet{
+			Type: "system",
+			Room: roomName,
+			Text: "History is enabled for this room.",
+			Time: time.Now().UTC(),
+		})
 	}
 	if writeErr == nil {
 		// Mark the end of replay so history does not trigger notifications.
@@ -524,8 +539,8 @@ func (s *server) handle(conn net.Conn) {
 
 			s.mu.Lock()
 
-			room := s.room(roomName)
-			if room.historyEnabled {
+			room := s.rooms[roomName]
+			if room != nil && room.historyEnabled {
 				room.messages = append(room.messages, message)
 			}
 
@@ -596,8 +611,8 @@ func (s *server) handle(conn net.Conn) {
 			}
 			action := Packet{Type: "me", Room: roomName, User: user, Text: text, Time: time.Now().UTC()}
 			s.mu.Lock()
-			room := s.room(roomName)
-			if room.historyEnabled {
+			room := s.rooms[roomName]
+			if room != nil && room.historyEnabled {
 				room.messages = append(room.messages, action)
 			}
 			client.typing = false
@@ -771,7 +786,7 @@ func listenUnixSocket() (net.Listener, error) {
 	return net.Listen("unix", socketPath)
 }
 
-func runServer(addHistory bool) error {
+func runServer() error {
 	listener, err := listenUnixSocket()
 	if err != nil {
 		return err
@@ -798,7 +813,7 @@ func runServer(addHistory bool) error {
 		return err
 	}
 
-	s := newServer(addHistory)
+	s := newServer()
 
 	unixListener, ok := listener.(*net.UnixListener)
 
@@ -862,10 +877,12 @@ func cleanRoom(room string) string {
 // -----------------------------------------------------------------------------
 
 type wireClient struct {
-	conn    net.Conn
-	enc     *json.Encoder
-	decoder *json.Decoder
-	mu      sync.Mutex
+	conn           net.Conn
+	enc            *json.Encoder
+	decoder        *json.Decoder
+	initialPacket  Packet
+	hasInitial     bool
+	mu             sync.Mutex
 }
 
 func (c *wireClient) send(
@@ -889,10 +906,10 @@ func connectToServer(
 	)
 
 	if err != nil {
-		// Start the internal server with its default policy. History is a
-		// daemon setting and must never be enabled by an ordinary client.
-		args := []string{"--daemon"}
-		cmd := exec.Command(os.Args[0], args...)
+		// Start an internal server process. The first client handshake chooses
+		// the new room's history policy.
+		cmd := exec.Command(os.Args[0])
+		cmd.Env = append(os.Environ(), "ZEALOT_INTERNAL_DAEMON=1")
 
 		devNull, openErr := os.OpenFile(
 			os.DevNull,
@@ -952,12 +969,36 @@ func connectToServer(
 	if err := client.send(Packet{
 		Type:      "hello",
 		Room:      room,
-		User:      user,
-		Ephemeral: ephemeral,
+		User:       user,
+		AddHistory: addHistory,
+		Ephemeral:  ephemeral,
 	}); err != nil {
 		_ = conn.Close()
 		return nil, err
 	}
+
+	// Validate the room policy before returning to the caller, so a mismatch
+	// is reported in the terminal without starting the TUI.
+	if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	var response Packet
+	if err := client.decoder.Decode(&response); err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("could not complete the Zealot handshake: %w", err)
+	}
+	_ = conn.SetReadDeadline(time.Time{})
+	if response.Type == "history_mismatch" {
+		_ = conn.Close()
+		return nil, errors.New(response.Text)
+	}
+	if response.Type != "welcome" {
+		_ = conn.Close()
+		return nil, fmt.Errorf("unexpected response from Zealot: %s", response.Type)
+	}
+	client.initialPacket = response
+	client.hasInitial = true
 
 	return client, nil
 }
@@ -1192,6 +1233,10 @@ func readPacket(
 	client *wireClient,
 ) tea.Cmd {
 	return func() tea.Msg {
+		if client.hasInitial {
+			client.hasInitial = false
+			return messageReceivedMsg(client.initialPacket)
+		}
 		var packet Packet
 
 		if err := client.decoder.Decode(&packet); err != nil {
@@ -3270,15 +3315,10 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen 
 // -----------------------------------------------------------------------------
 
 func main() {
-	daemon := flag.Bool(
-		"daemon",
-		false,
-		"run the internal Zealot daemon",
-	)
 	addHistory := flag.Bool(
 		"add-history",
 		false,
-		"keep and replay in-memory room chat history (daemon only)",
+		"enable in-memory history for a new room (must match an existing room)",
 	)
 
 	roomFlag := flag.String(
@@ -3289,17 +3329,11 @@ func main() {
 
 	flag.Parse()
 
-	if *daemon {
-		if err := runServer(*addHistory); err != nil {
+	if os.Getenv("ZEALOT_INTERNAL_DAEMON") == "1" {
+		if err := runServer(); err != nil {
 			os.Exit(1)
 		}
-
 		return
-	}
-
-	if *addHistory {
-		fmt.Fprintln(os.Stderr, "--add-history is a daemon-only option; start Zealot with --daemon --add-history to enable room history")
-		os.Exit(2)
 	}
 
 	room := cleanRoom(*roomFlag)
