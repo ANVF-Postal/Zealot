@@ -280,7 +280,7 @@ func (m model) Update(
 			_ = m.client.send(Packet{Type: "who", Room: m.room})
 			return m, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg { return usersAnimationMsg{} })
 		}
-		if m.usersOpen && mouse.Button == tea.MouseLeft && mouse.X == m.width-2 && m.maxUsersScroll() > 0 {
+		if m.usersOpen && mouse.Button == tea.MouseLeft && mouse.X == m.chatScrollbarX() && m.maxUsersScroll() > 0 {
 			visible := m.usersPanelHeight()
 			firstTrackY := 3
 			topArrowY := 2 // aligned with the Online users heading
@@ -310,7 +310,7 @@ func (m model) Update(
 				return m, nil
 			}
 		}
-		if m.splashOpen && mouse.Button == tea.MouseLeft && mouse.X == m.width-2 && m.maxSplashScroll() > 0 {
+		if m.splashOpen && mouse.Button == tea.MouseLeft && mouse.X == m.chatScrollbarX() && m.maxSplashScroll() > 0 {
 			visible := m.splashPanelHeight()
 			firstTrackY := 3
 			topArrowY := 2
@@ -561,10 +561,6 @@ func (m model) Update(
 	// The textarea must receive the key event or the character won't
 	// actually appear in the input box.
 	// -------------------------------------------------------------------------
-
-	if m.splashOpen {
-		return m, nil
-	}
 
 	var inputCmd tea.Cmd
 
