@@ -36,22 +36,26 @@ var appVersion = "0.0.0-dev"
 // -----------------------------------------------------------------------------
 
 type Config struct {
-	Name        string
-	UserColor   string
-	Bell        bool
-	InputHeight int
-	Background  string
-	TextColor   string
-	BorderColor string
-	AccentColor string
+	Name             string
+	UserColor        string
+	Bell             bool
+	InputHeight      int
+	AdaptiveInput    bool
+	InputMaxPercent  int
+	Background       string
+	TextColor        string
+	BorderColor      string
+	AccentColor      string
 }
 
 func defaultConfig() Config {
 	return Config{
 		Name:        "Anonymous",
-		Bell:        true,
-		InputHeight: 1,
-		UserColor:   "#7CFFCB",
+		Bell:            true,
+		InputHeight:     1,
+		AdaptiveInput:   false,
+		InputMaxPercent: 30,
+		UserColor:       "#7CFFCB",
 		Background:  "#111318",
 		TextColor:   "#E6E6E6",
 		BorderColor: "#444B5A",
@@ -132,6 +136,14 @@ func loadConfig() (Config, error) {
 			if height, err := strconv.Atoi(value); err == nil {
 				cfg.InputHeight = height
 			}
+		case "adaptive_input":
+			if enabled, err := strconv.ParseBool(value); err == nil {
+				cfg.AdaptiveInput = enabled
+			}
+		case "input_max_percent":
+			if percent, err := strconv.Atoi(value); err == nil {
+				cfg.InputMaxPercent = percent
+			}
 		}
 	}
 
@@ -140,6 +152,12 @@ func loadConfig() (Config, error) {
 	}
 	if cfg.InputHeight > 8 {
 		cfg.InputHeight = 8
+	}
+	if cfg.InputMaxPercent < 1 {
+		cfg.InputMaxPercent = 1
+	}
+	if cfg.InputMaxPercent > 100 {
+		cfg.InputMaxPercent = 100
 	}
 
 	if strings.TrimSpace(cfg.Name) == "" {
@@ -161,8 +179,14 @@ user_color = "#7CFFCB"
 
 bell = true
 
-# Visible text rows in the composer (1-8). Longer messages wrap onto new rows.
+# Minimum visible text rows in the composer (1-8).
 input_height = 1
+
+# Grow the composer as you type (true/false).
+adaptive_input = false
+
+# Maximum share of terminal height used by the composer (1-100).
+input_max_percent = 30
 
 background = "#111318"
 text_color = "#E6E6E6"
@@ -183,11 +207,13 @@ name = %q
 user_color = %q
 bell = %t
 input_height = %d
+adaptive_input = %t
+input_max_percent = %d
 background = %q
 text_color = %q
 border_color = %q
 accent_color = %q
-`, cfg.Name, cfg.UserColor, cfg.Bell, cfg.InputHeight, cfg.Background, cfg.TextColor, cfg.BorderColor, cfg.AccentColor)
+`, cfg.Name, cfg.UserColor, cfg.Bell, cfg.InputHeight, cfg.AdaptiveInput, cfg.InputMaxPercent, cfg.Background, cfg.TextColor, cfg.BorderColor, cfg.AccentColor)
 	return os.WriteFile(path, []byte(content), 0600)
 }
 
@@ -1306,10 +1332,10 @@ func (m model) Update(
 		m.width = sizeMsg.Width
 		m.height = sizeMsg.Height
 		m.resizeInput()
-		if oldWidth != m.width || !m.renderCacheValid {
+			if oldWidth != m.width || !m.renderCacheValid {
 			m.rebuildMessageCache()
-			m.clampScroll()
 		}
+		m.clampScroll()
 		// The roster's row count can change when the terminal width changes,
 		// and its viewport changes when the height changes. Keep the saved
 		// offset within the new valid range so clipped names reappear naturally
@@ -1478,7 +1504,7 @@ func (m model) Update(
 	case tea.MouseClickMsg:
 		// Footer actions occupy the final terminal row. Their hitboxes are
 		// calculated by the same layout helper used to render the row.
-		if mouse.Button == tea.MouseLeft && mouse.Y == m.height-1 {
+		if m.statusBarVisible() && mouse.Button == tea.MouseLeft && mouse.Y == m.height-1 {
 			_, targets := m.renderStatusBar(m.usersOpen, m.splashOpen)
 			if targets.hasSend && mouse.X >= targets.sendStart && mouse.X < targets.sendEnd {
 				m.sendCurrentMessage()
@@ -1849,6 +1875,11 @@ func (m model) Update(
 	if !handledNewline {
 		m.input, inputCmd = m.input.Update(msg)
 	}
+	if m.cfg.AdaptiveInput {
+		m.clampScroll()
+		m.clampUsersScroll()
+		m.clampSplashScroll()
+	}
 
 	// -------------------------------------------------------------------------
 	// Typing detection
@@ -1967,6 +1998,9 @@ func (m *model) sendCurrentMessage() {
 
 	m.sendMessage(text)
 	m.input.Reset()
+	m.clampScroll()
+	m.clampUsersScroll()
+	m.clampSplashScroll()
 	m.stopCursorBlink()
 
 	if m.isTyping {
@@ -2281,40 +2315,91 @@ func (m *model) clampUsersScroll() {
 // UI layout
 // -----------------------------------------------------------------------------
 
+// statusBarVisible reports whether the terminal is tall enough to keep the
+// keyboard-shortcut row while preserving a message row and typing indicator.
+func (m model) statusBarVisible() bool {
+	return m.height >= 9
+}
+
+// resizeInput recalculates the textarea width and its available height.
+// In adaptive mode, InputHeight is the minimum and content may grow upward.
 func (m *model) resizeInput() {
-	if m.width < 20 {
-		return
+	baseHeight := m.cfg.InputHeight
+	if baseHeight < 1 {
+		baseHeight = 1
+	}
+	if baseHeight > 8 {
+		baseHeight = 8
 	}
 
-	width := m.width - 6 // Box border + padding + the two-column first-row prompt.
+	// Keep two chat rows available: one for messages and one for typing state.
+	fixedChrome := 5 // Header + the two boxes' borders.
+	if m.statusBarVisible() {
+		fixedChrome++
+	}
+	layoutMax := m.height - fixedChrome - 2
+	if layoutMax < 1 {
+		layoutMax = 1
+	}
+	if baseHeight > layoutMax {
+		baseHeight = layoutMax
+	}
 
+	if m.cfg.AdaptiveInput {
+		percent := m.cfg.InputMaxPercent
+		if percent < 1 {
+			percent = 1
+		}
+		if percent > 100 {
+			percent = 100
+		}
+
+		// The percentage applies to the full composer, including its borders.
+		maxHeight := (m.height*percent)/100 - 2
+		if maxHeight < baseHeight {
+			maxHeight = baseHeight
+		}
+		if maxHeight > layoutMax {
+			maxHeight = layoutMax
+		}
+
+		m.input.DynamicHeight = true
+		m.input.MinHeight = baseHeight
+		m.input.MaxHeight = maxHeight
+	} else {
+		m.input.DynamicHeight = false
+		m.input.MinHeight = baseHeight
+		m.input.MaxHeight = 0
+		m.input.SetHeight(baseHeight)
+	}
+
+	// Preserve the previous narrow-terminal width behavior, but still call
+	// SetWidth so DynamicHeight recalculates after a vertical resize.
+	width := m.input.Width()
+	if m.width >= 20 {
+		width = m.width - 6 // Box border + padding + the two-column first-row prompt.
+	}
 	if width < 10 {
 		width = 10
 	}
-
 	m.input.SetWidth(width)
 }
 
 func (m model) messageHeight() int {
-	// Header:       1 line
-	// Chat:         variable (includes the permanent typing line)
-	// Input box: configured content rows plus its top/bottom borders
-	// Status:       1 line
-	//
-	// Lip Gloss Height() sizes the content area; borders add their own rows.
-	inputHeight := m.cfg.InputHeight
+	// The chat pane takes what remains after the header, composer, borders,
+	// and the keyboard-shortcut row when that row is visible.
+	inputHeight := m.input.Height()
 	if inputHeight < 1 {
 		inputHeight = 1
 	}
-	if inputHeight > 8 {
-		inputHeight = 8
+	fixedChrome := 5
+	if m.statusBarVisible() {
+		fixedChrome++
 	}
-	h := m.height - inputHeight - 6
-
-	if h < 3 {
-		return 3
+	h := m.height - inputHeight - fixedChrome
+	if h < 2 {
+		return 2
 	}
-
 	return h
 }
 
@@ -3445,28 +3530,32 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen 
 			inputView[i] = line + inputBackground.Render(strings.Repeat(" ", remaining))
 		}
 	}
-	// The textarea is configured for exactly InputHeight rows; normalize the
-	// slice defensively so a trailing newline never creates an extra row.
-	if len(inputView) > m.cfg.InputHeight {
-		inputView = inputView[:m.cfg.InputHeight]
+	inputHeight := max(1, m.input.Height())
+	if len(inputView) > inputHeight {
+		inputView = inputView[:inputHeight]
 	}
-	for len(inputView) < m.cfg.InputHeight {
+	for len(inputView) < inputHeight {
 		inputView = append(inputView, inputBackground.Render(strings.Repeat(" ", inputInnerWidth)))
 	}
 	inputContent := strings.Join(inputView, "\n")
 	inputBox := m.styles.inputBox.
 		Width(m.width).
-		Height(m.cfg.InputHeight).
+		Height(inputHeight).
 		Render(inputContent)
 
 	// -------------------------------------------------------------------------
 	// Status
 	// -------------------------------------------------------------------------
 
-	statusText, _ := m.renderStatusBar(usersOpen, splashOpen)
-	status := m.styles.status.
-		Width(m.width).
-		Render(statusText)
+	parts := []string{header, chatBox, inputBox}
+	if m.statusBarVisible() {
+		statusText, _ := m.renderStatusBar(usersOpen, splashOpen)
+		status := m.styles.status.
+			Width(m.width).
+			Render(statusText)
+		parts = append(parts, status)
+	}
+
 	// -------------------------------------------------------------------------
 	// Full application
 	// -------------------------------------------------------------------------
@@ -3474,15 +3563,7 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen 
 	content := m.styles.app.
 		Width(m.width).
 		Height(m.height).
-		Render(
-			lipgloss.JoinVertical(
-				lipgloss.Left,
-				header,
-				chatBox,
-				inputBox,
-				status,
-			),
-		)
+		Render(lipgloss.JoinVertical(lipgloss.Left, parts...))
 	return appView(content)
 }
 
