@@ -1019,6 +1019,10 @@ type typingClearMsg struct {
 
 type notificationsReadyMsg struct{}
 
+type quitConfirmTimeoutMsg struct {
+	generation int
+}
+
 type scrollbarHoldMsg struct{ generation int }
 type usersScrollbarHoldMsg struct{ generation int }
 type splashScrollbarHoldMsg struct{ generation int }
@@ -1138,6 +1142,9 @@ type model struct {
 	connected          bool
 	status             string
 	notificationsReady bool
+
+	quitConfirm           bool
+	quitConfirmGeneration int
 
 	typingGeneration int
 	isTyping         bool
@@ -1434,6 +1441,13 @@ func (m model) Update(
 		return m, nil
 	}
 
+	if timeoutMsg, ok := msg.(quitConfirmTimeoutMsg); ok {
+		if timeoutMsg.generation == m.quitConfirmGeneration {
+			m.quitConfirm = false
+		}
+		return m, nil
+	}
+
 	if clearMsg, ok := msg.(typingClearMsg); ok {
 		if clearMsg.generation == m.typingGeneration {
 			m.isTyping = false
@@ -1449,6 +1463,30 @@ func (m model) Update(
 
 	switch mouse := msg.(type) {
 	case tea.MouseClickMsg:
+		// Footer actions occupy the final terminal row. Their hitboxes are
+		// calculated by the same layout helper used to render the row.
+		if mouse.Button == tea.MouseLeft && mouse.Y == m.height-1 {
+			_, targets := m.renderStatusBar(m.usersOpen, m.splashOpen)
+			if targets.hasSend && mouse.X >= targets.sendStart && mouse.X < targets.sendEnd {
+				m.sendCurrentMessage()
+				return m, nil
+			}
+			if mouse.X >= targets.quitStart && mouse.X < targets.quitEnd {
+				if m.quitConfirm {
+					m.quitConfirm = false
+					m.quitConfirmGeneration++
+					m.sendTyping(false)
+					_ = m.client.conn.Close()
+					return m, tea.Quit
+				}
+				m.quitConfirm = true
+				m.quitConfirmGeneration++
+				generation := m.quitConfirmGeneration
+				return m, tea.Tick(5*time.Second, func(time.Time) tea.Msg {
+					return quitConfirmTimeoutMsg{generation: generation}
+				})
+			}
+		}
 		if (m.usersOpen || m.splashOpen) && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width("[X]") && mouse.X < m.width {
 			m.usersOpen = false
 			m.splashOpen = false
@@ -1786,25 +1824,7 @@ func (m model) Update(
 			handledNewline = true
 
 		case "enter":
-			text := strings.TrimSpace(
-				m.input.Value(),
-			)
-
-			if text != "" && m.connected {
-				m.sendMessage(text)
-
-				m.input.Reset()
-
-				// Sending leaves the input empty, so return
-				// the cursor to its static state.
-				m.stopCursorBlink()
-
-				if m.isTyping {
-					m.isTyping = false
-					m.sendTyping(false)
-				}
-			}
-
+			m.sendCurrentMessage()
 			return m, nil
 		}
 	}
@@ -1904,6 +1924,23 @@ func (m model) sendTyping(
 		User:   m.user,
 		Typing: typing,
 	})
+}
+
+// sendCurrentMessage is shared by Enter and the clickable footer action.
+func (m *model) sendCurrentMessage() {
+	text := strings.TrimSpace(m.input.Value())
+	if text == "" || !m.connected {
+		return
+	}
+
+	m.sendMessage(text)
+	m.input.Reset()
+	m.stopCursorBlink()
+
+	if m.isTyping {
+		m.isTyping = false
+		m.sendTyping(false)
+	}
 }
 
 func (m *model) sendMessage(text string) {
@@ -3213,6 +3250,92 @@ func (m model) renderSplashPanel() string {
 		Render(strings.Join(rows, "\n"))
 }
 
+type footerTargets struct {
+	quitStart int
+	quitEnd   int
+	sendStart int
+	sendEnd   int
+	hasSend   bool
+}
+
+// renderStatusBar keeps the ordinary shortcuts on the left and anchors the
+// send action to the right edge. The same measured layout supplies mouse
+// hitboxes, so clickable areas stay aligned with the rendered text.
+func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTargets) {
+	availableWidth := max(1, m.width-1) // final cell is the Braille fill sentinel
+	prefix := " " + m.status + "   "
+	if usersOpen {
+		prefix += "PgUp/PgDn or mouse wheel: scroll  •  Esc/Ctrl+O: close  •  Ctrl+C: "
+	} else if splashOpen {
+		prefix += "PgUp/PgDn or mouse wheel: scroll  •  Esc: close  •  Ctrl+C: "
+	} else {
+		prefix += "PgUp/PgDn: scroll  •  Ctrl+C: "
+	}
+
+	quitText := "quit"
+	if m.quitConfirm {
+		quitText = "Sure?"
+	}
+
+	targets := footerTargets{}
+	includeSend := !usersOpen && !splashOpen
+	sendPrefix := "Enter: "
+	sendText := "[Send]"
+	quitWidth := lipgloss.Width(quitText)
+	fullSendWidth := lipgloss.Width(sendPrefix + sendText)
+	shortSendWidth := lipgloss.Width(sendText)
+
+	// Drop only the explanatory "Enter:" label when the full action would
+	// crowd the existing shortcuts. The button itself remains right-aligned.
+	if includeSend && lipgloss.Width(prefix)+quitWidth+fullSendWidth > availableWidth {
+		sendPrefix = ""
+	}
+	sendWidth := 0
+	if includeSend {
+		sendWidth = lipgloss.Width(sendPrefix) + shortSendWidth
+		if availableWidth < quitWidth+sendWidth {
+			// At exceptionally small widths, preserve the quit action rather
+			// than drawing overlapping footer controls.
+			includeSend = false
+			sendWidth = 0
+		}
+	}
+
+	maxPrefixWidth := availableWidth - quitWidth - sendWidth
+	if maxPrefixWidth < 0 {
+		maxPrefixWidth = 0
+	}
+	prefix = truncateANSI(prefix, maxPrefixWidth)
+
+	leftWidth := lipgloss.Width(prefix) + quitWidth
+	gapWidth := availableWidth - leftWidth - sendWidth
+	if gapWidth < 0 {
+		gapWidth = 0
+	}
+
+	targets.quitStart = lipgloss.Width(prefix)
+	targets.quitEnd = targets.quitStart + quitWidth
+	var line strings.Builder
+	line.WriteString(m.styles.status.Render(prefix))
+	line.WriteString(m.styles.accent.Render(quitText))
+	line.WriteString(m.styles.status.Render(strings.Repeat(" ", gapWidth)))
+
+	if includeSend {
+		targets.hasSend = true
+		targets.sendStart = availableWidth - sendWidth
+		targets.sendEnd = availableWidth
+		if sendPrefix != "" {
+			line.WriteString(m.styles.status.Render(sendPrefix))
+		}
+		line.WriteString(m.styles.accent.Render(sendText))
+	}
+
+	// A final Braille blank is a real one-cell glyph (but renders visually
+	// blank), preventing terminal renderers from trimming the trailing fill.
+	line.WriteString("⠀")
+	return line.String(), targets
+}
+
 // renderViewWithChat keeps the application shell unchanged while swapping the
 // contents of the chat pane for the online roster or splash page.
 func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen bool) tea.View {
@@ -3273,23 +3396,7 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen 
 	// Status
 	// -------------------------------------------------------------------------
 
-	shortcuts := "Enter: send  •  PgUp/PgDn: scroll  •  Ctrl+C: quit"
-	if usersOpen {
-		shortcuts = "PgUp/PgDn or mouse wheel: scroll  •  Esc/Ctrl+O: close  •  Ctrl+C: quit"
-	} else if splashOpen {
-		shortcuts = "PgUp/PgDn or mouse wheel: scroll  •  Esc: close  •  Ctrl+C: quit"
-	}
-	statusText := " " + m.status + "   " + shortcuts
-	// Keep the row exactly terminal-wide. A final Braille blank is a real
-	// one-cell glyph (but renders visually blank), so terminal renderers do not
-	// trim the trailing fill spaces and leave stale/default-black cells behind.
-	statusText = truncateANSI(statusText, max(1, m.width-1))
-	if remaining := m.width - 1 - lipgloss.Width(statusText); remaining > 0 {
-		statusText += strings.Repeat(" ", remaining)
-	}
-	if m.width > 0 {
-		statusText += "⠀" // U+2800 BRAILLE PATTERN BLANK
-	}
+	statusText, _ := m.renderStatusBar(usersOpen, splashOpen)
 	status := m.styles.status.
 		Width(m.width).
 		Render(statusText)
