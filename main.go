@@ -394,9 +394,6 @@ func (s *server) handle(conn net.Conn) {
 
 	s.mu.Lock()
 	room := s.room(roomName)
-	if hello.AddHistory {
-		room.historyEnabled = true
-	}
 	user.Name = uniqueUserName(room, user.Name)
 	client.user = user
 	room.clients[client.id] = client
@@ -447,8 +444,8 @@ func (s *server) handle(conn net.Conn) {
 		return
 	}
 
-	// History can be enabled by this connection's hello packet. Broadcast
-	// the authoritative room state so clients already in the room update too.
+	// Broadcast the authoritative room state so clients already in the room
+	// receive the same daemon-controlled setting as the newly joined client.
 	s.broadcast(roomName, Packet{
 		Type:       "history_state",
 		Room:       roomName,
@@ -892,11 +889,9 @@ func connectToServer(
 	)
 
 	if err != nil {
-		// Start the internal server because nobody is currently running it.
+		// Start the internal server with its default policy. History is a
+		// daemon setting and must never be enabled by an ordinary client.
 		args := []string{"--daemon"}
-		if addHistory {
-			args = append(args, "--add-history")
-		}
 		cmd := exec.Command(os.Args[0], args...)
 
 		devNull, openErr := os.OpenFile(
@@ -955,11 +950,10 @@ func connectToServer(
 	}
 
 	if err := client.send(Packet{
-		Type:       "hello",
-		Room:       room,
-		User:       user,
-		AddHistory: addHistory,
-		Ephemeral:  ephemeral,
+		Type:      "hello",
+		Room:      room,
+		User:      user,
+		Ephemeral: ephemeral,
 	}); err != nil {
 		_ = conn.Close()
 		return nil, err
@@ -3301,6 +3295,11 @@ func main() {
 		}
 
 		return
+	}
+
+	if *addHistory {
+		fmt.Fprintln(os.Stderr, "--add-history is a daemon-only option; start Zealot with --daemon --add-history to enable room history")
+		os.Exit(2)
 	}
 
 	room := cleanRoom(*roomFlag)
