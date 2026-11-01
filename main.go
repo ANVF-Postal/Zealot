@@ -1249,6 +1249,7 @@ func (m model) Update(
 		// offset within the new valid range so clipped names reappear naturally
 		// when the window is expanded again.
 		m.clampUsersScroll()
+		m.clampSplashScroll()
 		m.usersScrollDragging = false
 		m.usersScrollbarHoldDirection = 0
 		m.usersScrollbarHoldGeneration++
@@ -1537,7 +1538,7 @@ func (m model) Update(
 			m.setUsersScrollFromThumbTop(target)
 			return m, nil
 		}
-		if m.scrollDragging && !m.usersOpen {
+		if m.scrollDragging && !m.usersOpen && !m.splashOpen {
 			_, thumbHeight, trackHeight := m.scrollbarThumb()
 			target := mouse.Y - 3 - m.scrollDragOffset
 			if target < 0 { target = 0 }
