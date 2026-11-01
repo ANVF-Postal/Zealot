@@ -271,7 +271,8 @@ func (s *server) room(name string) *roomState {
 
 	if !ok {
 		r = &roomState{
-			clients: make(map[string]*serverClient),
+			clients:       make(map[string]*serverClient),
+			historyEnabled: s.addHistory,
 		}
 
 		s.rooms[name] = r
@@ -445,6 +446,14 @@ func (s *server) handle(conn net.Conn) {
 		s.removeClient(client)
 		return
 	}
+
+	// History can be enabled by this connection's hello packet. Broadcast
+	// the authoritative room state so clients already in the room update too.
+	s.broadcast(roomName, Packet{
+		Type:       "history_state",
+		Room:       roomName,
+		AddHistory: historyEnabled,
+	})
 
 	if !client.ephemeral {
 		s.systemMessage(
@@ -1308,6 +1317,9 @@ func (m model) Update(
 			if packet.User.Name != "" {
 				m.user = packet.User
 			}
+			m.historyEnabled = packet.AddHistory
+
+		case "history_state":
 			m.historyEnabled = packet.AddHistory
 
 		case "typing":
