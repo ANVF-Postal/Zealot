@@ -562,11 +562,13 @@ func (s *server) handle(conn net.Conn) {
 			}
 
 			message := Packet{
-				Type: "message",
-				Room: roomName,
-				User: user,
-				Text: text,
-				Time: time.Now().UTC(),
+				Type:        "message",
+				Room:        roomName,
+				User:        user,
+				Text:        text,
+				Time:        time.Now().UTC(),
+				Rainbow:     packet.Rainbow,
+				RainbowPhase: packet.RainbowPhase,
 			}
 
 			s.mu.Lock()
