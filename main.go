@@ -11,9 +11,6 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// appVersion can be set by release builds with -ldflags "-X main.appVersion=1.2.3".
-var appVersion = "0.0.0-dev"
-
 // printZealotError uses the same configured accent as the ZEALOT header.
 func printZealotError(cfg Config, err error) {
 	prefix := lipgloss.NewStyle().
