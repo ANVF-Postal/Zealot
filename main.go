@@ -40,8 +40,8 @@ type Config struct {
 	UserColor        string
 	Bell             bool
 	InputHeight      int
-	AdaptiveInput    bool
-	InputMaxPercent  int
+	AdaptiveHeight    bool
+	HeightMaxPercent  int
 	Background       string
 	TextColor        string
 	BorderColor      string
@@ -53,8 +53,8 @@ func defaultConfig() Config {
 		Name:            "Anonymous",
 		Bell:            true,
 		InputHeight:     1,
-		AdaptiveInput:   false,
-		InputMaxPercent: 30,
+		AdaptiveHeight:   false,
+		HeightMaxPercent: 30,
 		UserColor:       "#7CFFCB",
 		Background:      "#111318",
 		TextColor:       "#E6E6E6",
@@ -136,13 +136,13 @@ func loadConfig() (Config, error) {
 			if height, err := strconv.Atoi(value); err == nil {
 				cfg.InputHeight = height
 			}
-		case "adaptive_input":
+		case "adaptive_height", "adaptive_input": // Keep accepting the earlier key as an alias.
 			if enabled, err := strconv.ParseBool(value); err == nil {
-				cfg.AdaptiveInput = enabled
+				cfg.AdaptiveHeight = enabled
 			}
-		case "input_max_percent":
+		case "height_max_percent", "input_max_percent": // Keep accepting the earlier key as an alias.
 			if percent, err := strconv.Atoi(value); err == nil {
-				cfg.InputMaxPercent = percent
+				cfg.HeightMaxPercent = percent
 			}
 		}
 	}
@@ -153,11 +153,11 @@ func loadConfig() (Config, error) {
 	if cfg.InputHeight > 8 {
 		cfg.InputHeight = 8
 	}
-	if cfg.InputMaxPercent < 1 {
-		cfg.InputMaxPercent = 1
+	if cfg.HeightMaxPercent < 1 {
+		cfg.HeightMaxPercent = 1
 	}
-	if cfg.InputMaxPercent > 100 {
-		cfg.InputMaxPercent = 100
+	if cfg.HeightMaxPercent > 100 {
+		cfg.HeightMaxPercent = 100
 	}
 
 	if strings.TrimSpace(cfg.Name) == "" {
@@ -183,10 +183,10 @@ bell = true
 input_height = 1
 
 # Grow the composer as you type (true/false).
-adaptive_input = false
+adaptive_height = false
 
 # Maximum share of terminal height used by the composer (1-100).
-input_max_percent = 30
+height_max_percent = 30
 
 background = "#111318"
 text_color = "#E6E6E6"
@@ -207,13 +207,13 @@ name = %q
 user_color = %q
 bell = %t
 input_height = %d
-adaptive_input = %t
-input_max_percent = %d
+adaptive_height = %t
+height_max_percent = %d
 background = %q
 text_color = %q
 border_color = %q
 accent_color = %q
-`, cfg.Name, cfg.UserColor, cfg.Bell, cfg.InputHeight, cfg.AdaptiveInput, cfg.InputMaxPercent, cfg.Background, cfg.TextColor, cfg.BorderColor, cfg.AccentColor)
+`, cfg.Name, cfg.UserColor, cfg.Bell, cfg.InputHeight, cfg.AdaptiveHeight, cfg.HeightMaxPercent, cfg.Background, cfg.TextColor, cfg.BorderColor, cfg.AccentColor)
 	return os.WriteFile(path, []byte(content), 0600)
 }
 
@@ -1875,7 +1875,7 @@ func (m model) Update(
 	if !handledNewline {
 		m.input, inputCmd = m.input.Update(msg)
 	}
-	if m.cfg.AdaptiveInput {
+	if m.cfg.AdaptiveHeight {
 		m.clampScroll()
 		m.clampUsersScroll()
 		m.clampSplashScroll()
@@ -2315,14 +2315,19 @@ func (m *model) clampUsersScroll() {
 // UI layout
 // -----------------------------------------------------------------------------
 
-// statusBarVisible reports whether the terminal is tall enough to keep the
-// keyboard-shortcut row while preserving a message row and typing indicator.
+// statusBarVisible keeps the shortcut row until the composer has reached
+// one content row. Static mode reserves a slightly larger chat viewport, so
+// its final compact layout is chat-first; adaptive mode retains two chat rows.
 func (m model) statusBarVisible() bool {
-	return m.height >= 9
+	if m.cfg.AdaptiveHeight {
+		return m.height >= 9
+	}
+	return m.height >= 10
 }
 
 // resizeInput recalculates the textarea width and its available height.
-// In adaptive mode, InputHeight is the minimum and content may grow upward.
+// Static mode protects a three-row chat viewport before reducing the composer.
+// Adaptive mode keeps two chat rows while allowing the composer to grow.
 func (m *model) resizeInput() {
 	baseHeight := m.cfg.InputHeight
 	if baseHeight < 1 {
@@ -2332,12 +2337,18 @@ func (m *model) resizeInput() {
 		baseHeight = 8
 	}
 
-	// Keep two chat rows available: one for messages and one for typing state.
-	fixedChrome := 5 // Header + the two boxes' borders.
+	minChatHeight := 3
+	if m.cfg.AdaptiveHeight {
+		minChatHeight = 2
+	}
+
+	// Header + borders around the chat and composer. The shortcut row is
+	// removed only after the composer has been reduced to one content row.
+	fixedChrome := 5
 	if m.statusBarVisible() {
 		fixedChrome++
 	}
-	layoutMax := m.height - fixedChrome - 2
+	layoutMax := m.height - fixedChrome - minChatHeight
 	if layoutMax < 1 {
 		layoutMax = 1
 	}
@@ -2345,8 +2356,8 @@ func (m *model) resizeInput() {
 		baseHeight = layoutMax
 	}
 
-	if m.cfg.AdaptiveInput {
-		percent := m.cfg.InputMaxPercent
+	if m.cfg.AdaptiveHeight {
+		percent := m.cfg.HeightMaxPercent
 		if percent < 1 {
 			percent = 1
 		}
