@@ -2041,6 +2041,13 @@ func (m *model) sendMessage(text string) {
 		}
 		_ = m.client.send(packet)
 		return
+	case "/xkeyscore":
+		if len(fields) != 1 {
+			m.appendMessage(Packet{Type: "system", Text: "Usage: /xkeyscore", Time: time.Now().UTC()})
+			return
+		}
+		m.appendMessage(Packet{Type: "xkeyscore", Time: time.Now().UTC()})
+		return
 	case "/rainbow":
 		if len(fields) != 1 {
 			m.appendMessage(Packet{Type: "system", Text: "Usage: /rainbow", Time: time.Now()})
@@ -2861,6 +2868,46 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 			for _, part := range wrapped {
 				lines = append(lines, renderChatRow(rowFill, strings.Repeat(" ", indent)+part+"\x1b[0m", contentWidth))
 			}
+		}
+		return lines
+	}
+
+	if msg.Type == "xkeyscore" {
+		// Keep the supplied seven-row mark intact and center the 12-column
+		// artwork within the available chat width.
+		logo := []string{
+			"░██    ░██ ",
+			" ░██  ░██  ",
+			"  ░██░██   ",
+			" XKEYSCORE",
+			"  ░██░██   ",
+			" ░██  ░██  ",
+			"░██    ░██ ",
+		}
+		bright := lipgloss.NewStyle().Foreground(lipgloss.Color("#E6E6E6")).Background(bg)
+		shadow := lipgloss.NewStyle().Foreground(lipgloss.Color("#8993A5")).Background(bg)
+		blue := lipgloss.NewStyle().Foreground(lipgloss.Color("#2589FF")).Background(bg).Bold(true)
+		lines := make([]string, 0, len(logo))
+		for _, artLine := range logo {
+			padding := max(0, (contentWidth-12)/2)
+			var styled strings.Builder
+			styled.WriteString(strings.Repeat(" ", padding))
+			if strings.Contains(artLine, "XKEYSCORE") {
+				styled.WriteString(" ")
+				styled.WriteString(blue.Render("XKEYSCORE"))
+			} else {
+				for _, glyph := range artLine {
+					switch glyph {
+					case '█':
+						styled.WriteString(bright.Render(string(glyph)))
+					case '░':
+						styled.WriteString(shadow.Render(string(glyph)))
+					default:
+						styled.WriteRune(glyph)
+					}
+				}
+			}
+			lines = append(lines, renderChatRow(rowFill, styled.String(), contentWidth))
 		}
 		return lines
 	}
