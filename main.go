@@ -3322,7 +3322,9 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 
 	if includeSend {
 		targets.hasSend = true
-		targets.sendStart = availableWidth - sendWidth
+		// Only the colored [Send] label is clickable; "Enter:" remains
+		// an explanatory keyboard hint when there is room for it.
+		targets.sendStart = availableWidth - shortSendWidth
 		targets.sendEnd = availableWidth
 		if sendPrefix != "" {
 			line.WriteString(m.styles.status.Render(sendPrefix))
