@@ -1092,6 +1092,7 @@ func makeStyles(cfg Config) uiStyles {
 			Foreground(text).
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(border).
+			BorderBackground(bg).
 			PaddingLeft(1).
 			PaddingRight(1),
 
@@ -1103,7 +1104,8 @@ func makeStyles(cfg Config) uiStyles {
 			Background(bg).
 			Foreground(text).
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(border),
+			BorderForeground(border).
+			BorderBackground(bg),
 
 		accent: lipgloss.NewStyle().
 			Background(bg).
@@ -3502,10 +3504,10 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		}
 	}
 
-	// Paint the final inset cell with the status background. An unstyled
-	// Braille blank can appear as a dark square in some terminal renderers.
-	line.WriteString(m.styles.status.Render(" "))
-	return line.String(), targets
+	// Fill the complete row explicitly. The remaining final cell stays blank,
+	// preserving the one-column inset after [Send] without leaving stale cells
+	// when the shortcut text changes between panels.
+	return padANSIToWidth(line.String(), m.width, m.styles.status), targets
 }
 
 // renderViewWithChat keeps the application shell unchanged while swapping the
@@ -3570,9 +3572,7 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen 
 	parts := []string{header, chatBox, inputBox}
 	if m.statusBarVisible() {
 		statusText, _ := m.renderStatusBar(usersOpen, splashOpen)
-		status := m.styles.status.
-			Width(m.width).
-			Render(statusText)
+		status := m.styles.status.Render(statusText)
 		parts = append(parts, status)
 	}
 
