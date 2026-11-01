@@ -1865,8 +1865,20 @@ func (m *model) sendMessage(text string) {
 		// so /who can display the current snapshot without requesting another
 		// "users" packet (which is also used for typing/join/leave updates).
 		text := fmt.Sprintf("Connected users (%d):", len(m.onlineUsers))
-		for _, user := range m.onlineUsers {
-			text += "\n  • " + user.Name
+		// Leave the permanent typing-indicator row out of the available chat
+		// height. Include the heading when deciding whether the vertical list
+		// will fit; otherwise use a compact paragraph that wraps naturally.
+		availableRows := max(1, m.messageHeight()-1)
+		if len(m.onlineUsers)+1 <= availableRows {
+			for _, user := range m.onlineUsers {
+				text += "\n  • " + user.Name
+			}
+		} else if len(m.onlineUsers) > 0 {
+			names := make([]string, 0, len(m.onlineUsers))
+			for _, user := range m.onlineUsers {
+				names = append(names, user.Name)
+			}
+			text += " " + strings.Join(names, ", ")
 		}
 		m.appendMessage(Packet{
 			Type: "system",
