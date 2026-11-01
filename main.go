@@ -1276,25 +1276,13 @@ func (m model) Update(
 			}
 
 		case "users":
+			// Roster broadcasts keep this snapshot current for both the online
+			// panel and the /who command. They are not chat messages themselves.
 			m.onlineUsers = append([]User(nil), packet.Users...)
 			sort.Slice(m.onlineUsers, func(i, j int) bool {
 				return strings.ToLower(m.onlineUsers[i].Name) < strings.ToLower(m.onlineUsers[j].Name)
 			})
 			m.clampUsersScroll()
-
-			// The roster panel and /who share the same structured server reply.
-			// When the panel is closed, preserve /who's original chat response.
-			if !m.usersOpen {
-				text := fmt.Sprintf("Connected users (%d):", len(m.onlineUsers))
-				for _, user := range m.onlineUsers {
-					text += "\n  • " + user.Name
-				}
-				m.appendMessage(Packet{
-					Type: "system",
-					Text: text,
-					Time: time.Now().UTC(),
-				})
-			}
 
 		case "message", "system", "me", "letter":
 			m.appendMessage(packet)
@@ -1873,7 +1861,18 @@ func (m *model) sendMessage(text string) {
 			m.appendMessage(Packet{Type: "system", Text: "Usage: /who", Time: time.Now()})
 			return
 		}
-		_ = m.client.send(Packet{Type: "who", Room: m.room})
+		// The room roster is maintained continuously from server broadcasts,
+		// so /who can display the current snapshot without requesting another
+		// "users" packet (which is also used for typing/join/leave updates).
+		text := fmt.Sprintf("Connected users (%d):", len(m.onlineUsers))
+		for _, user := range m.onlineUsers {
+			text += "\n  • " + user.Name
+		}
+		m.appendMessage(Packet{
+			Type: "system",
+			Text: text,
+			Time: time.Now().UTC(),
+		})
 		return
 	case "/history":
 		if len(fields) != 1 {
