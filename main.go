@@ -1023,6 +1023,10 @@ type quitConfirmTimeoutMsg struct {
 	generation int
 }
 
+type sendFeedbackTimeoutMsg struct {
+	generation int
+}
+
 type scrollbarHoldMsg struct{ generation int }
 type usersScrollbarHoldMsg struct{ generation int }
 type splashScrollbarHoldMsg struct{ generation int }
@@ -1145,6 +1149,8 @@ type model struct {
 
 	quitConfirm           bool
 	quitConfirmGeneration int
+	sendFeedback           bool
+	sendFeedbackGeneration int
 
 	typingGeneration int
 	isTyping         bool
@@ -1448,6 +1454,13 @@ func (m model) Update(
 		return m, nil
 	}
 
+	if timeoutMsg, ok := msg.(sendFeedbackTimeoutMsg); ok {
+		if timeoutMsg.generation == m.sendFeedbackGeneration {
+			m.sendFeedback = false
+		}
+		return m, nil
+	}
+
 	if clearMsg, ok := msg.(typingClearMsg); ok {
 		if clearMsg.generation == m.typingGeneration {
 			m.isTyping = false
@@ -1469,6 +1482,19 @@ func (m model) Update(
 			_, targets := m.renderStatusBar(m.usersOpen, m.splashOpen)
 			if targets.hasSend && mouse.X >= targets.sendStart && mouse.X < targets.sendEnd {
 				m.sendCurrentMessage()
+				m.sendFeedback = true
+				m.sendFeedbackGeneration++
+				generation := m.sendFeedbackGeneration
+				return m, tea.Tick(350*time.Millisecond, func(time.Time) tea.Msg {
+					return sendFeedbackTimeoutMsg{generation: generation}
+				})
+			}
+			if targets.hasPageScroll && mouse.X >= targets.pgUpStart && mouse.X < targets.pgUpEnd {
+				m.scrollPage(true)
+				return m, nil
+			}
+			if targets.hasPageScroll && mouse.X >= targets.pgDnStart && mouse.X < targets.pgDnEnd {
+				m.scrollPage(false)
 				return m, nil
 			}
 			if mouse.X >= targets.quitStart && mouse.X < targets.quitEnd {
@@ -1482,7 +1508,7 @@ func (m model) Update(
 				m.quitConfirm = true
 				m.quitConfirmGeneration++
 				generation := m.quitConfirmGeneration
-				return m, tea.Tick(5*time.Second, func(time.Time) tea.Msg {
+				return m, tea.Tick(4*time.Second, func(time.Time) tea.Msg {
 					return quitConfirmTimeoutMsg{generation: generation}
 				})
 			}
@@ -1772,35 +1798,11 @@ func (m model) Update(
 			return m, tea.Quit
 
 		case "pgup":
-			if m.splashOpen {
-				m.splashScroll -= max(1, m.splashPanelHeight()/2)
-				m.clampSplashScroll()
-				return m, nil
-			}
-			if m.usersOpen {
-				m.usersScroll -= max(1, m.usersPanelHeight())
-				m.clampUsersScroll()
-				return m, nil
-			}
-			m.scroll += m.messageHeight() / 2
-			m.clampScroll()
-
+			m.scrollPage(true)
 			return m, nil
 
 		case "pgdown":
-			if m.splashOpen {
-				m.splashScroll += max(1, m.splashPanelHeight()/2)
-				m.clampSplashScroll()
-				return m, nil
-			}
-			if m.usersOpen {
-				m.usersScroll += max(1, m.usersPanelHeight())
-				m.clampUsersScroll()
-				return m, nil
-			}
-			m.scroll -= m.messageHeight() / 2
-			m.clampScroll()
-
+			m.scrollPage(false)
 			return m, nil
 
 		case "ctrl+home":
@@ -1892,6 +1894,36 @@ func (m model) Update(
 	}
 
 	return m, inputCmd
+}
+
+// scrollPage applies the same viewport movement for keyboard and footer clicks.
+func (m *model) scrollPage(up bool) {
+	if m.splashOpen {
+		step := max(1, m.splashPanelHeight()/2)
+		if up {
+			m.splashScroll -= step
+		} else {
+			m.splashScroll += step
+		}
+		m.clampSplashScroll()
+		return
+	}
+	if m.usersOpen {
+		step := max(1, m.usersPanelHeight())
+		if up {
+			m.usersScroll -= step
+		} else {
+			m.usersScroll += step
+		}
+		m.clampUsersScroll()
+		return
+	}
+	if up {
+		m.scroll += m.messageHeight() / 2
+	} else {
+		m.scroll -= m.messageHeight() / 2
+	}
+	m.clampScroll()
 }
 
 func isTextInputKey(
@@ -3255,7 +3287,12 @@ type footerTargets struct {
 	quitEnd   int
 	sendStart int
 	sendEnd   int
+	pgUpStart int
+	pgUpEnd   int
+	pgDnStart int
+	pgDnEnd   int
 	hasSend   bool
+	hasPageScroll bool
 }
 
 // renderStatusBar keeps the ordinary shortcuts on the left and anchors the
@@ -3263,16 +3300,17 @@ type footerTargets struct {
 // hitboxes, so clickable areas stay aligned with the rendered text.
 func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTargets) {
 	availableWidth := max(1, m.width-1) // final cell is the Braille fill sentinel
-	prefix := " " + m.status + " • "
+	lead := " " + m.status + " • "
+	scrollLabel := "PgUp/PgDn"
+	scrollTail := ": Scroll • Ctrl+C: "
 	if usersOpen {
-		prefix += "PgUp/PgDn or mouse wheel: scroll • Esc/Ctrl+O: close • Ctrl+C: "
+		scrollTail = " or mouse wheel: Scroll • Esc/Ctrl+O: close • Ctrl+C: "
 	} else if splashOpen {
-		prefix += "PgUp/PgDn or mouse wheel: scroll • Esc: close • Ctrl+C: "
-	} else {
-		prefix += "PgUp/PgDn: scroll • Ctrl+C: "
+		scrollTail = " or mouse wheel: Scroll • Esc: close • Ctrl+C: "
 	}
+	prefix := lead + scrollLabel + scrollTail
 
-	quitText := "quit"
+	quitText := "Quit"
 	if m.quitConfirm {
 		quitText = "Sure?"
 	}
@@ -3305,18 +3343,41 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	if maxPrefixWidth < 0 {
 		maxPrefixWidth = 0
 	}
-	prefix = truncateANSI(prefix, maxPrefixWidth)
+	prefixVisible := truncateANSI(prefix, maxPrefixWidth)
+	prefixWidth := lipgloss.Width(prefixVisible)
 
-	leftWidth := lipgloss.Width(prefix) + quitWidth
+	// Highlight the two actionable page-scroll labels. If a compact width
+	// clips any part of the pair, leave the visible prefix un-highlighted and
+	// don't create partial click targets.
+	leadWidth := lipgloss.Width(lead)
+	scrollLabelWidth := lipgloss.Width(scrollLabel)
+	renderedPrefix := m.styles.status.Render(prefixVisible)
+	if maxPrefixWidth >= leadWidth+scrollLabelWidth {
+		tailWidth := maxPrefixWidth - leadWidth - scrollLabelWidth
+		tailVisible := truncateANSI(scrollTail, tailWidth)
+		renderedPrefix = m.styles.status.Render(lead) +
+			m.styles.accent.Render("PgUp") +
+			m.styles.status.Render("/") +
+			m.styles.accent.Render("PgDn") +
+			m.styles.status.Render(tailVisible)
+		targets.hasPageScroll = true
+		targets.pgUpStart = leadWidth
+		targets.pgUpEnd = leadWidth + lipgloss.Width("PgUp")
+		targets.pgDnStart = leadWidth + lipgloss.Width("PgUp/")
+		targets.pgDnEnd = targets.pgDnStart + lipgloss.Width("PgDn")
+		prefixWidth = leadWidth + scrollLabelWidth + lipgloss.Width(tailVisible)
+	}
+
+	leftWidth := prefixWidth + quitWidth
 	gapWidth := availableWidth - leftWidth - sendWidth
 	if gapWidth < 0 {
 		gapWidth = 0
 	}
 
-	targets.quitStart = lipgloss.Width(prefix)
+	targets.quitStart = prefixWidth
 	targets.quitEnd = targets.quitStart + quitWidth
 	var line strings.Builder
-	line.WriteString(m.styles.status.Render(prefix))
+	line.WriteString(renderedPrefix)
 	line.WriteString(m.styles.accent.Render(quitText))
 	line.WriteString(m.styles.status.Render(strings.Repeat(" ", gapWidth)))
 
@@ -3329,7 +3390,11 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		if sendPrefix != "" {
 			line.WriteString(m.styles.status.Render(sendPrefix))
 		}
-		line.WriteString(m.styles.accent.Render(sendText))
+		if m.sendFeedback {
+			line.WriteString(m.styles.status.Render(sendText))
+		} else {
+			line.WriteString(m.styles.accent.Render(sendText))
+		}
 	}
 
 	// A final Braille blank is a real one-cell glyph (but renders visually
