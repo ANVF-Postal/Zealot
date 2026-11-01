@@ -3406,7 +3406,7 @@ type footerTargets struct {
 // preserving its bullet separator from the page-scroll controls.
 func compactFooterStatusLead(status string, maxWidth int) string {
 	const separator = " • "
-	const fixedWidth = 1 + len([]rune(separator)) // leading space + separator
+	fixedWidth := 1 + len([]rune(separator)) // leading space + separator
 	statusWidth := maxWidth - fixedWidth
 	if statusWidth < 1 {
 		return ""
