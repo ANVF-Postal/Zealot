@@ -3404,7 +3404,7 @@ type footerTargets struct {
 // send action to the right edge. The same measured layout supplies mouse
 // hitboxes, so clickable areas stay aligned with the rendered text.
 func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTargets) {
-	availableWidth := max(1, m.width-1) // final cell is the Braille fill sentinel
+	availableWidth := max(1, m.width-1) // reserve one final cell as a styled blank
 	lead := " " + m.status + " • "
 	scrollLabel := "PgUp/PgDn"
 	scrollTail := ": Scroll • Ctrl+C: "
@@ -3502,9 +3502,9 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		}
 	}
 
-	// A final Braille blank is a real one-cell glyph (but renders visually
-	// blank), preventing terminal renderers from trimming the trailing fill.
-	line.WriteString("⠀")
+	// Paint the final inset cell with the status background. An unstyled
+	// Braille blank can appear as a dark square in some terminal renderers.
+	line.WriteString(m.styles.status.Render(" "))
 	return line.String(), targets
 }
 
