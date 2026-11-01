@@ -2025,6 +2025,22 @@ func (m *model) sendMessage(text string) {
 		return
 	}
 	switch strings.ToLower(fields[0]) {
+	case "/rb":
+		body := strings.TrimSpace(strings.TrimPrefix(trimmed, fields[0]))
+		if body == "" {
+			m.appendMessage(Packet{Type: "system", Text: "Usage: /rb message", Time: time.Now().UTC()})
+			return
+		}
+		packet := Packet{
+			Type:         "message",
+			Room:         m.room,
+			User:         m.user,
+			Text:         body,
+			Rainbow:      true,
+			RainbowPhase: rand.Float64(),
+		}
+		_ = m.client.send(packet)
+		return
 	case "/rainbow":
 		if len(fields) != 1 {
 			m.appendMessage(Packet{Type: "system", Text: "Usage: /rainbow", Time: time.Now()})
@@ -2758,7 +2774,7 @@ func rainbowColor(text string, phase float64, offset int) string {
 	var out strings.Builder
 	position := offset
 	for _, ch := range text {
-		hue := math.Mod(phase+float64(position)*0.1, 1)
+		hue := math.Mod(phase+float64(position)*0.015, 1)
 		if hue < 0 {
 			hue++
 		}
