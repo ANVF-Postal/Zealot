@@ -2793,17 +2793,19 @@ func wrapANSIHardLine(s string, width int) []string {
 
 // rainbowTileLine paints every cell of an XKeyscore tile row with a smooth
 // rainbow background while keeping the logo glyphs black.
-func rainbowTileLine(text string, phase float64, offset int) string {
+// rainbowTileLine paints a tile row with a diagonal rainbow background.
+// Advancing the phase by one cell per row makes the gradient flow from the
+// top-left toward the bottom-right, like lolcat's line-by-line offset.
+func rainbowTileLine(text string, phase float64, row int) string {
 	var out strings.Builder
-	position := offset
-	for _, ch := range text {
+	for column, ch := range text {
+		position := row + column
 		hue := math.Mod(phase+float64(position)*0.015, 1)
 		if hue < 0 {
 			hue++
 		}
 		red, green, blue := hsvToRGB(hue, 1, 1)
 		out.WriteString(fmt.Sprintf("\x1b[38;2;0;0;0;48;2;%d;%d;%dm%c", red, green, blue, ch))
-		position++
 	}
 	if out.Len() > 0 {
 		out.WriteString("\x1b[0m")
@@ -2998,7 +3000,7 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 			for row, artLine := range logo {
 				padded := "  " + artLine + strings.Repeat(" ", max(0, boxWidth-lipgloss.Width(artLine)-2))
 				if msg.Rainbow {
-					padded = rainbowTileLine(padded, msg.RainbowPhase, row*boxWidth)
+					padded = rainbowTileLine(padded, msg.RainbowPhase, row)
 					lines = append(lines, renderChatRow(rowFill, indent+padded, contentWidth))
 				} else {
 					lines = append(lines, renderChatRow(rowFill, indent+blueBlock.Render(padded), contentWidth))
@@ -3006,7 +3008,7 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 			}
 			bottom := strings.Repeat(" ", boxWidth)
 			if msg.Rainbow {
-				bottom = rainbowTileLine(bottom, msg.RainbowPhase, len(logo)*boxWidth)
+				bottom = rainbowTileLine(bottom, msg.RainbowPhase, len(logo))
 				lines = append(lines, renderChatRow(rowFill, indent+bottom, contentWidth))
 			} else {
 				lines = append(lines, renderChatRow(rowFill, indent+blueBlock.Render(bottom), contentWidth))
