@@ -3310,6 +3310,14 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen 
 	return appView(content)
 }
 
+// printZealotError uses the same configured accent as the ZEALOT header.
+func printZealotError(cfg Config, err error) {
+	prefix := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(cfg.AccentColor)).
+		Render("Zealot:")
+	fmt.Fprintln(os.Stderr, prefix, err)
+}
+
 // -----------------------------------------------------------------------------
 // Program entry
 // -----------------------------------------------------------------------------
@@ -3373,7 +3381,7 @@ func main() {
 		}
 		client, connectErr := connectToServer(room, user, *addHistory, true)
 		if connectErr != nil {
-			fmt.Fprintln(os.Stderr, "could not connect to Zealot:", connectErr)
+			printZealotError(cfg, connectErr)
 			os.Exit(1)
 		}
 		sendErr := client.send(Packet{Type: "letter", Room: room, Text: string(data)})
@@ -3409,12 +3417,7 @@ func main() {
 	)
 
 	if err != nil {
-		fmt.Fprintln(
-			os.Stderr,
-			"could not connect to Zealot:",
-			err,
-		)
-
+		printZealotError(cfg, err)
 		os.Exit(1)
 	}
 
