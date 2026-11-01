@@ -3450,14 +3450,23 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		maxPrefixWidth = 0
 	}
 
-	// The Connected label is informational; the clickable controls are not.
-	// In the main view, give PgUp/PgDn room first and drop Connected before
-	// allowing the right-aligned Quit and Send buttons to crowd the hitboxes.
-	pageLabelStart := lipgloss.Width(lead)
+	// In the main view, preserve the Connected status for as long as possible.
+	// As space gets tight, shorten it one character at a time while keeping
+	// the PgUp/PgDn controls and their surrounding shortcut text intact.
 	pageLabelWidth := lipgloss.Width(scrollLabel)
+	pageLabelStart := lipgloss.Width(lead)
 	if !usersOpen && !splashOpen && maxPrefixWidth < lipgloss.Width(prefix) {
-		prefix = scrollLabel + scrollTail
-		pageLabelStart = 0
+		statusSuffix := " • " + scrollLabel + scrollTail
+		statusBudget := maxPrefixWidth - lipgloss.Width(statusSuffix) - 1
+		if statusBudget > 0 {
+			shortStatus := truncateANSI(m.status, statusBudget)
+			lead = " " + shortStatus + " • "
+				prefix = lead + scrollLabel + scrollTail
+				pageLabelStart = lipgloss.Width(lead)
+		} else {
+			prefix = scrollLabel + scrollTail
+			pageLabelStart = 0
+		}
 	}
 
 	// Do not render a partial PgUp/PgDn label as if it were actionable. The
