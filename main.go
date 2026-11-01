@@ -2769,7 +2769,8 @@ func wrapANSIHardLine(s string, width int) []string {
 }
 
 // rainbowColor applies lolcat-style HSV cycling: each successive rune advances
-// by one tenth of the hue wheel, while each message starts at a random phase.
+// by a small fraction of the hue wheel, creating gradual color transitions.
+// Each message starts at a random phase.
 func rainbowColor(text string, phase float64, offset int) string {
 	var out strings.Builder
 	position := offset
