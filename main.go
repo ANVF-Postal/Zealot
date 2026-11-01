@@ -50,16 +50,16 @@ type Config struct {
 
 func defaultConfig() Config {
 	return Config{
-		Name:        "Anonymous",
+		Name:            "Anonymous",
 		Bell:            true,
 		InputHeight:     1,
 		AdaptiveInput:   false,
 		InputMaxPercent: 30,
 		UserColor:       "#7CFFCB",
-		Background:  "#111318",
-		TextColor:   "#E6E6E6",
-		BorderColor: "#444B5A",
-		AccentColor: "#7C5CFC",
+		Background:      "#111318",
+		TextColor:       "#E6E6E6",
+		BorderColor:     "#444B5A",
+		AccentColor:     "#7C5CFC",
 	}
 }
 
@@ -1332,7 +1332,7 @@ func (m model) Update(
 		m.width = sizeMsg.Width
 		m.height = sizeMsg.Height
 		m.resizeInput()
-			if oldWidth != m.width || !m.renderCacheValid {
+		if oldWidth != m.width || !m.renderCacheValid {
 			m.rebuildMessageCache()
 		}
 		m.clampScroll()
