@@ -400,7 +400,8 @@ func (s *server) handle(conn net.Conn) {
 	client.user = user
 	room.clients[client.id] = client
 	var history []Packet
-	if room.historyEnabled {
+	historyEnabled := room.historyEnabled
+	if historyEnabled {
 		history = append([]Packet(nil), room.messages...)
 	}
 
@@ -411,9 +412,10 @@ func (s *server) handle(conn net.Conn) {
 	s.mu.Unlock()
 
 	writeErr := client.enc.Encode(Packet{
-		Type: "welcome",
-		Room: roomName,
-		User: client.user,
+		Type:       "welcome",
+		Room:       roomName,
+		User:       client.user,
+		AddHistory: historyEnabled,
 	})
 	if writeErr == nil {
 		for _, message := range history {
@@ -1042,9 +1044,10 @@ func makeStyles(cfg Config) uiStyles {
 type model struct {
 	cfg          Config
 	room         string
-	roomExplicit bool
-	user         User
-	onlineCount  int
+	roomExplicit   bool
+	historyEnabled bool
+	user           User
+	onlineCount    int
 	onlineUsers  []User
 	usersOpen    bool
 	usersScroll  int
@@ -1305,6 +1308,7 @@ func (m model) Update(
 			if packet.User.Name != "" {
 				m.user = packet.User
 			}
+			m.historyEnabled = packet.AddHistory
 
 		case "typing":
 			key := packet.User.Name
@@ -1979,6 +1983,11 @@ func (m model) splashRows() []string {
 	rows = append(rows, m.styles.app.Render(center("v"+appVersion)))
 	rows = append(rows, "")
 	rows = append(rows, m.styles.app.Render(center("Connected to: "+room)))
+	historyStatus := "FALSE"
+	if m.historyEnabled {
+		historyStatus = "TRUE"
+	}
+	rows = append(rows, m.styles.app.Render(center("History Enabled: "+historyStatus)))
 	rows = append(rows, m.styles.app.Render(center(fmt.Sprintf("Online users: %d", m.onlineCount))))
 	return rows
 }
