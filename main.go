@@ -3409,12 +3409,10 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	availableWidth := max(1, m.width-1) // reserve one final cell as a styled blank
 	lead := " " + m.status + " • "
 	scrollLabel := "PgUp/PgDn"
-	scrollTail := ": Scroll • Ctrl+C: "
-	if usersOpen {
-		scrollTail = " or mouse wheel: Scroll • Esc/Ctrl+O: close • Ctrl+C: "
-	} else if splashOpen {
-		scrollTail = " or mouse wheel: Scroll • Esc: close • Ctrl+C: "
-	}
+	// Keep the same concise keyboard shortcuts in chat, roster, and splash.
+	// Ctrl+O remains supported as a legacy keyboard shortcut, but is not
+	// advertised in the footer.
+	scrollTail := ": Scroll • Esc: close • Ctrl+C: "
 	prefix := lead + scrollLabel + scrollTail
 
 	quitText := "Quit"
