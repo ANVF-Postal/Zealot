@@ -6,6 +6,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math"
+	"math/rand"
 	"net"
 	"os"
 	"os/exec"
@@ -255,8 +257,10 @@ type Packet struct {
 	Time       time.Time `json:"time,omitempty"`
 	Typing     bool      `json:"typing,omitempty"`
 	AddHistory bool      `json:"add_history,omitempty"`
-	Ephemeral  bool      `json:"ephemeral,omitempty"`
-	Users      []User    `json:"users,omitempty"`
+	Ephemeral   bool      `json:"ephemeral,omitempty"`
+	Rainbow     bool      `json:"rainbow,omitempty"`
+	RainbowPhase float64   `json:"rainbow_phase,omitempty"`
+	Users       []User    `json:"users,omitempty"`
 }
 
 // -----------------------------------------------------------------------------
@@ -1160,7 +1164,8 @@ type model struct {
 	typing      map[string]User
 	typingOrder []string
 
-	input textarea.Model
+	input       textarea.Model
+	rainbowMode bool
 
 	width  int
 	height int
@@ -2018,6 +2023,18 @@ func (m *model) sendMessage(text string) {
 		return
 	}
 	switch strings.ToLower(fields[0]) {
+	case "/rainbow":
+		if len(fields) != 1 {
+			m.appendMessage(Packet{Type: "system", Text: "Usage: /rainbow", Time: time.Now()})
+			return
+		}
+		m.rainbowMode = !m.rainbowMode
+		status := "enabled"
+		if !m.rainbowMode {
+			status = "disabled"
+		}
+		m.appendMessage(Packet{Type: "system", Text: "Rainbow mode " + status + " for your messages.", Time: time.Now().UTC()})
+		return
 	case "/who":
 		if len(fields) != 1 {
 			m.appendMessage(Packet{Type: "system", Text: "Usage: /who", Time: time.Now()})
@@ -2100,7 +2117,12 @@ func (m *model) sendMessage(text string) {
 		_ = m.client.send(Packet{Type: "me", Room: m.room, User: m.user, Text: body})
 		return
 	}
-	_ = m.client.send(Packet{Type: "message", Room: m.room, User: m.user, Text: text})
+	packet := Packet{Type: "message", Room: m.room, User: m.user, Text: text}
+	if m.rainbowMode {
+		packet.Rainbow = true
+		packet.RainbowPhase = rand.Float64()
+	}
+	_ = m.client.send(packet)
 }
 
 // splashRows builds the splash content at the current terminal width. The
@@ -2728,6 +2750,62 @@ func wrapANSIHardLine(s string, width int) []string {
 	return lines
 }
 
+// rainbowColor applies lolcat-style HSV cycling: each successive rune advances
+// by one tenth of the hue wheel, while each message starts at a random phase.
+func rainbowColor(text string, phase float64, offset int) string {
+	var out strings.Builder
+	position := offset
+	for _, r := range text {
+		hue := math.Mod(phase+float64(position)*0.1, 1)
+		if hue < 0 {
+			hue++
+		}
+		r, g, b := hsvToRGB(hue, 1, 1)
+		out.WriteString(fmt.Sprintf("\x1b[38;2;%d;%d;%dm%c", r, g, b, r))
+		position++
+	}
+	if out.Len() > 0 {
+		out.WriteString("\x1b[0m")
+	}
+	return out.String()
+}
+
+func hsvToRGB(h, s, v float64) (int, int, int) {
+	i := int(math.Floor(h * 6))
+	f := h*6 - float64(i)
+	p := v * (1 - s)
+	q := v * (1 - f*s)
+	t := v * (1 - (1-f)*s)
+	var r, g, b float64
+	switch i % 6 {
+	case 0:
+		r, g, b = v, t, p
+	case 1:
+		r, g, b = q, v, p
+	case 2:
+		r, g, b = p, v, t
+	case 3:
+		r, g, b = p, q, v
+	case 4:
+		r, g, b = t, p, v
+	default:
+		r, g, b = v, p, q
+	}
+	return int(math.Round(r * 255)), int(math.Round(g * 255)), int(math.Round(b * 255))
+}
+
+// rainbowParts colors wrapped body text while carrying the hue position from
+// one visual row to the next.
+func rainbowParts(parts []string, phase float64) []string {
+	colored := make([]string, len(parts))
+	offset := 0
+	for i, part := range parts {
+		colored[i] = rainbowColor(part, phase, offset)
+		offset += utf8.RuneCountInString(part) + 1
+	}
+	return colored
+}
+
 func (m model) renderPacketLines(msg Packet, width int) []string {
 	// The chat box has a one-column border on each side, and the final
 	// interior column is reserved for the permanent scrollbar. Lip Gloss Width
@@ -2817,6 +2895,9 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 	}
 
 	wrapped := wrapText(msg.Text, contentWidth-prefixWidth)
+	if msg.Rainbow {
+		wrapped = rainbowParts(wrapped, msg.RainbowPhase)
+	}
 	if len(wrapped) == 0 {
 		wrapped = []string{""}
 	}
@@ -2863,7 +2944,10 @@ func renderCompactMessage(
 			lines = append(lines, renderChatRow(rowFill, nameStyle.Render(part), contentWidth))
 		}
 		lines = append(lines, renderChatRow(rowFill, nameStyle.Render(nameParts[len(nameParts)-1]+":"), contentWidth))
-		wrapped := wrapTextVariable(msg.Text, 0, contentWidth-lipgloss.Width(stamp)-1, contentWidth)
+			wrapped := wrapTextVariable(msg.Text, 0, contentWidth-lipgloss.Width(stamp)-1, contentWidth)
+		if msg.Rainbow {
+			wrapped = rainbowParts(wrapped, msg.RainbowPhase)
+		}
 		if len(wrapped) < 2 {
 			lines = append(lines, renderChatRow(rowFill, timeStyle.Render(stamp), contentWidth))
 			return lines
@@ -2882,6 +2966,9 @@ func renderCompactMessage(
 	label := nameParts[0] + ": "
 	firstWidth := contentWidth - lipgloss.Width(label)
 	wrapped := wrapTextVariable(msg.Text, firstWidth, contentWidth-lipgloss.Width(stamp)-1, contentWidth)
+	if msg.Rainbow {
+		wrapped = rainbowParts(wrapped, msg.RainbowPhase)
+	}
 	if len(wrapped) == 0 {
 		wrapped = []string{""}
 	}
