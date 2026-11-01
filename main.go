@@ -260,7 +260,7 @@ type Packet struct {
 	Ephemeral   bool      `json:"ephemeral,omitempty"`
 	Rainbow     bool      `json:"rainbow,omitempty"`
 	RainbowPhase float64   `json:"rainbow_phase,omitempty"`
-	XKeyscore    bool      `json:"xkeyscore,omitempty"`
+	XKeyscore    int       `json:"xkeyscore,omitempty"`
 	Users       []User    `json:"users,omitempty"`
 }
 
@@ -2044,11 +2044,16 @@ func (m *model) sendMessage(text string) {
 		_ = m.client.send(packet)
 		return
 	case "/xkeyscore":
-		if len(fields) != 1 {
-			m.appendMessage(Packet{Type: "system", Text: "Usage: /xkeyscore", Time: time.Now().UTC()})
-			return
+		var variant int
+		if len(fields) == 2 {
+			if requested, err := strconv.Atoi(fields[1]); err == nil && requested >= 1 && requested <= 3 {
+				variant = requested
+			}
 		}
-		_ = m.client.send(Packet{Type: "message", Room: m.room, User: m.user, Text: "XKEYSCORE", XKeyscore: true})
+		if variant == 0 {
+			variant = rand.Intn(3) + 1
+		}
+		_ = m.client.send(Packet{Type: "message", Room: m.room, User: m.user, Text: "XKEYSCORE", XKeyscore: variant})
 		return
 	case "/rainbow":
 		if len(fields) != 1 {
@@ -2905,44 +2910,86 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 		Background(bg).
 		Bold(true)
 
-	if msg.XKeyscore {
+	if msg.XKeyscore > 0 {
 		var lines []string
 		logoIndent := 0
-		compactHeader := width <= 48
-		if compactHeader {
+		if width <= 48 {
 			header := msg
 			header.Text = ""
 			lines = renderCompactMessage(rowFill, bodyStyle, nameStyle, m.styles.time, header, timeText, contentWidth)
 		} else {
 			prefix := m.styles.time.Render("[" + timeText + "]") + bodyStyle.Render(" ") + nameStyle.Render(msg.User.Name) + bodyStyle.Render(":")
 			if lipgloss.Width(prefix) >= contentWidth {
-				// Match the ordinary message layout when the timestamp and
-				// username no longer fit together on one row.
 				header := msg
 				header.Text = ""
 				lines = renderCompactMessage(rowFill, bodyStyle, nameStyle, m.styles.time, header, timeText, contentWidth)
-				compactHeader = true
 			} else {
 				logoIndent = lipgloss.Width(prefix)
 				lines = append(lines, renderChatRow(rowFill, prefix, contentWidth))
 			}
 		}
-		logo := []string{
-			"░██    ░██ ", " ░██  ░██  ", "  ░██░██   ",
-			" XKEYSCORE", "  ░██░██   ", " ░██  ░██  ", "░██    ░██ ",
+
+		var logo []string
+		switch msg.XKeyscore {
+		case 2:
+			logo = []string{
+				" /##   /##",
+				"| ##  / ##",
+				"|  ##/ ##/",
+				" XKEYSCORE",
+				"  >##  ## ",
+				" /##/\\  ##",
+				"| ##  \\ ##",
+				"|__/  |__/",
+			}
+		case 3:
+			logo = []string{
+				" __  __",
+				" \\ \\/ /",
+				"  >  <  XKEYSCORE",
+				" /_/\\_\\",
+			}
+		default:
+			logo = []string{
+				"░██    ░██ ", " ░██  ░██  ", "  ░██░██   ",
+				" XKEYSCORE", "  ░██░██   ", " ░██  ░██  ", "░██    ░██ ",
+			}
 		}
+
 		bright := lipgloss.NewStyle().Foreground(lipgloss.Color("#E6E6E6")).Background(bg)
 		shadow := lipgloss.NewStyle().Foreground(lipgloss.Color("#8993A5")).Background(bg)
-		blue := lipgloss.NewStyle().Foreground(lipgloss.Color("#2589FF")).Background(bg).Bold(true)
+		blueWord := lipgloss.NewStyle().Foreground(lipgloss.Color("#2589FF")).Background(bg).Bold(true)
+		red := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF3B3B")).Background(bg)
+		blueBlock := lipgloss.NewStyle().Foreground(lipgloss.Color("#000000")).Background(lipgloss.Color("#2589FF"))
+
+		if msg.XKeyscore == 3 {
+			// Give the compact one-off variant a solid blue tile, including
+			// the padding around every line, with black lettering on top.
+			boxWidth := 18
+			lines = append(lines, renderChatRow(rowFill, blueBlock.Render(strings.Repeat(" ", boxWidth)), contentWidth))
+			for _, artLine := range logo {
+				padded := " " + artLine + strings.Repeat(" ", max(0, boxWidth-lipgloss.Width(artLine)-1))
+				lines = append(lines, renderChatRow(rowFill, blueBlock.Render(padded), contentWidth))
+			}
+			lines = append(lines, renderChatRow(rowFill, blueBlock.Render(strings.Repeat(" ", boxWidth)), contentWidth))
+			return lines
+		}
+
 		for _, artLine := range logo {
-			// On a normal-width header, align the logo beneath the timestamp
-			// and username. If the header has wrapped, start below the name.
 			var styled strings.Builder
 			styled.WriteString(strings.Repeat(" ", logoIndent))
-			if strings.Contains(artLine, "XKEYSCORE") {
+			if msg.XKeyscore == 2 {
+				for _, glyph := range artLine {
+					if glyph == '#' {
+						styled.WriteString(red.Render(string(glyph)))
+					} else {
+						styled.WriteString(bright.Render(string(glyph)))
+					}
+				}
+			} else if strings.Contains(artLine, "XKEYSCORE") {
 				leading := len(artLine) - len(strings.TrimLeft(artLine, " "))
 				styled.WriteString(strings.Repeat(" ", leading))
-				styled.WriteString(blue.Render(strings.TrimLeft(artLine, " ")))
+				styled.WriteString(blueWord.Render(strings.TrimLeft(artLine, " ")))
 			} else {
 				for _, glyph := range artLine {
 					switch glyph {
@@ -2959,7 +3006,6 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 		}
 		return lines
 	}
-
 	// In narrow terminals, lead with the username and move the timestamp to
 	// the next row. This preserves room for readable body text instead of
 	// allowing the timestamp + username prefix to consume the entire width.
