@@ -1282,6 +1282,20 @@ func (m model) Update(
 			})
 			m.clampUsersScroll()
 
+			// The roster panel and /who share the same structured server reply.
+			// When the panel is closed, preserve /who's original chat response.
+			if !m.usersOpen {
+				text := fmt.Sprintf("Connected users (%d):", len(m.onlineUsers))
+				for _, user := range m.onlineUsers {
+					text += "\n  • " + user.Name
+				}
+				m.appendMessage(Packet{
+					Type: "system",
+					Text: text,
+					Time: time.Now().UTC(),
+				})
+			}
+
 		case "message", "system", "me", "letter":
 			m.appendMessage(packet)
 			if packet.Type == "message" && packet.User.Name != m.user.Name {
