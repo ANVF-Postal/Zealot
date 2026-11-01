@@ -28,6 +28,9 @@ Zealot was designed to solve a very specific problem of direct messaging between
 
 -Chat commands!
 
+-Mouse support
+
+-And more
 
 # Usage warning ⚠️
 Using Zealot for chatting will reduce your overall online footprint and make it harder for hackers or governments to spy on your messages. This may affect relationships with FBI, CIA, NSA, DOJ, CSIS, NATO and United Nations employees who are interested in wiretapping you. We are not responsible for any distress, face-palming, boring workdays, rolling eyes or any other side effects using Zealot may have on government workers. If you're feeling lonely and would prefer a chat app that spies on you, try [Discord!](https://discord.com)
@@ -40,3 +43,6 @@ While Zealot is designed to reduce the usable data footprint of its messages, no
 However, Zealot's architecture leaves limited usable data behind to be analyzed. Provided your SSH connection to the server is properly encrypted, Xkeyscore can only see and track certain metadata associated with internet packets sent over the SSH connection. Spy agencies can still technically track when you sent messages over SSH, what encryption methods were used and the volume of traffic engaged. This is a consequence of these agencies wiretapping vast portions of the internet.
 
 Important reminder: If an attacker gains either remote or physical access to the system, all data is compromised. While zealot chats do not live forever, they can be intercepted and saved unencrypted if Zealot is used on a compromised system.
+
+# AI Coded?
+This project made extensive use of AI programming, primarily from ChatGPT. While many may scoff at this among all the vibe-coded apps we're seeing pop up everywhere, allow me to say this: I'm not a programmer. I could spend a year learning to code and then many weeks creating Zealot while constantly consulting google for bugs, dealing with compiler errors, or maybe just getting fed up and dropping the project entirely. AI graciously allows non-programmers to execute their ideas for software and give the results away to you. Zealot was human-designed, not prompted with "Write me a secure chat app. Make no mistakes". Everything from the way word-wrapping works, to the general UI layout, to the behaviors of buttons and other featured were designed by me, a human.
