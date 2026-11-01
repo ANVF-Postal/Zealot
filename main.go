@@ -3402,6 +3402,22 @@ type footerTargets struct {
 	hasPageScroll bool
 }
 
+// compactFooterStatusLead shortens the Connected label from the right while
+// preserving its bullet separator from the page-scroll controls.
+func compactFooterStatusLead(status string, maxWidth int) string {
+	const separator = " • "
+	const fixedWidth = 1 + len([]rune(separator)) // leading space + separator
+	statusWidth := maxWidth - fixedWidth
+	if statusWidth < 1 {
+		return ""
+	}
+	shortStatus := truncateANSI(status, statusWidth)
+	if shortStatus == "" {
+		return ""
+	}
+	return " " + shortStatus + separator
+}
+
 // renderStatusBar keeps the ordinary shortcuts on the left and anchors the
 // send action to the right edge. The same measured layout supplies mouse
 // hitboxes, so clickable areas stay aligned with the rendered text.
@@ -3428,104 +3444,117 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	quitWidth := lipgloss.Width(quitText)
 	fullSendWidth := lipgloss.Width(sendPrefix + sendText)
 	shortSendWidth := lipgloss.Width(sendText)
+	quitLeftPad := 1
+	quitRightPad := 1
 
-	// Drop only the explanatory "Enter:" label when the full action would
-	// crowd the existing shortcuts. The button itself remains right-aligned.
-	if includeSend && lipgloss.Width(prefix)+quitWidth+fullSendWidth > availableWidth {
+	// The Enter hint is always the first thing sacrificed.
+	if includeSend && lipgloss.Width(prefix)+quitWidth+2+fullSendWidth > availableWidth {
 		sendPrefix = ""
 	}
+
 	sendWidth := 0
 	if includeSend {
 		sendWidth = lipgloss.Width(sendPrefix) + shortSendWidth
+		// Preserve both clickable actions; relax Quit padding before dropping
+		// the Send action at the physical width limit.
+		for availableWidth < quitWidth+sendWidth+quitLeftPad+quitRightPad {
+			if quitLeftPad > 0 {
+				quitLeftPad = 0
+				continue
+			}
+			if quitRightPad > 0 {
+				quitRightPad = 0
+				continue
+			}
+			break
+		}
 		if availableWidth < quitWidth+sendWidth {
-			// At exceptionally small widths, preserve the quit action rather
-			// than drawing overlapping footer controls.
 			includeSend = false
+			sendPrefix = ""
 			sendWidth = 0
 		}
 	}
 
-	maxPrefixWidth := availableWidth - quitWidth - sendWidth
+	quitButtonWidth := quitWidth + quitLeftPad + quitRightPad
+	maxPrefixWidth := availableWidth - quitButtonWidth - sendWidth
 	if maxPrefixWidth < 0 {
 		maxPrefixWidth = 0
 	}
 
-	// In the main view, preserve the Connected status for as long as possible.
-	// As space gets tight, shorten it one character at a time while keeping
-	// the PgUp/PgDn controls and their surrounding shortcut text intact.
 	pageLabelWidth := lipgloss.Width(scrollLabel)
-	pageLabelStart := lipgloss.Width(lead)
-	if !usersOpen && !splashOpen && maxPrefixWidth < lipgloss.Width(prefix) {
-		statusSuffix := " • " + scrollLabel + scrollTail
-		statusBudget := maxPrefixWidth - lipgloss.Width(statusSuffix) - 1
-		if statusBudget > 0 {
-			shortStatus := truncateANSI(m.status, statusBudget)
-			lead = " " + shortStatus + " • "
-				prefix = lead + scrollLabel + scrollTail
-				pageLabelStart = lipgloss.Width(lead)
+	if !usersOpen && !splashOpen {
+		// Compression order in the main view:
+		// 1. Enter: is removed above.
+		// 2. The explanatory shortcut tail is clipped from its right edge.
+		// 3. Connected is shortened, one character at a time, as the last resort.
+		if lipgloss.Width(prefix) > maxPrefixWidth {
+			tailBudget := maxPrefixWidth - lipgloss.Width(lead) - pageLabelWidth
+			if tailBudget >= 0 {
+				prefix = lead + scrollLabel
+				if tailBudget > 0 {
+					prefix += truncateANSI(scrollTail, tailBudget)
+				}
+			} else if maxPrefixWidth >= pageLabelWidth {
+				statusBudget := maxPrefixWidth - pageLabelWidth
+				prefix = compactFooterStatusLead(m.status, statusBudget) + scrollLabel
+			} else {
+				// Never show a partial label as though it were clickable.
+				prefix = ""
+			}
+		}
+	} else {
+		// Keep the existing panel-specific footer behavior.
+		pageLabelStart := lipgloss.Width(lead)
+		if maxPrefixWidth < pageLabelStart+pageLabelWidth+1 {
+			prefix = ""
 		} else {
-			prefix = scrollLabel + scrollTail
-			pageLabelStart = 0
+			prefix = truncateANSI(prefix, maxPrefixWidth)
 		}
 	}
 
-	// Do not render a partial PgUp/PgDn label as if it were actionable. The
-	// right-side buttons retain priority once there is no room for the pair.
-	if maxPrefixWidth < pageLabelStart+pageLabelWidth+1 {
-		prefix = ""
-		pageLabelStart = -1
-	}
-
-	prefixVisible := truncateANSI(prefix, maxPrefixWidth)
-	// Keep a separating cell before Quit when the prefix is clipped.
-	if prefixVisible != "" && !strings.HasSuffix(prefixVisible, " ") {
-		prefixVisible = truncateANSI(prefixVisible, max(0, maxPrefixWidth-1)) + " "
-	}
+	prefixVisible := strings.TrimRight(prefix, " ")
 	prefixWidth := lipgloss.Width(prefixVisible)
 
-	// Highlight the page-scroll labels and derive their mouse hitboxes from
-	// the final, possibly compacted prefix so rendered controls and clicks
-	// always use the same coordinates.
+	// Highlight PgUp/PgDn and derive the mouse hitboxes from the final
+	// compacted prefix so the clickable areas always match the rendered text.
 	renderedPrefix := m.styles.status.Render(prefixVisible)
-	if pageLabelStart >= 0 && prefixWidth >= pageLabelStart+pageLabelWidth {
-		pageStartByte := strings.Index(prefixVisible, scrollLabel)
-		if pageStartByte >= 0 {
-			pageStart := lipgloss.Width(prefixVisible[:pageStartByte])
-			pageEndByte := pageStartByte + len(scrollLabel)
-			tailVisible := prefixVisible[pageEndByte:]
-			renderedPrefix = m.styles.status.Render(prefixVisible[:pageStartByte]) +
-				m.styles.accent.Render("PgUp") +
-				m.styles.status.Render("/") +
-				m.styles.accent.Render("PgDn") +
-				m.styles.status.Render(tailVisible)
-			targets.hasPageScroll = true
-			targets.pgUpStart = pageStart
-			targets.pgUpEnd = pageStart + lipgloss.Width("PgUp")
-			targets.pgDnStart = pageStart + lipgloss.Width("PgUp/")
-			targets.pgDnEnd = targets.pgDnStart + lipgloss.Width("PgDn")
-		}
+	pageStartByte := strings.Index(prefixVisible, scrollLabel)
+	if pageStartByte >= 0 {
+		pageStart := lipgloss.Width(prefixVisible[:pageStartByte])
+		pageEndByte := pageStartByte + len(scrollLabel)
+		renderedPrefix = m.styles.status.Render(prefixVisible[:pageStartByte]) +
+			m.styles.accent.Render("PgUp") +
+			m.styles.status.Render("/") +
+			m.styles.accent.Render("PgDn") +
+			m.styles.status.Render(prefixVisible[pageEndByte:])
+		targets.hasPageScroll = true
+		targets.pgUpStart = pageStart
+		targets.pgUpEnd = pageStart + lipgloss.Width("PgUp")
+		targets.pgDnStart = pageStart + lipgloss.Width("PgUp/")
+		targets.pgDnEnd = targets.pgDnStart + lipgloss.Width("PgDn")
 	}
 
-	leftWidth := prefixWidth + quitWidth
-	gapWidth := availableWidth - leftWidth - sendWidth
+	gapWidth := availableWidth - prefixWidth - quitButtonWidth - sendWidth
 	if gapWidth < 0 {
 		gapWidth = 0
 	}
 
-	targets.quitStart = prefixWidth
+	targets.quitStart = prefixWidth + quitLeftPad
 	targets.quitEnd = targets.quitStart + quitWidth
 	var line strings.Builder
 	line.WriteString(renderedPrefix)
+	if quitLeftPad > 0 {
+		line.WriteString(m.styles.status.Render(strings.Repeat(" ", quitLeftPad)))
+	}
 	line.WriteString(m.styles.accent.Render(quitText))
-	// Use styled one-cell blank glyphs instead of ordinary spaces. The
-	// renderer can skip trailing/changed spaces, leaving stale footer cells
-	// when switching between the shorter panel-specific shortcut labels.
+	if quitRightPad > 0 {
+		line.WriteString(m.styles.status.Render(strings.Repeat(" ", quitRightPad)))
+	}
+	// Styled braille blanks force repainting when the footer changes length.
 	line.WriteString(m.styles.status.Render(strings.Repeat("⠀", gapWidth)))
 
 	if includeSend {
 		targets.hasSend = true
-		// Only the colored [Send] label is clickable; "Enter:" remains
-		// an explanatory keyboard hint when there is room for it.
 		targets.sendStart = availableWidth - shortSendWidth
 		targets.sendEnd = availableWidth
 		if sendPrefix != "" {
@@ -3538,8 +3567,7 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		}
 	}
 
-	// Paint the final inset cell with a styled blank glyph. This forces the
-	// terminal to repaint it while keeping [Send] one cell away from the edge.
+	// Paint the final inset cell while keeping [Send] one cell from the edge.
 	line.WriteString(m.styles.status.Render("⠀"))
 	return line.String(), targets
 }
