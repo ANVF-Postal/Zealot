@@ -2966,12 +2966,13 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 			// Give the compact one-off variant a solid blue tile, including
 			// the padding around every line, with black lettering on top.
 			boxWidth := 18
-			lines = append(lines, renderChatRow(rowFill, blueBlock.Render(strings.Repeat(" ", boxWidth)), contentWidth))
+			indent := strings.Repeat(" ", logoIndent)
+			lines = append(lines, renderChatRow(rowFill, indent+blueBlock.Render(strings.Repeat(" ", boxWidth)), contentWidth))
 			for _, artLine := range logo {
 				padded := " " + artLine + strings.Repeat(" ", max(0, boxWidth-lipgloss.Width(artLine)-1))
-				lines = append(lines, renderChatRow(rowFill, blueBlock.Render(padded), contentWidth))
+				lines = append(lines, renderChatRow(rowFill, indent+blueBlock.Render(padded), contentWidth))
 			}
-			lines = append(lines, renderChatRow(rowFill, blueBlock.Render(strings.Repeat(" ", boxWidth)), contentWidth))
+			lines = append(lines, renderChatRow(rowFill, indent+blueBlock.Render(strings.Repeat(" ", boxWidth)), contentWidth))
 			return lines
 		}
 
