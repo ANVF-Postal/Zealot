@@ -28,6 +28,9 @@ const (
 	maxMessage = 4000
 )
 
+// appVersion can be set by release builds with -ldflags "-X main.appVersion=1.2.3".
+var appVersion = "0.0.0-dev"
+
 // -----------------------------------------------------------------------------
 // Configuration
 // -----------------------------------------------------------------------------
@@ -213,8 +216,9 @@ func terminalBellCmd() tea.Cmd {
 // -----------------------------------------------------------------------------
 
 type User struct {
-	Name  string `json:"name"`
-	Color string `json:"color"`
+	Name   string `json:"name"`
+	Color  string `json:"color"`
+	Typing bool   `json:"typing,omitempty"`
 }
 
 type Packet struct {
@@ -226,6 +230,7 @@ type Packet struct {
 	Typing     bool      `json:"typing,omitempty"`
 	AddHistory bool      `json:"add_history,omitempty"`
 	Ephemeral  bool      `json:"ephemeral,omitempty"`
+	Users      []User    `json:"users,omitempty"`
 }
 
 // -----------------------------------------------------------------------------
@@ -249,29 +254,20 @@ type roomState struct {
 }
 
 type server struct {
-	mu         sync.Mutex
-	rooms      map[string]*roomState
-	addHistory bool
+	mu    sync.Mutex
+	rooms map[string]*roomState
 }
 
-func newServer(addHistory bool) *server {
-	return &server{
-		rooms:      make(map[string]*roomState),
-		addHistory: addHistory,
-	}
+func newServer() *server {
+	return &server{rooms: make(map[string]*roomState)}
 }
 
-func (s *server) room(name string) *roomState {
-	r, ok := s.rooms[name]
-
-	if !ok {
-		r = &roomState{
-			clients: make(map[string]*serverClient),
-		}
-
-		s.rooms[name] = r
+func (s *server) room(name string, historyEnabled bool) *roomState {
+	r := &roomState{
+		clients:        make(map[string]*serverClient),
+		historyEnabled: historyEnabled,
 	}
-
+	s.rooms[name] = r
 	return r
 }
 
@@ -296,6 +292,26 @@ func (s *server) broadcast(
 	for _, c := range clients {
 		c.send(packet)
 	}
+}
+
+// broadcastRoster sends a current, alphabetized room roster to every client.
+func (s *server) broadcastRoster(roomName string) {
+	s.mu.Lock()
+	room := s.rooms[roomName]
+	users := make([]User, 0)
+	if room != nil {
+		for _, client := range room.clients {
+			user := client.user
+			user.Typing = client.typing
+			users = append(users, user)
+		}
+	}
+	s.mu.Unlock()
+
+	sort.Slice(users, func(i, j int) bool {
+		return strings.ToLower(users[i].Name) < strings.ToLower(users[j].Name)
+	})
+	s.broadcast(roomName, Packet{Type: "users", Room: roomName, Users: users})
 }
 
 func (c *serverClient) send(packet Packet) {
@@ -367,15 +383,32 @@ func (s *server) handle(conn net.Conn) {
 	}
 
 	s.mu.Lock()
-	room := s.room(roomName)
-	if hello.AddHistory {
-		room.historyEnabled = true
+	room, exists := s.rooms[roomName]
+	// --add-history only establishes policy when creating a room. A normal
+	// join always inherits the existing room's policy; it must not need to
+	// repeat the creation flag. Passing the flag to an existing room is
+	// rejected so nobody can use it to alter that room's history setting.
+	if exists && hello.AddHistory {
+		existingPolicy := "disabled"
+		if room.historyEnabled {
+			existingPolicy = "enabled"
+		}
+		_ = encoder.Encode(Packet{
+			Type: "history_mismatch",
+			Text: fmt.Sprintf("This room already exists with history %s. Remove the --add-history flag and relaunch to join it.", existingPolicy),
+		})
+		s.mu.Unlock()
+		return
+	}
+	if !exists {
+		room = s.room(roomName, hello.AddHistory)
 	}
 	user.Name = uniqueUserName(room, user.Name)
 	client.user = user
 	room.clients[client.id] = client
 	var history []Packet
-	if room.historyEnabled {
+	historyEnabled := room.historyEnabled
+	if historyEnabled {
 		history = append([]Packet(nil), room.messages...)
 	}
 
@@ -386,9 +419,10 @@ func (s *server) handle(conn net.Conn) {
 	s.mu.Unlock()
 
 	writeErr := client.enc.Encode(Packet{
-		Type: "welcome",
-		Room: roomName,
-		User: client.user,
+		Type:       "welcome",
+		Room:       roomName,
+		User:       client.user,
+		AddHistory: historyEnabled,
 	})
 	if writeErr == nil {
 		for _, message := range history {
@@ -396,6 +430,14 @@ func (s *server) handle(conn net.Conn) {
 				break
 			}
 		}
+	}
+	if writeErr == nil && historyEnabled {
+		writeErr = client.enc.Encode(Packet{
+			Type: "system",
+			Room: roomName,
+			Text: "History is enabled for this room.",
+			Time: time.Now().UTC(),
+		})
 	}
 	if writeErr == nil {
 		// Mark the end of replay so history does not trigger notifications.
@@ -419,6 +461,14 @@ func (s *server) handle(conn net.Conn) {
 		return
 	}
 
+	// Broadcast the authoritative room state so clients already in the room
+	// receive the same daemon-controlled setting as the newly joined client.
+	s.broadcast(roomName, Packet{
+		Type:       "history_state",
+		Room:       roomName,
+		AddHistory: historyEnabled,
+	})
+
 	if !client.ephemeral {
 		s.systemMessage(
 			roomName,
@@ -433,6 +483,7 @@ func (s *server) handle(conn net.Conn) {
 		Type: "online",
 		Text: strconv.Itoa(onlineCount),
 	})
+	s.broadcastRoster(roomName)
 
 	for {
 		var packet Packet
@@ -490,8 +541,8 @@ func (s *server) handle(conn net.Conn) {
 
 			s.mu.Lock()
 
-			room := s.room(roomName)
-			if room.historyEnabled {
+			room := s.rooms[roomName]
+			if room != nil && room.historyEnabled {
 				room.messages = append(room.messages, message)
 			}
 
@@ -507,6 +558,7 @@ func (s *server) handle(conn net.Conn) {
 				User:   user,
 				Typing: false,
 			})
+			s.broadcastRoster(roomName)
 
 		case "rename":
 			requested := strings.TrimSpace(packet.User.Name)
@@ -535,6 +587,7 @@ func (s *server) handle(conn net.Conn) {
 			}
 			s.systemMessage(roomName, fmt.Sprintf("%s is now %s", oldName, requested))
 			client.send(Packet{Type: "identity", Room: roomName, User: client.user})
+			s.broadcastRoster(roomName)
 
 		case "color":
 			color := strings.TrimSpace(packet.User.Color)
@@ -548,6 +601,7 @@ func (s *server) handle(conn net.Conn) {
 			s.mu.Unlock()
 			client.send(Packet{Type: "identity", Room: roomName, User: client.user})
 			s.systemMessage(roomName, fmt.Sprintf("%s changed their color.", user.Name))
+			s.broadcastRoster(roomName)
 
 		case "me":
 			text := strings.TrimSpace(packet.Text)
@@ -559,14 +613,15 @@ func (s *server) handle(conn net.Conn) {
 			}
 			action := Packet{Type: "me", Room: roomName, User: user, Text: text, Time: time.Now().UTC()}
 			s.mu.Lock()
-			room := s.room(roomName)
-			if room.historyEnabled {
+			room := s.rooms[roomName]
+			if room != nil && room.historyEnabled {
 				room.messages = append(room.messages, action)
 			}
 			client.typing = false
 			s.mu.Unlock()
 			s.broadcast(roomName, action)
 			s.broadcast(roomName, Packet{Type: "typing", Room: roomName, User: user, Typing: false})
+			s.broadcastRoster(roomName)
 
 		case "typing":
 			typing := packet.Typing
@@ -581,28 +636,25 @@ func (s *server) handle(conn net.Conn) {
 				User:   user,
 				Typing: typing,
 			})
+			s.broadcastRoster(roomName)
 
 		case "who":
-			// Return the current room roster only to the requesting client.
+			// Return a structured roster snapshot only to the requesting client.
 			s.mu.Lock()
 			room := s.rooms[roomName]
-			var names []string
+			users := make([]User, 0)
 			if room != nil {
 				for _, connected := range room.clients {
-					names = append(names, connected.user.Name)
+					user := connected.user
+					user.Typing = connected.typing
+					users = append(users, user)
 				}
 			}
 			s.mu.Unlock()
-
-			sort.Slice(names, func(i, j int) bool {
-				return strings.ToLower(names[i]) < strings.ToLower(names[j])
+			sort.Slice(users, func(i, j int) bool {
+				return strings.ToLower(users[i].Name) < strings.ToLower(users[j].Name)
 			})
-
-			text := fmt.Sprintf("Connected users (%d):", len(names))
-			for _, name := range names {
-				text += "\n  • " + name
-			}
-			client.send(Packet{Type: "system", Room: roomName, Text: text, Time: time.Now().UTC()})
+			client.send(Packet{Type: "users", Room: roomName, Users: users})
 
 		case "history_status":
 			s.mu.Lock()
@@ -669,6 +721,7 @@ func (s *server) removeClient(
 			Type: "online",
 			Text: strconv.Itoa(onlineCount),
 		})
+		s.broadcastRoster(client.room)
 
 	}
 }
@@ -735,7 +788,7 @@ func listenUnixSocket() (net.Listener, error) {
 	return net.Listen("unix", socketPath)
 }
 
-func runServer(addHistory bool) error {
+func runServer() error {
 	listener, err := listenUnixSocket()
 	if err != nil {
 		return err
@@ -762,7 +815,7 @@ func runServer(addHistory bool) error {
 		return err
 	}
 
-	s := newServer(addHistory)
+	s := newServer()
 
 	unixListener, ok := listener.(*net.UnixListener)
 
@@ -826,10 +879,12 @@ func cleanRoom(room string) string {
 // -----------------------------------------------------------------------------
 
 type wireClient struct {
-	conn    net.Conn
-	enc     *json.Encoder
-	decoder *json.Decoder
-	mu      sync.Mutex
+	conn          net.Conn
+	enc           *json.Encoder
+	decoder       *json.Decoder
+	initialPacket Packet
+	hasInitial    bool
+	mu            sync.Mutex
 }
 
 func (c *wireClient) send(
@@ -853,12 +908,10 @@ func connectToServer(
 	)
 
 	if err != nil {
-		// Start the internal server because nobody is currently running it.
-		args := []string{"--daemon"}
-		if addHistory {
-			args = append(args, "--add-history")
-		}
-		cmd := exec.Command(os.Args[0], args...)
+		// Start an internal server process. The first client handshake chooses
+		// the new room's history policy.
+		cmd := exec.Command(os.Args[0])
+		cmd.Env = append(os.Environ(), "ZEALOT_INTERNAL_DAEMON=1")
 
 		devNull, openErr := os.OpenFile(
 			os.DevNull,
@@ -916,8 +969,8 @@ func connectToServer(
 	}
 
 	if err := client.send(Packet{
-		Type:       "hello",
-		Room:       room,
+		Type:      "hello",
+		Room:      room,
 		User:       user,
 		AddHistory: addHistory,
 		Ephemeral:  ephemeral,
@@ -925,6 +978,29 @@ func connectToServer(
 		_ = conn.Close()
 		return nil, err
 	}
+
+	// Validate the room policy before returning to the caller, so a mismatch
+	// is reported in the terminal without starting the TUI.
+	if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	var response Packet
+	if err := client.decoder.Decode(&response); err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("could not complete the Zealot handshake: %w", err)
+	}
+	_ = conn.SetReadDeadline(time.Time{})
+	if response.Type == "history_mismatch" {
+		_ = conn.Close()
+		return nil, errors.New(response.Text)
+	}
+	if response.Type != "welcome" {
+		_ = conn.Close()
+		return nil, fmt.Errorf("unexpected response from Zealot: %s", response.Type)
+	}
+	client.initialPacket = response
+	client.hasInitial = true
 
 	return client, nil
 }
@@ -942,6 +1018,11 @@ type typingClearMsg struct {
 }
 
 type notificationsReadyMsg struct{}
+
+type scrollbarHoldMsg struct{ generation int }
+type usersScrollbarHoldMsg struct{ generation int }
+type splashScrollbarHoldMsg struct{ generation int }
+type usersAnimationMsg struct{}
 
 // -----------------------------------------------------------------------------
 // UI styles
@@ -982,9 +1063,7 @@ func makeStyles(cfg Config) uiStyles {
 
 		status: lipgloss.NewStyle().
 			Background(bg).
-			Foreground(lipgloss.Color("#707786")).
-			PaddingLeft(1).
-			PaddingRight(1),
+			Foreground(lipgloss.Color("#707786")),
 
 		border: lipgloss.NewStyle().
 			Background(bg).
@@ -1011,9 +1090,26 @@ func makeStyles(cfg Config) uiStyles {
 type model struct {
 	cfg          Config
 	room         string
-	roomExplicit bool
-	user         User
-	onlineCount  int
+	roomExplicit   bool
+	historyEnabled bool
+	user           User
+	onlineCount    int
+	onlineUsers  []User
+	usersOpen    bool
+	usersScroll  int
+	usersFrame   int
+
+	splashOpen                       bool
+	splashScroll                     int
+	splashScrollDragging             bool
+	splashScrollDragOffset           int
+	splashScrollbarHoldDirection     int
+	splashScrollbarHoldGeneration    int
+	usersScrollDragging bool
+	usersScrollDragOffset int
+	usersScrollbarHoldDirection int
+	usersScrollbarHoldGeneration int
+	userActivity map[string]int
 
 	client *wireClient
 
@@ -1033,6 +1129,11 @@ type model struct {
 	width  int
 	height int
 	scroll int
+
+	scrollDragging bool
+	scrollDragOffset int
+	scrollbarHoldDirection int
+	scrollbarHoldGeneration int
 
 	connected          bool
 	status             string
@@ -1109,6 +1210,7 @@ func newModel(
 		user:         user,
 		client:       client,
 		typing:       make(map[string]User),
+		userActivity: make(map[string]int),
 		input:        input,
 		connected:    true,
 		status:       "Connected",
@@ -1133,6 +1235,10 @@ func readPacket(
 	client *wireClient,
 ) tea.Cmd {
 	return func() tea.Msg {
+		if client.hasInitial {
+			client.hasInitial = false
+			return messageReceivedMsg(client.initialPacket)
+		}
 		var packet Packet
 
 		if err := client.decoder.Decode(&packet); err != nil {
@@ -1191,6 +1297,18 @@ func (m model) Update(
 			m.rebuildMessageCache()
 			m.clampScroll()
 		}
+		// The roster's row count can change when the terminal width changes,
+		// and its viewport changes when the height changes. Keep the saved
+		// offset within the new valid range so clipped names reappear naturally
+		// when the window is expanded again.
+		m.clampUsersScroll()
+		m.clampSplashScroll()
+		m.splashScrollDragging = false
+		m.splashScrollbarHoldDirection = 0
+		m.splashScrollbarHoldGeneration++
+		m.usersScrollDragging = false
+		m.usersScrollbarHoldDirection = 0
+		m.usersScrollbarHoldGeneration++
 
 		return m, nil
 	}
@@ -1210,8 +1328,20 @@ func (m model) Update(
 				m.onlineCount = count
 			}
 
+		case "users":
+			// Roster broadcasts keep this snapshot current for both the online
+			// panel and the /who command. They are not chat messages themselves.
+			m.onlineUsers = append([]User(nil), packet.Users...)
+			sort.Slice(m.onlineUsers, func(i, j int) bool {
+				return strings.ToLower(m.onlineUsers[i].Name) < strings.ToLower(m.onlineUsers[j].Name)
+			})
+			m.clampUsersScroll()
+
 		case "message", "system", "me", "letter":
 			m.appendMessage(packet)
+			if packet.Type == "message" && packet.User.Name != m.user.Name {
+				m.userActivity[packet.User.Name] = 6
+			}
 
 		case "identity":
 			if packet.User.Name != "" {
@@ -1228,6 +1358,10 @@ func (m model) Update(
 			if packet.User.Name != "" {
 				m.user = packet.User
 			}
+			m.historyEnabled = packet.AddHistory
+
+		case "history_state":
+			m.historyEnabled = packet.AddHistory
 
 		case "typing":
 			key := packet.User.Name
@@ -1258,15 +1392,34 @@ func (m model) Update(
 		}
 
 		next := readPacket(m.client)
-
-		if packet.Type == "message" &&
-			packet.User.Name != m.user.Name &&
-			m.notificationsReady &&
-			(m.cfg.Bell) {
-			return m, tea.Batch(next, terminalBellCmd())
+		var commands []tea.Cmd
+		commands = append(commands, next)
+		if packet.Type == "message" && packet.User.Name != m.user.Name {
+			commands = append(commands, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg { return usersAnimationMsg{} }))
+			if m.notificationsReady && m.cfg.Bell {
+				commands = append(commands, terminalBellCmd())
+			}
 		}
+		return m, tea.Batch(commands...)
+	}
 
-		return m, next
+	if _, ok := msg.(usersAnimationMsg); ok {
+		m.usersFrame++
+		active := m.usersOpen
+		for name, remaining := range m.userActivity {
+			if remaining <= 1 {
+				delete(m.userActivity, name)
+			} else {
+				m.userActivity[name] = remaining - 1
+				active = true
+			}
+		}
+		if active {
+			return m, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg {
+				return usersAnimationMsg{}
+			})
+		}
+		return m, nil
 	}
 
 	if _, ok := msg.(connectionClosedMsg); ok {
@@ -1291,10 +1444,243 @@ func (m model) Update(
 	}
 
 	// -------------------------------------------------------------------------
+	// Scrollbar mouse interaction
+	// -------------------------------------------------------------------------
+
+	switch mouse := msg.(type) {
+	case tea.MouseClickMsg:
+		if (m.usersOpen || m.splashOpen) && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width("[X]") && mouse.X < m.width {
+			m.usersOpen = false
+			m.splashOpen = false
+			m.usersScrollDragging = false
+			m.usersScrollbarHoldDirection = 0
+			m.usersScrollbarHoldGeneration++
+			m.splashScrollDragging = false
+			m.splashScrollbarHoldDirection = 0
+			m.splashScrollbarHoldGeneration++
+			return m, nil
+		}
+		if mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= 0 && mouse.X < lipgloss.Width("ZEALOT") {
+			if m.splashOpen {
+				m.splashOpen = false
+				m.splashScrollDragging = false
+				m.splashScrollbarHoldDirection = 0
+				m.splashScrollbarHoldGeneration++
+			} else {
+				m.splashOpen = true
+				m.usersOpen = false
+				m.splashScroll = 0
+				m.splashScrollDragging = false
+				m.splashScrollbarHoldDirection = 0
+				m.splashScrollbarHoldGeneration++
+				m.usersScrollDragging = false
+				m.usersScrollbarHoldDirection = 0
+				m.usersScrollbarHoldGeneration++
+				m.scrollDragging = false
+				m.scrollbarHoldDirection = 0
+				m.scrollbarHoldGeneration++
+			}
+			return m, nil
+		}
+		if !m.usersOpen && !m.splashOpen && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width(fmt.Sprintf("Online: %d", m.onlineCount)) && mouse.X < m.width {
+			m.usersOpen = true
+			m.usersScroll = 0
+			m.usersScrollDragging = false
+			m.usersScrollbarHoldDirection = 0
+			m.usersScrollbarHoldGeneration++
+			m.scrollDragging = false
+			m.scrollbarHoldDirection = 0
+			m.scrollbarHoldGeneration++
+			_ = m.client.send(Packet{Type: "who", Room: m.room})
+			return m, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg { return usersAnimationMsg{} })
+		}
+		if m.usersOpen && mouse.Button == tea.MouseLeft && mouse.X == m.width-2 && m.maxUsersScroll() > 0 {
+			visible := m.usersPanelHeight()
+			firstTrackY := 3
+			topArrowY := 2 // aligned with the Online users heading
+			bottomArrowY := firstTrackY + visible - 1
+			switch {
+			case mouse.Y == topArrowY:
+				m.usersScrollbarHoldDirection = -1
+				m.usersScrollbarHoldGeneration++
+				m.usersScroll -= 3
+				m.clampUsersScroll()
+				return m, m.usersScrollbarHoldCmd(m.usersScrollbarHoldGeneration)
+			case mouse.Y == bottomArrowY:
+				m.usersScrollbarHoldDirection = 1
+				m.usersScrollbarHoldGeneration++
+				m.usersScroll += 3
+				m.clampUsersScroll()
+				return m, m.usersScrollbarHoldCmd(m.usersScrollbarHoldGeneration)
+			case mouse.Y > topArrowY && mouse.Y < bottomArrowY:
+				top, thumbHeight, _ := m.usersScrollbarThumb()
+				trackPosition := mouse.Y - firstTrackY
+				if trackPosition >= top && trackPosition < top+thumbHeight {
+					m.usersScrollDragging = true
+					m.usersScrollDragOffset = trackPosition - top
+					return m, nil
+				}
+				m.setUsersScrollFromTrack(trackPosition)
+				return m, nil
+			}
+		}
+		if m.splashOpen && mouse.Button == tea.MouseLeft && mouse.X == m.width-2 && m.maxSplashScroll() > 0 {
+			visible := m.splashPanelHeight()
+			firstTrackY := 3
+			topArrowY := 2
+			bottomArrowY := 1 + visible
+			switch {
+			case mouse.Y == topArrowY:
+				m.splashScrollbarHoldDirection = -1
+				m.splashScrollbarHoldGeneration++
+				m.splashScroll -= 3
+				m.clampSplashScroll()
+				return m, m.splashScrollbarHoldCmd(m.splashScrollbarHoldGeneration)
+			case mouse.Y == bottomArrowY:
+				m.splashScrollbarHoldDirection = 1
+				m.splashScrollbarHoldGeneration++
+				m.splashScroll += 3
+				m.clampSplashScroll()
+				return m, m.splashScrollbarHoldCmd(m.splashScrollbarHoldGeneration)
+			case mouse.Y > topArrowY && mouse.Y < bottomArrowY:
+				top, thumbHeight, _ := m.splashScrollbarThumb()
+				trackPosition := mouse.Y - firstTrackY
+				if trackPosition >= top && trackPosition < top+thumbHeight {
+					m.splashScrollDragging = true
+					m.splashScrollDragOffset = trackPosition - top
+					return m, nil
+				}
+				m.setSplashScrollFromTrack(trackPosition)
+				return m, nil
+			}
+		}
+		if !m.usersOpen && !m.splashOpen && mouse.Button == tea.MouseLeft && m.scrollbarContains(mouse.X, mouse.Y) && m.maxScroll() > 0 {
+			top, thumbHeight, trackHeight := m.scrollbarThumb()
+			trackY := mouse.Y - 3 // first draggable track row; arrows occupy y=2 and the final row
+			if trackY < 0 { trackY = 0 }
+			if trackY >= trackHeight { trackY = trackHeight - 1 }
+
+			switch {
+			case mouse.Y == 2:
+				m.scrollbarHoldDirection = 1
+				m.scrollbarHoldGeneration++
+				m.scroll += 3
+				m.clampScroll()
+				return m, m.scrollbarHoldCmd(m.scrollbarHoldGeneration)
+			case mouse.Y == 1+m.messageHeight():
+				m.scrollbarHoldDirection = -1
+				m.scrollbarHoldGeneration++
+				m.scroll -= 3
+				m.clampScroll()
+				return m, m.scrollbarHoldCmd(m.scrollbarHoldGeneration)
+			case trackY >= top && trackY < top+thumbHeight:
+				m.scrollDragging = true
+				m.scrollDragOffset = trackY - top
+				return m, nil
+			default:
+				m.setScrollFromTrack(trackY)
+				return m, nil
+			}
+		}
+
+	case tea.MouseMotionMsg:
+		if m.splashOpen && m.splashScrollDragging {
+			_, thumbHeight, trackHeight := m.splashScrollbarThumb()
+			target := mouse.Y - 3 - m.splashScrollDragOffset
+			if target < 0 { target = 0 }
+			if target > trackHeight-thumbHeight { target = trackHeight-thumbHeight }
+			m.setSplashScrollFromThumbTop(target)
+			return m, nil
+		}
+		if m.usersOpen && m.usersScrollDragging {
+			_, thumbHeight, trackHeight := m.usersScrollbarThumb()
+			target := mouse.Y - 3 - m.usersScrollDragOffset
+			if target < 0 { target = 0 }
+			if target > trackHeight-thumbHeight { target = trackHeight-thumbHeight }
+			m.setUsersScrollFromThumbTop(target)
+			return m, nil
+		}
+		if m.scrollDragging && !m.usersOpen && !m.splashOpen {
+			_, thumbHeight, trackHeight := m.scrollbarThumb()
+			target := mouse.Y - 3 - m.scrollDragOffset
+			if target < 0 { target = 0 }
+			if target > trackHeight-thumbHeight { target = trackHeight-thumbHeight }
+			m.setScrollFromThumbTop(target)
+			return m, nil
+		}
+
+	case tea.MouseReleaseMsg:
+		m.splashScrollDragging = false
+		m.splashScrollbarHoldDirection = 0
+		m.splashScrollbarHoldGeneration++
+		m.scrollDragging = false
+		m.scrollbarHoldDirection = 0
+		m.scrollbarHoldGeneration++
+		m.usersScrollDragging = false
+		m.usersScrollbarHoldDirection = 0
+		m.usersScrollbarHoldGeneration++
+		return m, nil
+
+	case usersScrollbarHoldMsg:
+		if m.usersOpen && mouse.generation == m.usersScrollbarHoldGeneration && m.usersScrollbarHoldDirection != 0 {
+			m.usersScroll += m.usersScrollbarHoldDirection * 3
+			m.clampUsersScroll()
+			if m.usersScroll == 0 || m.usersScroll == m.maxUsersScroll() {
+				m.usersScrollbarHoldDirection = 0
+				return m, nil
+			}
+			return m, m.usersScrollbarHoldCmd(mouse.generation)
+		}
+		return m, nil
+	case splashScrollbarHoldMsg:
+		if m.splashOpen && mouse.generation == m.splashScrollbarHoldGeneration && m.splashScrollbarHoldDirection != 0 {
+			m.splashScroll += m.splashScrollbarHoldDirection * 3
+			m.clampSplashScroll()
+			if m.splashScroll == 0 || m.splashScroll == m.maxSplashScroll() {
+				m.splashScrollbarHoldDirection = 0
+				return m, nil
+			}
+			return m, m.splashScrollbarHoldCmd(mouse.generation)
+		}
+		return m, nil
+	case scrollbarHoldMsg:
+		if !m.usersOpen && !m.splashOpen && mouse.generation == m.scrollbarHoldGeneration && m.scrollbarHoldDirection != 0 {
+			m.scroll += m.scrollbarHoldDirection * 3
+			m.clampScroll()
+			if m.scroll == 0 || m.scroll == m.maxScroll() {
+				m.scrollbarHoldDirection = 0
+				return m, nil
+			}
+			return m, m.scrollbarHoldCmd(mouse.generation)
+		}
+		return m, nil
+	}
+
+	// -------------------------------------------------------------------------
 	// Mouse wheel
 	// -------------------------------------------------------------------------
 
 	if mouseMsg, ok := msg.(tea.MouseWheelMsg); ok {
+		if m.splashOpen {
+			switch mouseMsg.Button {
+			case tea.MouseWheelUp:
+				m.splashScroll -= 3
+			case tea.MouseWheelDown:
+				m.splashScroll += 3
+			}
+			m.clampSplashScroll()
+			return m, nil
+		}
+		if m.usersOpen {
+			switch mouseMsg.Button {
+			case tea.MouseWheelUp:
+				m.usersScroll -= 3
+			case tea.MouseWheelDown:
+				m.usersScroll += 3
+			}
+			m.clampUsersScroll()
+			return m, nil
+		}
 		switch mouseMsg.Button {
 		case tea.MouseWheelUp:
 			m.scroll += 3
@@ -1316,6 +1702,31 @@ func (m model) Update(
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		switch keyMsg.String() {
 
+		case "esc", "escape":
+			if m.splashOpen {
+				m.splashOpen = false
+				m.splashScrollDragging = false
+				m.splashScrollbarHoldDirection = 0
+				m.splashScrollbarHoldGeneration++
+				return m, nil
+			}
+			if m.usersOpen {
+				m.usersOpen = false
+				m.usersScrollDragging = false
+				m.usersScrollbarHoldDirection = 0
+				m.usersScrollbarHoldGeneration++
+				return m, nil
+			}
+
+		case "ctrl+o":
+			if m.usersOpen {
+				m.usersOpen = false
+				m.usersScrollDragging = false
+				m.usersScrollbarHoldDirection = 0
+				m.usersScrollbarHoldGeneration++
+				return m, nil
+			}
+
 		case "ctrl+c", "ctrl+q":
 			m.sendTyping(false)
 			_ = m.client.conn.Close()
@@ -1323,22 +1734,50 @@ func (m model) Update(
 			return m, tea.Quit
 
 		case "pgup":
+			if m.splashOpen {
+				m.splashScroll -= max(1, m.splashPanelHeight()/2)
+				m.clampSplashScroll()
+				return m, nil
+			}
+			if m.usersOpen {
+				m.usersScroll -= max(1, m.usersPanelHeight())
+				m.clampUsersScroll()
+				return m, nil
+			}
 			m.scroll += m.messageHeight() / 2
 			m.clampScroll()
 
 			return m, nil
 
 		case "pgdown":
+			if m.splashOpen {
+				m.splashScroll += max(1, m.splashPanelHeight()/2)
+				m.clampSplashScroll()
+				return m, nil
+			}
+			if m.usersOpen {
+				m.usersScroll += max(1, m.usersPanelHeight())
+				m.clampUsersScroll()
+				return m, nil
+			}
 			m.scroll -= m.messageHeight() / 2
 			m.clampScroll()
 
 			return m, nil
 
 		case "ctrl+home":
+			if m.splashOpen {
+				m.splashScroll = 0
+				return m, nil
+			}
 			m.scroll = m.maxScroll()
 			return m, nil
 
 		case "ctrl+end":
+			if m.splashOpen {
+				m.splashScroll = m.maxSplashScroll()
+				return m, nil
+			}
 			m.scroll = 0
 			return m, nil
 
@@ -1378,6 +1817,10 @@ func (m model) Update(
 	// The textarea must receive the key event or the character won't
 	// actually appear in the input box.
 	// -------------------------------------------------------------------------
+
+	if m.splashOpen {
+		return m, nil
+	}
 
 	var inputCmd tea.Cmd
 
@@ -1475,7 +1918,30 @@ func (m *model) sendMessage(text string) {
 			m.appendMessage(Packet{Type: "system", Text: "Usage: /who", Time: time.Now()})
 			return
 		}
-		_ = m.client.send(Packet{Type: "who", Room: m.room})
+		// The room roster is maintained continuously from server broadcasts,
+		// so /who can display the current snapshot without requesting another
+		// "users" packet (which is also used for typing/join/leave updates).
+		text := fmt.Sprintf("Connected users (%d):", len(m.onlineUsers))
+		// Leave the permanent typing-indicator row out of the available chat
+		// height. Include the heading when deciding whether the vertical list
+		// will fit; otherwise use a compact paragraph that wraps naturally.
+		availableRows := max(1, m.messageHeight()-1)
+		if len(m.onlineUsers)+1 <= availableRows {
+			for _, user := range m.onlineUsers {
+				text += "\n  • " + user.Name
+			}
+		} else if len(m.onlineUsers) > 0 {
+			names := make([]string, 0, len(m.onlineUsers))
+			for _, user := range m.onlineUsers {
+				names = append(names, user.Name)
+			}
+			text += " " + strings.Join(names, ", ")
+		}
+		m.appendMessage(Packet{
+			Type: "system",
+			Text: text,
+			Time: time.Now().UTC(),
+		})
 		return
 	case "/history":
 		if len(fields) != 1 {
@@ -1531,6 +1997,216 @@ func (m *model) sendMessage(text string) {
 	}
 	_ = m.client.send(Packet{Type: "message", Room: m.room, User: m.user, Text: text})
 }
+
+// splashRows builds the splash content at the current terminal width. The
+// fixed-width block lettering spans 74 columns and is centered in the
+// 77-column content area available in a standard 80-column terminal.
+func (m model) splashRows() []string {
+	const logoWidth = 74
+	logo := []string{
+		"#########    #########    ..#####..    ###......    .#######.    #########",
+		"......###    ###......    .###.###.    ###......    ###...###    ....###..",
+		".....###.    ###......    ###...###    ###......    ###...###    ....###..",
+		"....###..    ########.    #########    ###......    ###...###    ....###..",
+		"..###....    ###......    ###...###    ###......    ###...###    ....###..",
+		".###.....    ###......    ###...###    ###......    ###...###    ....###..",
+		"#########    #########    ###...###    #########    .#######.    ....###..",
+	}
+	width := max(1, m.width-3)
+	center := func(value string) string {
+		value = truncateANSI(value, width)
+		padding := max(0, (width-lipgloss.Width(value))/2)
+		return strings.Repeat(" ", padding) + value
+	}
+
+	room := m.room
+	if !m.roomExplicit {
+		room = "default"
+	}
+
+	rows := []string{""}
+	for _, line := range logo {
+		if lipgloss.Width(line) != logoWidth {
+			// Keep the layout predictable if the artwork is edited later.
+			line = truncateANSI(line, logoWidth)
+		}
+		rows = append(rows, m.styles.accent.Render(center(line)))
+	}
+	rows = append(rows, "")
+	rows = append(rows, m.styles.app.Render(center("v"+appVersion)))
+	rows = append(rows, "")
+	rows = append(rows, m.styles.app.Render(center("Connected to: "+room)))
+	historyStatus := "FALSE"
+	if m.historyEnabled {
+		historyStatus = "TRUE"
+	}
+	rows = append(rows, m.styles.app.Render(center("History Enabled: "+historyStatus)))
+	rows = append(rows, m.styles.app.Render(center(fmt.Sprintf("Online users: %d", m.onlineCount))))
+	return rows
+}
+
+func (m model) splashPanelHeight() int {
+	return max(1, m.messageHeight())
+}
+
+func (m model) maxSplashScroll() int {
+	return max(0, len(m.splashRows())-m.splashPanelHeight())
+}
+
+func (m *model) clampSplashScroll() {
+	if m.splashScroll < 0 { m.splashScroll = 0 }
+	if maxScroll := m.maxSplashScroll(); m.splashScroll > maxScroll { m.splashScroll = maxScroll }
+}
+
+func (m model) splashScrollbarThumb() (top, thumbHeight, trackHeight int) {
+	visible := m.splashPanelHeight()
+	trackHeight = visible - 2
+	if trackHeight < 1 { trackHeight = 1 }
+	total := len(m.splashRows())
+	if total <= visible { return 0, trackHeight, trackHeight }
+	thumbHeight = visible * trackHeight / total
+	if thumbHeight < 1 { thumbHeight = 1 }
+	if thumbHeight > trackHeight { thumbHeight = trackHeight }
+	maxTop := trackHeight - thumbHeight
+	if maxScroll := m.maxSplashScroll(); maxScroll > 0 {
+		top = m.splashScroll * maxTop / maxScroll
+	}
+	return
+}
+
+func (m *model) setSplashScrollFromThumbTop(top int) {
+	_, thumbHeight, trackHeight := m.splashScrollbarThumb()
+	maxTop := trackHeight - thumbHeight
+	if top < 0 { top = 0 }
+	if top > maxTop { top = maxTop }
+	if maxTop > 0 {
+		m.splashScroll = top * m.maxSplashScroll() / maxTop
+	} else {
+		m.splashScroll = 0
+	}
+	m.clampSplashScroll()
+}
+
+func (m *model) setSplashScrollFromTrack(trackPosition int) {
+	_, thumbHeight, trackHeight := m.splashScrollbarThumb()
+	if trackPosition < 0 { trackPosition = 0 }
+	if trackPosition >= trackHeight { trackPosition = trackHeight - 1 }
+	m.setSplashScrollFromThumbTop(trackPosition - thumbHeight/2)
+}
+
+func (m model) splashScrollbarHoldCmd(generation int) tea.Cmd {
+	return tea.Tick(120*time.Millisecond, func(time.Time) tea.Msg {
+		return splashScrollbarHoldMsg{generation: generation}
+	})
+}
+
+// usersPanelHeight is the available inner height for the online roster.
+func (m model) usersPanelHeight() int {
+	// The roster heading takes one row in the existing chat viewport.
+	return max(1, m.messageHeight()-1)
+}
+
+func (m model) userRows() []string {
+	width := m.width - 12
+	if width < 8 { width = 8 }
+	rows := []string{}
+	for _, user := range m.onlineUsers {
+		nameWidth := width - 5
+		if nameWidth < 1 { nameWidth = 1 }
+		parts := wrapText(user.Name, nameWidth)
+		if len(parts) == 0 { parts = []string{user.Name} }
+		style := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(user.Color)).
+			Background(lipgloss.Color(m.cfg.Background)).
+			Bold(true)
+		marker := ""
+		switch {
+		case m.userActivity[user.Name] > 0 && m.usersFrame%2 == 0:
+			marker = " [!]"
+		case user.Typing:
+			frames := []string{"·  ", "·· ", "···", " ··", "  ·"}
+			marker = " " + frames[m.usersFrame%len(frames)]
+			style = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(m.cfg.AccentColor)).
+				Background(lipgloss.Color(m.cfg.Background)).
+				Bold(true)
+		}
+		for i, part := range parts {
+			text := part
+			if i == len(parts)-1 {
+				text += marker
+			}
+			rows = append(rows, "    "+style.Render(text))
+		}
+	}
+	if len(rows) == 0 { rows = []string{m.styles.system.Render("  Nobody else is here yet.")} }
+	return rows
+}
+
+func (m model) usersScrollbarThumb() (top, thumbHeight, trackHeight int) {
+	visible := m.usersPanelHeight()
+	// The heading row carries the top arrow. The final user row carries the
+	// bottom arrow, leaving one track cell for each intervening user row.
+	trackHeight = visible - 1
+	if trackHeight < 1 {
+		trackHeight = 1
+	}
+	total := len(m.userRows())
+	if total <= visible {
+		return 0, trackHeight, trackHeight
+	}
+	thumbHeight = visible * trackHeight / total
+	if thumbHeight < 1 {
+		thumbHeight = 1
+	}
+	if thumbHeight > trackHeight {
+		thumbHeight = trackHeight
+	}
+	maxTop := trackHeight - thumbHeight
+	maxScroll := m.maxUsersScroll()
+	if maxScroll > 0 {
+		top = m.usersScroll * maxTop / maxScroll
+	}
+	return
+}
+
+func (m *model) setUsersScrollFromThumbTop(top int) {
+	_, thumbHeight, trackHeight := m.usersScrollbarThumb()
+	maxTop := trackHeight - thumbHeight
+	if top < 0 { top = 0 }
+	if top > maxTop { top = maxTop }
+	if maxTop > 0 {
+		m.usersScroll = top * m.maxUsersScroll() / maxTop
+	} else {
+		m.usersScroll = 0
+	}
+	m.clampUsersScroll()
+}
+
+func (m *model) setUsersScrollFromTrack(trackPosition int) {
+	_, thumbHeight, trackHeight := m.usersScrollbarThumb()
+	if trackPosition < 0 { trackPosition = 0 }
+	if trackPosition >= trackHeight { trackPosition = trackHeight - 1 }
+	m.setUsersScrollFromThumbTop(trackPosition - thumbHeight/2)
+}
+
+func (m model) usersScrollbarHoldCmd(generation int) tea.Cmd {
+	return tea.Tick(120*time.Millisecond, func(time.Time) tea.Msg {
+		return usersScrollbarHoldMsg{generation: generation}
+	})
+}
+
+func (m model) maxUsersScroll() int {
+	maxScroll := len(m.userRows()) - m.usersPanelHeight()
+	if maxScroll < 0 { return 0 }
+	return maxScroll
+}
+
+func (m *model) clampUsersScroll() {
+	if m.usersScroll < 0 { m.usersScroll = 0 }
+	if m.usersScroll > m.maxUsersScroll() { m.usersScroll = m.maxUsersScroll() }
+}
+
 
 // -----------------------------------------------------------------------------
 // UI layout
@@ -1634,14 +2310,56 @@ func (m model) maxScroll() int {
 
 func (m *model) clampScroll() {
 	max := m.maxScroll()
+	if m.scroll < 0 { m.scroll = 0 }
+	if m.scroll > max { m.scroll = max }
+}
 
-	if m.scroll < 0 {
+func (m model) scrollbarContains(x, y int) bool {
+	return x == m.width-2 && y >= 2 && y <= 1+m.messageHeight()
+}
+
+func (m model) scrollbarThumb() (top, thumbHeight, trackHeight int) {
+	trackHeight = m.messageHeight() - 2
+	if trackHeight < 1 { trackHeight = 1 }
+	total := len(m.renderMessageLines())
+	visible := m.messageHeight() - 1
+	if visible < 1 { visible = 1 }
+	if total <= visible { return 0, trackHeight, trackHeight }
+
+	thumbHeight = visible * trackHeight / total
+	if thumbHeight < 1 { thumbHeight = 1 }
+	if thumbHeight > trackHeight { thumbHeight = trackHeight }
+	maxTop := trackHeight - thumbHeight
+	maxScroll := m.maxScroll()
+	if maxScroll > 0 {
+		top = (maxScroll-m.scroll) * maxTop / maxScroll
+	}
+	return
+}
+
+func (m *model) setScrollFromTrack(trackPosition int) {
+	_, thumbHeight, trackHeight := m.scrollbarThumb()
+	m.setScrollFromThumbTop(trackPosition-thumbHeight/2)
+	_ = trackHeight
+}
+
+func (m *model) setScrollFromThumbTop(top int) {
+	_, thumbHeight, trackHeight := m.scrollbarThumb()
+	maxTop := trackHeight-thumbHeight
+	if top < 0 { top = 0 }
+	if top > maxTop { top = maxTop }
+	if maxTop > 0 {
+		m.scroll = m.maxScroll() - top*m.maxScroll()/maxTop
+	} else {
 		m.scroll = 0
 	}
+	m.clampScroll()
+}
 
-	if m.scroll > max {
-		m.scroll = max
-	}
+func (m model) scrollbarHoldCmd(generation int) tea.Cmd {
+	return tea.Tick(120*time.Millisecond, func(time.Time) tea.Msg {
+		return scrollbarHoldMsg{generation: generation}
+	})
 }
 
 // -----------------------------------------------------------------------------
@@ -1662,6 +2380,20 @@ func (m model) renderAllMessageLines() []string {
 		lines = append(lines, m.renderPacketLines(message, m.width)...)
 	}
 	return lines
+}
+
+// padANSIToWidth truncates a styled line safely and paints its remaining
+// cells with the supplied background style.
+func padANSIToWidth(line string, width int, fill lipgloss.Style) string {
+	if width < 1 {
+		return ""
+	}
+	line = truncateANSI(line, width)
+	remaining := width - lipgloss.Width(line)
+	if remaining > 0 {
+		line += fill.Render(strings.Repeat(" ", remaining))
+	}
+	return line
 }
 
 // renderChatRow keeps every rendered chat row inside the chat viewport.
@@ -1821,9 +2553,10 @@ func wrapANSIHardLine(s string, width int) []string {
 }
 
 func (m model) renderPacketLines(msg Packet, width int) []string {
-	// The chat box has a one-column border on each side. Lip Gloss Width is
-	// the final outer width, so the interior rows must be exactly width-2.
-	contentWidth := width - 2
+	// The chat box has a one-column border on each side, and the final
+	// interior column is reserved for the permanent scrollbar. Lip Gloss Width
+	// is the final outer width, so message content must be exactly width-3.
+	contentWidth := width - 3
 	if contentWidth < 1 {
 		contentWidth = 1
 	}
@@ -2227,24 +2960,28 @@ func (m model) renderHeader() string {
 		return ""
 	}
 
-	var title string
+	title := "ZEALOT"
 	if m.roomExplicit {
 		title = "ZEALOT — " + m.room
-	} else {
-		title = "ZEALOT"
+	}
+	rightLabel := fmt.Sprintf("Online: %d", m.onlineCount)
+	if m.usersOpen || m.splashOpen {
+		rightLabel = "[X]"
 	}
 
-	online := fmt.Sprintf("Online: %d", m.onlineCount)
-	padding := m.width - lipgloss.Width(title) - lipgloss.Width(online)
-
-	if padding < 1 {
-		padding = 1
+	// Reserve the right edge for the online button, then fill every remaining
+	// cell with the same configured background. No nested styles are used.
+	rightLabel = truncateANSI(rightLabel, m.width)
+	titleWidth := max(0, m.width-lipgloss.Width(rightLabel))
+	title = truncateANSI(title, titleWidth)
+	gapWidth := max(0, m.width-lipgloss.Width(title)-lipgloss.Width(rightLabel))
+	line := title + strings.Repeat(" ", gapWidth) + rightLabel
+	if remaining := m.width - lipgloss.Width(line); remaining > 0 {
+		line += strings.Repeat(" ", remaining)
 	}
-
-	line := title + strings.Repeat(" ", padding) + online
-
-	return m.styles.accent.
-		Width(m.width).
+	return lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.cfg.AccentColor)).
+		Background(lipgloss.Color(m.cfg.Background)).
 		Render(line)
 }
 
@@ -2287,6 +3024,67 @@ func (m model) View() tea.View {
 		chatHeight = 1
 	}
 
+	if m.usersOpen {
+		// The existing chat pane becomes the roster. The heading uses a clean
+		// full-width background row; the scrollbar occupies the far-right
+		// interior cell on user rows only.
+		users := m.userRows()
+		visibleUsers := m.usersPanelHeight()
+		userStart := min(m.usersScroll, len(users))
+		userEnd := min(userStart+visibleUsers, len(users))
+		visible := append([]string(nil), users[userStart:userEnd]...)
+
+		bg := lipgloss.Color(m.cfg.Background)
+		rowFill := lipgloss.NewStyle().Background(bg)
+		scrollbarStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(m.cfg.BorderColor)).
+			Background(bg)
+		contentWidth := max(1, m.width-2)
+		textWidth := max(1, contentWidth-1)
+
+		rosterRows := make([]string, 0, m.messageHeight())
+		heading := m.styles.accent.Render("  Online users:")
+		heading = padANSIToWidth(heading, textWidth, rowFill)
+		rosterRows = append(rosterRows, heading+scrollbarStyle.Render("^"))
+
+		for len(visible) < visibleUsers {
+			visible = append(visible, "")
+		}
+		railTop, thumbHeight, trackHeight := m.usersScrollbarThumb()
+		for i, line := range visible {
+			text := padANSIToWidth(line, textWidth, rowFill)
+			glyph := "│"
+			switch {
+			case i == visibleUsers-1:
+				glyph = "v"
+			case len(users) > visibleUsers && i < trackHeight &&
+				i >= railTop && i < railTop+thumbHeight:
+				glyph = "█"
+			}
+			rosterRows = append(rosterRows, text+scrollbarStyle.Render(glyph))
+		}
+		for len(rosterRows) < m.messageHeight() {
+			rosterRows = append(rosterRows, padANSIToWidth("", contentWidth, rowFill))
+		}
+		if len(rosterRows) > m.messageHeight() {
+			rosterRows = rosterRows[:m.messageHeight()]
+		}
+		for i := range rosterRows {
+			rosterRows[i] = renderChatRow(rowFill.Width(contentWidth), rosterRows[i], contentWidth)
+		}
+		chat := strings.Join(rosterRows, "\n")
+		chatBox := m.styles.border.
+			Width(m.width).
+			Height(m.messageHeight()).
+			Render(chat)
+		return m.renderViewWithChat(header, chatBox, true, false)
+	}
+
+	if m.splashOpen {
+		chatBox := m.renderSplashPanel()
+		return m.renderViewWithChat(header, chatBox, false, true)
+	}
+
 	start := len(lines) -
 		chatHeight -
 		m.scroll
@@ -2313,6 +3111,35 @@ func (m model) View() tea.View {
 		visible = append(visible, chatBlank)
 	}
 
+	// Reserve the final interior column for a permanent scrollbar rail.
+	// The thumb only appears once the message history exceeds the viewport.
+	_, thumbHeight, trackHeight := m.scrollbarThumb()
+	thumbTop, _, _ := m.scrollbarThumb()
+	scrollbarStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.cfg.BorderColor)).
+		Background(lipgloss.Color(m.cfg.Background))
+	scrollbarRows := make([]string, chatHeight+1)
+	for i := range scrollbarRows {
+		switch {
+		case i == 0:
+			scrollbarRows[i] = scrollbarStyle.Render("^")
+		case i == chatHeight:
+			scrollbarRows[i] = scrollbarStyle.Render("v")
+		default:
+			trackPosition := i-1
+			glyph := "│"
+			if m.maxScroll() > 0 && trackPosition >= thumbTop && trackPosition < thumbTop+thumbHeight {
+				glyph = "█"
+			}
+			if trackPosition >= trackHeight {
+				glyph = " "
+			}
+			scrollbarRows[i] = scrollbarStyle.Render(glyph)
+		}
+	}
+	for i := range visible {
+		visible[i] = truncateANSI(visible[i], m.width-3) + scrollbarRows[i]
+	}
 	chat := strings.Join(visible, "\n")
 
 	// -------------------------------------------------------------------------
@@ -2322,8 +3149,9 @@ func (m model) View() tea.View {
 	typing := m.typingText()
 	typingLine := chatBlank
 	if typing != "" {
-		typingLine = m.styles.accent.Width(m.width - 2).Render("  " + typing)
+		typingLine = m.styles.accent.Width(m.width - 3).Render("  " + typing)
 	}
+	typingLine = truncateANSI(typingLine, m.width-3) + scrollbarRows[chatHeight]
 	chat += "\n" + typingLine
 
 	chatBox := m.styles.border.
@@ -2331,6 +3159,63 @@ func (m model) View() tea.View {
 		Height(m.messageHeight()).
 		Render(chat)
 
+	return m.renderViewWithChat(header, chatBox, false, false)
+}
+
+
+ 
+// renderSplashPanel replaces only the chat pane with the splash page. Its
+// logo uses the header accent; all information below it uses normal chat text.
+func (m model) renderSplashPanel() string {
+	lines := m.splashRows()
+	visibleHeight := m.splashPanelHeight()
+	start := m.splashScroll
+	if start < 0 { start = 0 }
+	if maxStart := max(0, len(lines)-visibleHeight); start > maxStart { start = maxStart }
+	end := min(start+visibleHeight, len(lines))
+	visible := append([]string(nil), lines[start:end]...)
+
+	bg := lipgloss.Color(m.cfg.Background)
+	rowFill := lipgloss.NewStyle().Background(bg)
+	scrollbarStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.cfg.BorderColor)).
+		Background(bg)
+	contentWidth := max(1, m.width-2)
+	textWidth := max(1, contentWidth-1)
+
+	for len(visible) < visibleHeight {
+		visible = append(visible, "")
+	}
+	top, thumbHeight, trackHeight := m.splashScrollbarThumb()
+	rows := make([]string, 0, visibleHeight)
+	for i, line := range visible {
+		glyph := "│"
+		switch {
+		case i == 0:
+			glyph = "^"
+		case i == visibleHeight-1:
+			glyph = "v"
+		default:
+			trackPosition := i - 1
+			if m.maxSplashScroll() > 0 && trackPosition >= top && trackPosition < top+thumbHeight {
+				glyph = "█"
+			}
+			if trackPosition >= trackHeight {
+				glyph = " "
+			}
+		}
+		text := padANSIToWidth(line, textWidth, rowFill)
+		rows = append(rows, renderChatRow(rowFill.Width(contentWidth), text+scrollbarStyle.Render(glyph), contentWidth))
+	}
+	return m.styles.border.
+		Width(m.width).
+		Height(m.messageHeight()).
+		Render(strings.Join(rows, "\n"))
+}
+
+// renderViewWithChat keeps the application shell unchanged while swapping the
+// contents of the chat pane for the online roster or splash page.
+func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen bool) tea.View {
 	// -------------------------------------------------------------------------
 	// Input
 	// -------------------------------------------------------------------------
@@ -2388,14 +3273,26 @@ func (m model) View() tea.View {
 	// Status
 	// -------------------------------------------------------------------------
 
+	shortcuts := "Enter: send  •  PgUp/PgDn: scroll  •  Ctrl+C: quit"
+	if usersOpen {
+		shortcuts = "PgUp/PgDn or mouse wheel: scroll  •  Esc/Ctrl+O: close  •  Ctrl+C: quit"
+	} else if splashOpen {
+		shortcuts = "PgUp/PgDn or mouse wheel: scroll  •  Esc: close  •  Ctrl+C: quit"
+	}
+	statusText := " " + m.status + "   " + shortcuts
+	// Keep the row exactly terminal-wide. A final Braille blank is a real
+	// one-cell glyph (but renders visually blank), so terminal renderers do not
+	// trim the trailing fill spaces and leave stale/default-black cells behind.
+	statusText = truncateANSI(statusText, max(1, m.width-1))
+	if remaining := m.width - 1 - lipgloss.Width(statusText); remaining > 0 {
+		statusText += strings.Repeat(" ", remaining)
+	}
+	if m.width > 0 {
+		statusText += "⠀" // U+2800 BRAILLE PATTERN BLANK
+	}
 	status := m.styles.status.
 		Width(m.width).
-		Render(
-			m.status +
-				"   " +
-				"Enter: send  •  PgUp/PgDn: scroll  •  Ctrl+C: quit",
-		)
-
+		Render(statusText)
 	// -------------------------------------------------------------------------
 	// Full application
 	// -------------------------------------------------------------------------
@@ -2415,20 +3312,23 @@ func (m model) View() tea.View {
 	return appView(content)
 }
 
+// printZealotError uses the same configured accent as the ZEALOT header.
+func printZealotError(cfg Config, err error) {
+	prefix := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(cfg.AccentColor)).
+		Render("Zealot:")
+	fmt.Fprintln(os.Stderr, prefix, err)
+}
+
 // -----------------------------------------------------------------------------
 // Program entry
 // -----------------------------------------------------------------------------
 
 func main() {
-	daemon := flag.Bool(
-		"daemon",
-		false,
-		"run the internal Zealot daemon",
-	)
 	addHistory := flag.Bool(
 		"add-history",
 		false,
-		"keep and replay in-memory room chat history (daemon only)",
+		"enable in-memory history for a new room (must match an existing room)",
 	)
 
 	roomFlag := flag.String(
@@ -2439,11 +3339,10 @@ func main() {
 
 	flag.Parse()
 
-	if *daemon {
-		if err := runServer(*addHistory); err != nil {
+	if os.Getenv("ZEALOT_INTERNAL_DAEMON") == "1" {
+		if err := runServer(); err != nil {
 			os.Exit(1)
 		}
-
 		return
 	}
 
@@ -2484,7 +3383,7 @@ func main() {
 		}
 		client, connectErr := connectToServer(room, user, *addHistory, true)
 		if connectErr != nil {
-			fmt.Fprintln(os.Stderr, "could not connect to Zealot:", connectErr)
+			printZealotError(cfg, connectErr)
 			os.Exit(1)
 		}
 		sendErr := client.send(Packet{Type: "letter", Room: room, Text: string(data)})
@@ -2520,12 +3419,7 @@ func main() {
 	)
 
 	if err != nil {
-		fmt.Fprintln(
-			os.Stderr,
-			"could not connect to Zealot:",
-			err,
-		)
-
+		printZealotError(cfg, err)
 		os.Exit(1)
 	}
 
