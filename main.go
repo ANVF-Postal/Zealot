@@ -260,6 +260,7 @@ type Packet struct {
 	Ephemeral   bool      `json:"ephemeral,omitempty"`
 	Rainbow     bool      `json:"rainbow,omitempty"`
 	RainbowPhase float64   `json:"rainbow_phase,omitempty"`
+	XKeyscore    bool      `json:"xkeyscore,omitempty"`
 	Users       []User    `json:"users,omitempty"`
 }
 
@@ -567,8 +568,9 @@ func (s *server) handle(conn net.Conn) {
 				User:        user,
 				Text:        text,
 				Time:        time.Now().UTC(),
-				Rainbow:     packet.Rainbow,
+				Rainbow:      packet.Rainbow,
 				RainbowPhase: packet.RainbowPhase,
+				XKeyscore:    packet.XKeyscore,
 			}
 
 			s.mu.Lock()
@@ -2046,7 +2048,7 @@ func (m *model) sendMessage(text string) {
 			m.appendMessage(Packet{Type: "system", Text: "Usage: /xkeyscore", Time: time.Now().UTC()})
 			return
 		}
-		m.appendMessage(Packet{Type: "xkeyscore", Time: time.Now().UTC()})
+		_ = m.client.send(Packet{Type: "message", Room: m.room, User: m.user, Text: "XKEYSCORE", XKeyscore: true})
 		return
 	case "/rainbow":
 		if len(fields) != 1 {
@@ -2872,46 +2874,6 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 		return lines
 	}
 
-	if msg.Type == "xkeyscore" {
-		// Keep the supplied seven-row mark intact and center the 12-column
-		// artwork within the available chat width.
-		logo := []string{
-			"░██    ░██ ",
-			" ░██  ░██  ",
-			"  ░██░██   ",
-			" XKEYSCORE",
-			"  ░██░██   ",
-			" ░██  ░██  ",
-			"░██    ░██ ",
-		}
-		bright := lipgloss.NewStyle().Foreground(lipgloss.Color("#E6E6E6")).Background(bg)
-		shadow := lipgloss.NewStyle().Foreground(lipgloss.Color("#8993A5")).Background(bg)
-		blue := lipgloss.NewStyle().Foreground(lipgloss.Color("#2589FF")).Background(bg).Bold(true)
-		lines := make([]string, 0, len(logo))
-		for _, artLine := range logo {
-			padding := max(0, (contentWidth-12)/2)
-			var styled strings.Builder
-			styled.WriteString(strings.Repeat(" ", padding))
-			if strings.Contains(artLine, "XKEYSCORE") {
-				styled.WriteString(" ")
-				styled.WriteString(blue.Render("XKEYSCORE"))
-			} else {
-				for _, glyph := range artLine {
-					switch glyph {
-					case '█':
-						styled.WriteString(bright.Render(string(glyph)))
-					case '░':
-						styled.WriteString(shadow.Render(string(glyph)))
-					default:
-						styled.WriteRune(glyph)
-					}
-				}
-			}
-			lines = append(lines, renderChatRow(rowFill, styled.String(), contentWidth))
-		}
-		return lines
-	}
-
 	if msg.Type == "system" {
 		systemText := fmt.Sprintf(
 			"[%s] %s",
@@ -2942,6 +2904,47 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 		Foreground(lipgloss.Color(msg.User.Color)).
 		Background(bg).
 		Bold(true)
+
+	if msg.XKeyscore {
+		var lines []string
+		if width <= 48 {
+			header := msg
+			header.Text = ""
+			lines = renderCompactMessage(rowFill, bodyStyle, nameStyle, m.styles.time, header, timeText, contentWidth)
+		} else {
+			prefix := m.styles.time.Render("[" + timeText + "]") + bodyStyle.Render(" ") + nameStyle.Render(msg.User.Name) + bodyStyle.Render(":")
+			lines = append(lines, renderChatRow(rowFill, prefix, contentWidth))
+		}
+		logo := []string{
+			"░██    ░██ ", " ░██  ░██  ", "  ░██░██   ",
+			" XKEYSCORE", "  ░██░██   ", " ░██  ░██  ", "░██    ░██ ",
+		}
+		bright := lipgloss.NewStyle().Foreground(lipgloss.Color("#E6E6E6")).Background(bg)
+		shadow := lipgloss.NewStyle().Foreground(lipgloss.Color("#8993A5")).Background(bg)
+		blue := lipgloss.NewStyle().Foreground(lipgloss.Color("#2589FF")).Background(bg).Bold(true)
+		for _, artLine := range logo {
+			padding := max(0, (contentWidth-12)/2)
+			var styled strings.Builder
+			styled.WriteString(strings.Repeat(" ", padding))
+			if strings.Contains(artLine, "XKEYSCORE") {
+				styled.WriteString(" ")
+				styled.WriteString(blue.Render("XKEYSCORE"))
+			} else {
+				for _, glyph := range artLine {
+					switch glyph {
+					case '█':
+						styled.WriteString(bright.Render(string(glyph)))
+					case '░':
+						styled.WriteString(shadow.Render(string(glyph)))
+					default:
+						styled.WriteRune(glyph)
+					}
+				}
+			}
+			lines = append(lines, renderChatRow(rowFill, styled.String(), contentWidth))
+		}
+		return lines
+	}
 
 	// In narrow terminals, lead with the username and move the timestamp to
 	// the next row. This preserves room for readable body text instead of
