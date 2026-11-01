@@ -264,7 +264,7 @@ func newServer() *server {
 
 func (s *server) room(name string, historyEnabled bool) *roomState {
 	r := &roomState{
-		clients:       make(map[string]*serverClient),
+		clients:        make(map[string]*serverClient),
 		historyEnabled: historyEnabled,
 	}
 	s.rooms[name] = r
@@ -877,12 +877,12 @@ func cleanRoom(room string) string {
 // -----------------------------------------------------------------------------
 
 type wireClient struct {
-	conn           net.Conn
-	enc            *json.Encoder
-	decoder        *json.Decoder
-	initialPacket  Packet
-	hasInitial     bool
-	mu             sync.Mutex
+	conn          net.Conn
+	enc           *json.Encoder
+	decoder       *json.Decoder
+	initialPacket Packet
+	hasInitial    bool
+	mu            sync.Mutex
 }
 
 func (c *wireClient) send(
