@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	"charm.land/lipgloss/v2"
