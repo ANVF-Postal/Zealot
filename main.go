@@ -2366,10 +2366,14 @@ func (m *model) resizeInput() {
 		m.input.DynamicHeight = true
 		m.input.MinHeight = baseHeight
 		m.input.MaxHeight = maxHeight
+		// MaxHeight controls the visible viewport. Keep the full message
+		// editable up to Zealot's existing character limit.
+		m.input.MaxContentHeight = maxMessage
 	} else {
 		m.input.DynamicHeight = false
 		m.input.MinHeight = baseHeight
 		m.input.MaxHeight = 0
+		m.input.MaxContentHeight = 0
 		m.input.SetHeight(baseHeight)
 	}
 
