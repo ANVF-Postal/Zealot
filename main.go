@@ -3263,13 +3263,13 @@ type footerTargets struct {
 // hitboxes, so clickable areas stay aligned with the rendered text.
 func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTargets) {
 	availableWidth := max(1, m.width-1) // final cell is the Braille fill sentinel
-	prefix := " " + m.status + "   "
+	prefix := " " + m.status + " • "
 	if usersOpen {
-		prefix += "PgUp/PgDn or mouse wheel: scroll  •  Esc/Ctrl+O: close  •  Ctrl+C: "
+		prefix += "PgUp/PgDn or mouse wheel: scroll • Esc/Ctrl+O: close • Ctrl+C: "
 	} else if splashOpen {
-		prefix += "PgUp/PgDn or mouse wheel: scroll  •  Esc: close  •  Ctrl+C: "
+		prefix += "PgUp/PgDn or mouse wheel: scroll • Esc: close • Ctrl+C: "
 	} else {
-		prefix += "PgUp/PgDn: scroll  •  Ctrl+C: "
+		prefix += "PgUp/PgDn: scroll • Ctrl+C: "
 	}
 
 	quitText := "quit"
