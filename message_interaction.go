@@ -64,9 +64,6 @@ func (m model) messageBodyRanges(msg Packet, width int) []messageBodyRange {
 				break
 			}
 			start := prefixWidth
-			if row > 0 {
-				start = prefixWidth
-			}
 			end := start + lipgloss.Width(part)
 			ranges[row] = clippedMessageBodyRange(start, end, contentWidth)
 		}
@@ -329,9 +326,10 @@ func (m *model) beginReply(id string) {
 		if packet.ID == id && packet.Type == "message" {
 			if m.replyTargetID != id {
 				m.replyTargetID = id
-				m.input.EndSelection()
+					m.input.EndSelection()
 				m.inputSelecting = false
 				m.resizeInput()
+				m.clampScroll()
 			}
 			return
 		}
@@ -346,4 +344,5 @@ func (m *model) cancelReply() {
 	m.input.EndSelection()
 	m.inputSelecting = false
 	m.resizeInput()
+	m.clampScroll()
 }
