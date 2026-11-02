@@ -47,6 +47,8 @@ type model struct {
 	renderedMessageBodyRanges []messageBodyRange
 	renderedMessageLinks [][]messageLinkRange
 	hoveredMessageID string
+	messageHoverGeneration int
+	messageHoverPending bool
 	replyTargetID string
 	highlightedMessageID string
 	navigationHighlightGeneration int
