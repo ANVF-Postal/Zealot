@@ -23,6 +23,9 @@ func (m model) inputSelectionCoordinates(x, y int) (int, int) {
 	localX := x - left
 	if localY == 0 {
 		localX -= 2
+		if m.replyTargetID != "" {
+			localX -= len([]rune(replyComposerPrefix))
+		}
 	}
 	return localX, localY
 }
