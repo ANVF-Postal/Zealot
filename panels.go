@@ -307,6 +307,9 @@ func (m *model) resizeInput() {
 			width += 2
 		}
 	}
+	if m.replyTargetID != "" {
+		width -= len([]rune(replyComposerPrefix))
+	}
 	if width < 10 {
 		width = 10
 	}
