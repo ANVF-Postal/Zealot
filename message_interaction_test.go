@@ -191,6 +191,25 @@ func TestReplyBadgesUseShortForms(t *testing.T) {
 	if len(compact) == 0 || !strings.Contains(compact[0], "[R]") || strings.Contains(compact[0], "[Re]") {
 		t.Fatalf("compact reply badge should be [R]: %q", compact)
 	}
+	compactLinks := m.messageLinkRanges(reply, 48)
+	if len(compactLinks) == 0 || len(compactLinks[0]) == 0 ||
+		compactLinks[0][0].Start != 0 || compactLinks[0][0].End != lipgloss.Width("[R]") {
+		t.Fatalf("compact [R] hitbox should cover only the three-character label: %#v", compactLinks)
+	}
+
+	longNameReply := reply
+	longNameReply.ID = "badge-long-name-reply"
+	longNameReply.User.Name = strings.Repeat("U", 70)
+	longNameModel := newMessageInteractionTestModel(80, parent, longNameReply)
+	fallback := longNameModel.renderPacketLines(longNameReply, 80)
+	if len(fallback) == 0 || !strings.Contains(fallback[0], "[R]") || strings.Contains(fallback[0], "[Re]") {
+		t.Fatalf("wide terminal with compact fallback should use [R]: %q", fallback)
+	}
+	fallbackLinks := longNameModel.messageLinkRanges(longNameReply, 80)
+	if len(fallbackLinks) == 0 || len(fallbackLinks[0]) == 0 ||
+		fallbackLinks[0][0].Start != 0 || fallbackLinks[0][0].End != lipgloss.Width("[R]") {
+		t.Fatalf("compact fallback [R] hitbox should cover only the label: %#v", fallbackLinks)
+	}
 }
 
 func TestAppendingReplyUpdatesOnlyParentRowsAndAppendsReply(t *testing.T) {
