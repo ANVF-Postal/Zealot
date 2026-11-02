@@ -185,17 +185,17 @@ func TestReplyBadgesUseShortForms(t *testing.T) {
 
 	wide := m.renderPacketLines(reply, 80)
 	widePlain := lipgloss.StripANSI(strings.Join(wide, "\n"))
-	if len(wide) == 0 || !strings.Contains(widePlain, "Bob[Re]:") || strings.Contains(widePlain, "[Replied]") || strings.Contains(widePlain, "[Re] :") {
+	if len(wide) == 0 || !strings.Contains(widePlain, "Alice[Re]:") || strings.Contains(widePlain, "[Replied]") || strings.Contains(widePlain, "[Re] :") {
 		t.Fatalf("wide reply badge should be adjacent to username and colon: %q", widePlain)
 	}
 	compact := m.renderPacketLines(reply, 48)
 	compactPlain := lipgloss.StripANSI(strings.Join(compact, "\n"))
-	if len(compact) == 0 || !strings.Contains(compactPlain, "Bob[R]:") || strings.Contains(compactPlain, "[R] Bob") || strings.Contains(compactPlain, "[Re]") {
+	if len(compact) == 0 || !strings.Contains(compactPlain, "Alice[R]:") || strings.Contains(compactPlain, "[R] Bob") || strings.Contains(compactPlain, "[Re]") {
 		t.Fatalf("compact reply badge should follow username: %q", compactPlain)
 	}
 	compactLinks := m.messageLinkRanges(reply, 48)
 	if len(compactLinks) == 0 || len(compactLinks[0]) == 0 ||
-		compactLinks[0][0].Start != lipgloss.Width("Bob") || compactLinks[0][0].End != lipgloss.Width("Bob[R]") {
+		compactLinks[0][0].Start != lipgloss.Width("Alice") || compactLinks[0][0].End != lipgloss.Width("Alice[R]") {
 		t.Fatalf("compact [R] hitbox should follow username and cover only label: %#v", compactLinks)
 	}
 
@@ -213,6 +213,9 @@ func TestReplyBadgesUseShortForms(t *testing.T) {
 	}
 	fallbackName := wrapText(longNameReply.User.Name, chatContentWidth(80)-2-lipgloss.Width("[R]"))
 	wantRow := len(fallbackName)-1
+	if wantRow >= len(fallbackLinks) || len(fallbackLinks[wantRow]) == 0 {
+		t.Fatalf("compact fallback [R] hitbox missing on final username row: %#v", fallbackLinks)
+	}
 	if fallbackLinks[wantRow][0].Start != lipgloss.Width(fallbackName[wantRow]) ||
 		fallbackLinks[wantRow][0].End != lipgloss.Width(fallbackName[wantRow])+lipgloss.Width("[R]") {
 		t.Fatalf("compact fallback [R] hitbox should follow final username row: %#v", fallbackLinks)
