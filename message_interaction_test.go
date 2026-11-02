@@ -174,6 +174,9 @@ func TestReplyMarkersWrapWithoutTakingScrollbarColumn(t *testing.T) {
 	if links[1][0].TargetID != first.ID || links[1][1].TargetID != second.ID {
 		t.Fatalf("overflow marker targets = %#v, want arrival order", links[1])
 	}
+	if links[1][0].Start != 0 || links[1][1].Start != 4 {
+		t.Fatalf("overflow marker columns = %#v, want [1] at 0 and [2] at 4", links[1])
+	}
 }
 
 func TestReplyMarkersNavigateInArrivalOrder(t *testing.T) {
