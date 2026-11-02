@@ -1,12 +1,27 @@
 package main
 
-import "charm.land/lipgloss/v2"
+import (
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+)
 
 const replyComposerPrefix = "^Reply: "
 
 type messageBodyRange struct {
 	Start int // inclusive column within the chat content row
 	End   int // exclusive column within the chat content row
+}
+
+type messageLinkRange struct {
+	Start    int
+	End      int
+	TargetID string
+}
+
+type messageNavigationHighlightTimeoutMsg struct {
+	generation int
 }
 
 // messageBodyRanges returns one body-only hitbox for every rendered row of a
@@ -32,7 +47,9 @@ func (m model) messageBodyRanges(msg Packet, width int) []messageBodyRange {
 		Bold(true)
 	timeText := msg.Time.Local().Format("15:04")
 	timestamp := m.styles.time.Render("[" + timeText + "]")
-	prefix := timestamp + bodyStyle.Render(" ") + nameStyle.Render(msg.User.Name) + bodyStyle.Render(": ")
+	replyBadge := m.renderReplyBadge(msg)
+	badgeWidth := lipgloss.Width(replyBadge)
+	prefix := replyBadge + timestamp + bodyStyle.Render(" ") + nameStyle.Render(msg.User.Name) + bodyStyle.Render(": ")
 	prefixWidth := lipgloss.Width(prefix)
 
 	// Standard wide layout: timestamp and username precede the body. Wrapped
@@ -84,7 +101,7 @@ func (m model) messageBodyRanges(msg Packet, width int) []messageBodyRange {
 		return ranges
 	}
 
-	labelWidth := lipgloss.Width(nameParts[0] + ": ")
+	labelWidth := badgeWidth + lipgloss.Width(nameParts[0] + ": ")
 	firstWidth := contentWidth - labelWidth
 	wrapped := wrapTextVariable(msg.Text, firstWidth, contentWidth-stampWidth-1, contentWidth)
 	if msg.Rainbow {
@@ -178,6 +195,130 @@ func (m model) messageIDAt(x, y int) string {
 		}
 	}
 	return ""
+}
+
+
+func (m model) messageLinkRanges(msg Packet, width int) [][]messageLinkRange {
+	lines := m.renderPacketLines(msg, width)
+	regions := make([][]messageLinkRange, len(lines))
+	if len(regions) == 0 || msg.Type != "message" {
+		return regions
+	}
+
+	if msg.ReplyTo != "" && m.hasMessageID(msg.ReplyTo) {
+		badgeEnd := lipgloss.Width("[Replied]")
+		regions[0] = append(regions[0], messageLinkRange{
+			Start: 0, End: badgeEnd, TargetID: msg.ReplyTo,
+		})
+	}
+
+	replies := m.repliesFor(msg.ID)
+	if len(replies) > 0 {
+		row := len(regions) - 1
+		for i, replyID := range replies {
+			start := i * 2
+			regions[row] = append(regions[row], messageLinkRange{
+				Start: start, End: start + 1, TargetID: replyID,
+			})
+		}
+	}
+	return regions
+}
+
+// messageLinkAt detects clicks on [Replied] or an individual ^ reply marker.
+func (m model) messageLinkAt(x, y int) string {
+	if m.usersOpen || m.splashOpen || m.width < 1 {
+		return ""
+	}
+	left := 0
+	if !narrowBordersHidden(m.width) {
+		left = 1
+	}
+	if x < left || x >= m.chatScrollbarX() {
+		return ""
+	}
+
+	chatHeight := max(1, m.messageHeight()-1)
+	if y < 2 || y >= 2+chatHeight {
+		return ""
+	}
+	lines := m.renderMessageLines()
+	start := len(lines) - chatHeight - m.scroll
+	if start < 0 {
+		start = 0
+	}
+	row := start + y - 2
+	if row < 0 || row >= len(lines) {
+		return ""
+	}
+
+	links := m.renderedMessageLinks
+	if !m.renderCacheValid || len(links) != len(lines) {
+		links = make([][]messageLinkRange, 0, len(lines))
+		for _, packet := range m.messages {
+			messageLines := m.renderPacketLines(packet, m.width)
+			messageLinks := m.messageLinkRanges(packet, m.width)
+			for i := range messageLines {
+				if i < len(messageLinks) {
+					links = append(links, messageLinks[i])
+				} else {
+					links = append(links, nil)
+				}
+			}
+		}
+	}
+	if row >= len(links) {
+		return ""
+	}
+	localX := x - left
+	for _, region := range links[row] {
+		if localX >= region.Start && localX < region.End {
+			return region.TargetID
+		}
+	}
+	return ""
+}
+
+// navigateToMessage scrolls the target into the middle of the chat viewport
+// and briefly colours its body so the destination is easy to spot.
+func (m *model) navigateToMessage(id string) tea.Cmd {
+	if id == "" {
+		return nil
+	}
+	if !m.renderCacheValid || len(m.renderedMessageIDs) != len(m.renderMessageLines()) {
+		m.rebuildMessageCache()
+	}
+
+	row := -1
+	for i, messageID := range m.renderedMessageIDs {
+		if messageID == id {
+			row = i
+			break
+		}
+	}
+	if row < 0 {
+		return nil
+	}
+
+	visibleHeight := max(1, m.messageHeight()-1)
+	start := row - visibleHeight/2
+	maxStart := max(0, len(m.renderedLines)-visibleHeight)
+	if start < 0 {
+		start = 0
+	}
+	if start > maxStart {
+		start = maxStart
+	}
+	m.scroll = len(m.renderedLines) - visibleHeight - start
+	m.clampScroll()
+
+	m.highlightedMessageID = id
+	m.navigationHighlightGeneration++
+	generation := m.navigationHighlightGeneration
+	m.rebuildMessageCache()
+	return tea.Tick(900*time.Millisecond, func(time.Time) tea.Msg {
+		return messageNavigationHighlightTimeoutMsg{generation: generation}
+	})
 }
 
 func (m *model) beginReply(id string) {
