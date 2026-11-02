@@ -538,6 +538,8 @@ func TestReplyMarkersNavigateInArrivalOrder(t *testing.T) {
 
 func TestConnectionCloseDoesNotRenderDisconnectedDuringQuit(t *testing.T) {
 	m := newMessageInteractionTestModel(80)
+	m.connected = true
+	m.status = "Connected"
 	m.quitting = true
 
 	updated, cmd := m.Update(connectionClosedMsg{})
