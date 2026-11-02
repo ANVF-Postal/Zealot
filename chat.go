@@ -513,7 +513,7 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 	name := nameStyle.Render(msg.User.Name)
 	prefix := timestamp + normalBodyStyle.Render(" ") + name
 	if replyBadge != "" {
-		prefix += normalBodyStyle.Render(" ") + replyBadge
+		prefix += replyBadge
 	}
 	prefix += normalBodyStyle.Render(": ")
 	prefixWidth := lipgloss.Width(prefix)
