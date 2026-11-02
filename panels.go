@@ -360,7 +360,11 @@ func (m *model) appendMessage(packet Packet) {
 	m.messages = append(m.messages, packet)
 	m.addMessageToIndexes(packet)
 	if !cacheValid {
-		m.renderCacheValid = false
+		m.rebuildMessageCache()
+		if oldScroll > 0 {
+			m.scroll += len(m.renderedLines) - oldLineCount
+		}
+		m.clampScroll()
 		return
 	}
 
