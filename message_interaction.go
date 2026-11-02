@@ -108,7 +108,7 @@ func (m model) messageBodyRanges(msg Packet, width int) []messageBodyRange {
 		ranges[0] = clippedMessageBodyRange(labelWidth+1, labelWidth+1+lipgloss.Width(wrapped[0]), contentWidth)
 	}
 	if len(wrapped) >= 2 && len(ranges) > 1 {
-		ranges[1] = clippedMessageBodyRange(stampWidth+2, stampWidth+2+lipgloss.Width(wrapped[1]), contentWidth)
+		ranges[1] = clippedMessageBodyRange(stampWidth+1, stampWidth+1+lipgloss.Width(wrapped[1]), contentWidth)
 	}
 	for i := 2; i < len(wrapped) && i < len(ranges); i++ {
 		ranges[i] = clippedMessageBodyRange(0, lipgloss.Width(wrapped[i]), contentWidth)
