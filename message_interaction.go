@@ -129,6 +129,22 @@ func clippedMessageBodyRange(start, end, width int) messageBodyRange {
 	return messageBodyRange{Start: start, End: end}
 }
 
+// refreshMessageHover recalculates the body hover under the last pointer
+// position after scrolling, resizing, or opening and closing a side panel.
+func (m *model) refreshMessageHover() {
+	if !m.mousePositionKnown {
+		return
+	}
+	hoveredID := ""
+	if !m.usersOpen && !m.splashOpen {
+		hoveredID = m.messageIDAt(m.lastMouseX, m.lastMouseY)
+	}
+	if hoveredID != m.hoveredMessageID {
+		m.hoveredMessageID = hoveredID
+		m.rebuildMessageCache()
+	}
+}
+
 // messageIDAt returns the ID only when the pointer is over actual message body
 // text. Username, timestamp, wrapping indentation and the scrollbar are inert.
 func (m model) messageIDAt(x, y int) string {
