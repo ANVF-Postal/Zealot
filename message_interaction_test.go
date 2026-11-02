@@ -66,15 +66,22 @@ func TestReplyComposerKeepsDraftAndUsesSeparatePrefix(t *testing.T) {
 	}
 }
 
-func TestAppViewUsesPassiveMotionOnlyWhenHoverIsEnabled(t *testing.T) {
-	chat := appView("", true)
-	if chat.MouseMode != tea.MouseModeAllMotion {
-		t.Fatalf("chat MouseMode = %v, want MouseModeAllMotion for message hover", chat.MouseMode)
+func TestPanelViewsDisablePassiveMouseMotion(t *testing.T) {
+	m := newMessageInteractionTestModel(80)
+
+	if got := m.View().MouseMode; got != tea.MouseModeAllMotion {
+		t.Fatalf("main chat MouseMode = %v, want MouseModeAllMotion for message hover", got)
 	}
 
-	panel := appView("", false)
-	if panel.MouseMode != tea.MouseModeCellMotion {
-		t.Fatalf("panel MouseMode = %v, want MouseModeCellMotion without passive hover", panel.MouseMode)
+	m.splashOpen = true
+	if got := m.View().MouseMode; got != tea.MouseModeCellMotion {
+		t.Fatalf("splash MouseMode = %v, want MouseModeCellMotion without passive hover", got)
+	}
+
+	m.splashOpen = false
+	m.usersOpen = true
+	if got := m.View().MouseMode; got != tea.MouseModeCellMotion {
+		t.Fatalf("online users MouseMode = %v, want MouseModeCellMotion without passive hover", got)
 	}
 }
 
