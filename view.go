@@ -193,8 +193,9 @@ func (m model) View() tea.View {
 
 	// Reserve the final interior column for a permanent scrollbar rail.
 	// The thumb only appears once the message history exceeds the viewport.
-	_, thumbHeight, trackHeight := m.scrollbarThumb()
-	thumbTop, _, _ := m.scrollbarThumb()
+	thumbTop, thumbHeight, trackHeight := m.scrollbarThumbForLineCount(len(lines))
+	visibleHeight := max(1, m.messageHeight()-1)
+	maxScroll := max(0, len(lines)-visibleHeight)
 	scrollbarStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(m.cfg.BorderColor)).
 		Background(lipgloss.Color(m.cfg.Background))
@@ -208,7 +209,7 @@ func (m model) View() tea.View {
 		default:
 			trackPosition := i-1
 			glyph := "│"
-			if m.maxScroll() > 0 && trackPosition >= thumbTop && trackPosition < thumbTop+thumbHeight {
+			if maxScroll > 0 && trackPosition >= thumbTop && trackPosition < thumbTop+thumbHeight {
 				glyph = "█"
 			}
 			if trackPosition >= trackHeight {
