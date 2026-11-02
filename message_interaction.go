@@ -285,7 +285,8 @@ func (m model) messageLinkRangesForLineCount(msg Packet, width, lineCount int) [
 			if lipgloss.Width(widePrefix) < chatContentWidth(width) {
 				badgeStart = lipgloss.Width(timestamp + " " + nameStyle.Render(msg.User.Name) + " ")
 			} else {
-				badge = m.renderReplyBadgeForWidth(msg, 48)
+				widthForBadge = 48
+				badge = m.renderReplyBadgeForWidth(msg, widthForBadge)
 			}
 		}
 		regions[0] = append(regions[0], messageLinkRange{Start: badgeStart, End: badgeStart + lipgloss.Width(replyBadgeLabelForWidth(widthForBadge)), TargetID: msg.ReplyTo})
