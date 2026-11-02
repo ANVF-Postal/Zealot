@@ -36,7 +36,7 @@ func (m model) messageBodyRanges(msg Packet, width int) []messageBodyRange {
 
 func (m model) messageBodyRangesForLineCount(msg Packet, width, lineCount int) []messageBodyRange {
 	ranges := make([]messageBodyRange, lineCount)
-	if msg.Type != "message" || msg.Text == "" || msg.XKeyscore > 0 || len(lines) == 0 {
+	if msg.Type != "message" || msg.Text == "" || msg.XKeyscore > 0 || lineCount == 0 {
 		return ranges
 	}
 
