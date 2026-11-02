@@ -41,7 +41,7 @@ func (m model) splashRows() []string {
 		rows = append(rows, m.styles.accent.Render(center(line)))
 	}
 	rows = append(rows, "")
-	rows = append(rows, m.styles.app.Render(center("v"+appVersion)))
+	rows = append(rows, m.styles.app.Render(center(appVersion)))
 	rows = append(rows, "")
 	rows = append(rows, m.styles.app.Render(center("Connected to: "+room)))
 	historyStatus := "FALSE"
