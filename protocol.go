@@ -21,6 +21,8 @@ type User struct {
 
 type Packet struct {
 	Type       string    `json:"type"`
+	ID         string    `json:"id,omitempty"`
+	ReplyTo    string    `json:"reply_to,omitempty"`
 	Room       string    `json:"room,omitempty"`
 	User       User      `json:"user,omitempty"`
 	Text       string    `json:"text,omitempty"`
