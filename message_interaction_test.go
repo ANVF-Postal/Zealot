@@ -36,6 +36,36 @@ func interactionTestPacket(id, text string) Packet {
 	}
 }
 
+func TestReplyComposerKeepsDraftAndUsesSeparatePrefix(t *testing.T) {
+	packet := interactionTestPacket("reply-target", "original")
+	m := newMessageInteractionTestModel(80, packet)
+	m.resizeInput()
+	normalWidth := m.input.Width()
+	m.input.SetValue("draft text")
+
+	m.beginReply(packet.ID)
+	if m.replyTargetID != packet.ID {
+		t.Fatalf("reply target = %q, want %q", m.replyTargetID, packet.ID)
+	}
+	if got := m.input.Value(); got != "draft text" {
+		t.Fatalf("reply mode changed draft to %q", got)
+	}
+	if got, want := m.input.Width(), normalWidth-len([]rune(replyComposerPrefix)); got != want {
+		t.Fatalf("reply textarea width = %d, want %d", got, want)
+	}
+
+	m.cancelReply()
+	if m.replyTargetID != "" {
+		t.Fatalf("reply target after cancellation = %q, want empty", m.replyTargetID)
+	}
+	if got := m.input.Value(); got != "draft text" {
+		t.Fatalf("cancelling reply changed draft to %q", got)
+	}
+	if got := m.input.Width(); got != normalWidth {
+		t.Fatalf("textarea width after cancellation = %d, want %d", got, normalWidth)
+	}
+}
+
 func TestAppViewEnablesAllMouseMotion(t *testing.T) {
 	if got := appView("").MouseMode; got != tea.MouseModeAllMotion {
 		t.Fatalf("appView MouseMode = %v, want MouseModeAllMotion", got)
