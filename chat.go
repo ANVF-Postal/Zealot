@@ -418,7 +418,7 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 	lines = append(lines, renderChatRow(rowFill, prefix+bodyStyle.Render(wrapped[0]), contentWidth))
 	indent := strings.Repeat(" ", prefixWidth)
 	for _, line := range wrapped[1:] {
-		lines = append(lines, renderChatRow(rowFill, bodyStyle.Render(indent+line), contentWidth))
+		lines = append(lines, renderChatRow(rowFill, normalBodyStyle.Render(indent)+bodyStyle.Render(line), contentWidth))
 	}
 	return lines
 }
