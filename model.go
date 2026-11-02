@@ -41,8 +41,11 @@ type model struct {
 	messages []Packet
 	renderedMessageIDs []string
 	renderedMessageBodyRanges []messageBodyRange
+	renderedMessageLinks [][]messageLinkRange
 	hoveredMessageID string
 	replyTargetID string
+	highlightedMessageID string
+	navigationHighlightGeneration int
 
 	// Rendered rows are cached for the current terminal width. New messages
 	// append only their own rows; a width change rebuilds the cache once.
