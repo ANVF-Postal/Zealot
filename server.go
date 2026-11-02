@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -18,6 +19,12 @@ import (
 // -----------------------------------------------------------------------------
 // Server
 // -----------------------------------------------------------------------------
+
+var messageSequence atomic.Uint64
+
+func nextMessageID() string {
+	return fmt.Sprintf("%x-%x", time.Now().UnixNano(), messageSequence.Add(1))
+}
 
 type serverClient struct {
 	enc       *json.Encoder
@@ -108,6 +115,7 @@ func (s *server) systemMessage(
 	text string,
 ) {
 	packet := Packet{
+		ID:   nextMessageID(),
 		Type: "system",
 		Room: roomName,
 		Text: text,
@@ -290,6 +298,7 @@ func (s *server) handle(conn net.Conn) {
 				text = string(runes[:100000])
 			}
 			s.broadcast(roomName, Packet{
+				ID:   nextMessageID(),
 				Type: "letter",
 				Room: roomName,
 				User: user,
@@ -314,6 +323,8 @@ func (s *server) handle(conn net.Conn) {
 			}
 
 			message := Packet{
+				ID:          nextMessageID(),
+				ReplyTo:     packet.ReplyTo,
 				Type:        "message",
 				Room:        roomName,
 				User:        user,
@@ -396,7 +407,7 @@ func (s *server) handle(conn net.Conn) {
 			if len([]rune(text)) > maxMessage {
 				text = string([]rune(text)[:maxMessage])
 			}
-			action := Packet{Type: "me", Room: roomName, User: user, Text: text, Time: time.Now().UTC()}
+			action := Packet{ID: nextMessageID(), ReplyTo: packet.ReplyTo, Type: "me", Room: roomName, User: user, Text: text, Time: time.Now().UTC()}
 			s.mu.Lock()
 			room := s.rooms[roomName]
 			if room != nil && room.historyEnabled {
