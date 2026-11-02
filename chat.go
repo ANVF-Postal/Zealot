@@ -379,7 +379,11 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 			header.Text = ""
 			lines = renderCompactMessage(rowFill, bodyStyle, normalBodyStyle, nameStyle, timeStyle, replyBadge, header, timeText, contentWidth)
 		} else {
-			prefix := replyBadge + m.styles.time.Render("[" + timeText + "]") + normalBodyStyle.Render(" ") + nameStyle.Render(msg.User.Name) + normalBodyStyle.Render(":")
+			prefix := m.styles.time.Render("[" + timeText + "]") + normalBodyStyle.Render(" ") + nameStyle.Render(msg.User.Name)
+			if replyBadge != "" {
+				prefix += normalBodyStyle.Render(" ") + replyBadge
+			}
+			prefix += normalBodyStyle.Render(":")
 			if lipgloss.Width(prefix) >= contentWidth {
 				header := msg
 				header.Text = ""
