@@ -271,6 +271,7 @@ func (m model) messageLinkRangesForLineCount(msg Packet, width, lineCount int) [
 
 	if msg.ReplyTo != "" && m.hasMessageID(msg.ReplyTo) {
 		badgeStart := 0
+		widthForBadge := width
 		badge := m.renderReplyBadgeForWidth(msg, width)
 		if width > 48 {
 			bg := lipgloss.Color(m.cfg.Background)
