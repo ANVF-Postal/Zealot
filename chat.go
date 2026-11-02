@@ -191,16 +191,28 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 	contentWidth := chatContentWidth(width)
 	rowFill := lipgloss.NewStyle().Width(contentWidth).Background(lipgloss.Color(m.cfg.Background))
 	separatorStyle := lipgloss.NewStyle().Background(lipgloss.Color(m.cfg.Background))
+
+	// Compact messages put the timestamp on its own continuation row when
+	// the body fits beside the username. Reply markers belong at the end of
+	// the message body, not after that timestamp-only row.
+	markerRow := len(lines) - 1
+	if markerRow > 0 {
+		plainLast := strings.TrimSpace(lipgloss.StripANSI(lines[markerRow]))
+		if plainLast == "["+msg.Time.Local().Format("15:04")+"]" {
+			markerRow--
+		}
+	}
+
 	for n := range replies {
 		marker := fmt.Sprintf("[%d]", n+1)
 		styled := m.styles.accent.Render(marker)
-		last := len(lines) - 1
-		trimmed := trimANSIEndPadding(lines[last])
+		trimmed := trimANSIEndPadding(lines[markerRow])
 		used := visibleChatTextWidth(trimmed)
 		if used+1+lipgloss.Width(marker) <= contentWidth {
-			lines[last] = renderChatRow(rowFill, trimmed+separatorStyle.Render(" ")+styled, contentWidth)
+			lines[markerRow] = renderChatRow(rowFill, trimmed+separatorStyle.Render(" ")+styled, contentWidth)
 		} else {
 			lines = append(lines, renderChatRow(rowFill, styled, contentWidth))
+			markerRow = len(lines) - 1
 		}
 	}
 	return lines
