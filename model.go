@@ -23,6 +23,7 @@ type model struct {
 	usersOpen    bool
 	usersScroll  int
 	usersFrame   int
+	usersAnimationRunning bool
 
 	splashOpen                       bool
 	splashScroll                     int
