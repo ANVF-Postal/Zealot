@@ -414,6 +414,14 @@ func (m model) Update(
 			m.setScrollFromThumbTop(target)
 			return m, nil
 		}
+		if !m.usersOpen && !m.splashOpen {
+			hoveredID := m.messageIDAt(mouse.X, mouse.Y)
+			if hoveredID != m.hoveredMessageID {
+				m.hoveredMessageID = hoveredID
+				m.rebuildMessageCache()
+				return m, nil
+			}
+		}
 
 	case tea.MouseReleaseMsg:
 		if m.inputSelecting {
