@@ -39,8 +39,9 @@ type model struct {
 	client *wireClient
 
 	messages []Packet
-	messageIDsByID map[string]struct{}
+	messageByID map[string]Packet
 	replyIDsByMessageID map[string][]string
+	messageRowsByID map[string]messageRowRange
 	renderedMessageIDs []string
 	renderedMessageBodyRanges []messageBodyRange
 	renderedMessageLinks [][]messageLinkRange
