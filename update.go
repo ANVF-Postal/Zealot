@@ -383,6 +383,12 @@ func (m model) Update(
 				return m, nil
 			}
 		}
+		if mouse.Button == tea.MouseLeft && !m.usersOpen && !m.splashOpen {
+			if id := m.messageIDAt(mouse.X, mouse.Y); id != "" {
+				m.beginReply(id)
+				return m, nil
+			}
+		}
 
 	case tea.MouseMotionMsg:
 		if m.inputSelecting {
@@ -575,6 +581,12 @@ func (m model) Update(
 			m.scroll = 0
 			return m, nil
 
+		case "backspace":
+			if m.replyTargetID != "" && m.input.Line() == 0 && m.input.Column() == 0 {
+				m.cancelReply()
+				return m, nil
+			}
+
 		case "shift+enter", "ctrl+j":
 			m.input.InsertString("\n")
 			handledNewline = true
@@ -598,6 +610,11 @@ func (m model) Update(
 
 	if !handledNewline {
 		m.input, inputCmd = m.input.Update(msg)
+	}
+	if keyMsg, ok := msg.(tea.KeyPressMsg); ok && m.replyTargetID != "" && m.input.Value() == "" {
+		if keyMsg.String() == "backspace" || keyMsg.String() == "delete" {
+			m.cancelReply()
+		}
 	}
 	if m.cfg.AdaptiveHeight {
 		m.clampScroll()
