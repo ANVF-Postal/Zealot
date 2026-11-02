@@ -340,7 +340,7 @@ func (m *model) appendMessage(packet Packet) {
 	oldScroll := m.scroll
 	if m.width < 1 {
 		m.messages = append(m.messages, packet)
-		m.rebuildMessageIndexes()
+		m.addMessageToIndexes(packet)
 		m.renderCacheValid = false
 		return
 	}
@@ -369,7 +369,7 @@ func (m *model) appendMessage(packet Packet) {
 		return
 	}
 
-	m.rebuildMessageIndexes()
+	m.addMessageToIndexes(packet)
 	newLines := m.renderPacketLines(packet, m.width)
 	bodyRanges := m.messageBodyRangesForLineCount(packet, m.width, len(newLines))
 	linkRanges := m.messageLinkRangesForLineCount(packet, m.width, len(newLines))
