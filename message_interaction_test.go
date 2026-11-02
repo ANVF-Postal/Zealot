@@ -319,12 +319,12 @@ func TestReplyBadgesUseShortForms(t *testing.T) {
 	m := newMessageInteractionTestModel(80, parent, reply)
 
 	wide := m.renderPacketLines(reply, 80)
-	widePlain := lipgloss.StripANSI(strings.Join(wide, "\n"))
+	widePlain := stripANSISequences(strings.Join(wide, "\n"))
 	if len(wide) == 0 || !strings.Contains(widePlain, "Alice[Re]:") || strings.Contains(widePlain, "[Replied]") || strings.Contains(widePlain, "[Re] :") {
 		t.Fatalf("wide reply badge should be adjacent to username and colon: %q", widePlain)
 	}
 	compact := m.renderPacketLines(reply, 48)
-	compactPlain := lipgloss.StripANSI(strings.Join(compact, "\n"))
+	compactPlain := stripANSISequences(strings.Join(compact, "\n"))
 	if len(compact) == 0 || !strings.Contains(compactPlain, "Alice[R]:") || strings.Contains(compactPlain, "[R] Bob") || strings.Contains(compactPlain, "[Re]") {
 		t.Fatalf("compact reply badge should follow username: %q", compactPlain)
 	}
@@ -426,11 +426,11 @@ func TestCompactReplyMarkerStaysBesideMessageWhenThereIsRoom(t *testing.T) {
 	if len(lines) < 2 {
 		t.Fatalf("expected compact message header and timestamp rows, got %#v", lines)
 	}
-	firstRow := lipgloss.StripANSI(lines[0])
+	firstRow := stripANSISequences(lines[0])
 	if !strings.Contains(firstRow, "short message [1]") {
 		t.Fatalf("reply marker should stay at the end of the body on the first row: %q", firstRow)
 	}
-	timestampRow := strings.TrimSpace(lipgloss.StripANSI(lines[1]))
+	timestampRow := strings.TrimSpace(stripANSISequences(lines[1]))
 	if timestampRow != "[15:04]" {
 		t.Fatalf("timestamp-only row should remain separate from the reply marker: %q", timestampRow)
 	}
