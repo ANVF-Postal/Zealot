@@ -2,6 +2,8 @@ package main
 
 import "charm.land/lipgloss/v2"
 
+const replyComposerPrefix = "^Reply: "
+
 type messageBodyRange struct {
 	Start int // inclusive column within the chat content row
 	End   int // exclusive column within the chat content row
