@@ -291,7 +291,7 @@ func (m model) renderReplyBadgeForWidth(msg Packet, width int) string {
 		Foreground(lipgloss.Color(color)).
 		Background(lipgloss.Color(m.cfg.Background)).
 		Bold(true)
-	return style.Render(replyBadgeLabelForWidth(width) + " ")
+	return style.Render(replyBadgeLabelForWidth(width))
 }
 
 func (m model) renderPacketBaseLines(msg Packet, width int) []string {
@@ -381,7 +381,7 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 		} else {
 			prefix := m.styles.time.Render("[" + timeText + "]") + normalBodyStyle.Render(" ") + nameStyle.Render(msg.User.Name)
 			if replyBadge != "" {
-				prefix += normalBodyStyle.Render(" ") + replyBadge
+				prefix += replyBadge
 			}
 			prefix += normalBodyStyle.Render(":")
 			if lipgloss.Width(prefix) >= contentWidth {
@@ -573,14 +573,10 @@ func renderCompactMessage(
 	if len(nameParts) > 1 {
 		// Preserve very long usernames by hyphen-wrapping them rather than
 		// silently chopping the identity off at the viewport edge.
-		for i, part := range nameParts[:len(nameParts)-1] {
-			line := nameStyle.Render(part)
-			if i == 0 {
-				line = replyBadge + line
-			}
-			lines = append(lines, renderChatRow(rowFill, line, contentWidth))
+		for _, part := range nameParts[:len(nameParts)-1] {
+			lines = append(lines, renderChatRow(rowFill, nameStyle.Render(part), contentWidth))
 		}
-		lastNameRow := nameStyle.Render(nameParts[len(nameParts)-1]) + separatorStyle.Render(":")
+		lastNameRow := nameStyle.Render(nameParts[len(nameParts)-1]) + replyBadge + separatorStyle.Render(":")
 		lines = append(lines, renderChatRow(rowFill, lastNameRow, contentWidth))
 		wrapped := wrapTextVariable(msg.Text, 0, contentWidth-lipgloss.Width(stamp)-1, contentWidth)
 		if msg.Rainbow {
@@ -610,7 +606,7 @@ func renderCompactMessage(
 	if len(wrapped) == 0 {
 		wrapped = []string{""}
 	}
-	firstRow := replyBadge + nameStyle.Render(nameParts[0]) + separatorStyle.Render(":")
+	firstRow := nameStyle.Render(nameParts[0]) + replyBadge + separatorStyle.Render(":")
 	if wrapped[0] != "" {
 		firstRow += separatorStyle.Render(" ") + bodyStyle.Render(wrapped[0])
 	}
