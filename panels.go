@@ -452,6 +452,7 @@ func (m *model) clampScroll() {
 	max := m.maxScroll()
 	if m.scroll < 0 { m.scroll = 0 }
 	if m.scroll > max { m.scroll = max }
+	m.refreshMessageHover()
 }
 
 func (m model) scrollbarContains(x, y int) bool {
