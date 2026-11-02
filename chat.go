@@ -440,7 +440,7 @@ func renderCompactMessage(
 	if contentWidth < 1 {
 		contentWidth = 1
 	}
-	nameWidth := contentWidth - 2 // reserve space for the colon and optional body gap
+	nameWidth := contentWidth - 2 - lipgloss.Width(replyBadge) // reserve the reply label, colon and body gap
 	if nameWidth < 1 {
 		nameWidth = 1
 	}
@@ -486,7 +486,7 @@ func renderCompactMessage(
 	}
 
 	label := nameParts[0] + ": "
-	firstWidth := contentWidth - lipgloss.Width(label)
+	firstWidth := contentWidth - lipgloss.Width(replyBadge) - lipgloss.Width(label)
 	wrapped := wrapTextVariable(msg.Text, firstWidth, contentWidth-lipgloss.Width(stamp)-1, contentWidth)
 	if msg.Rainbow {
 		wrapped = rainbowParts(wrapped, msg.RainbowPhase)
