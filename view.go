@@ -74,16 +74,22 @@ func (m model) renderHeader() string {
 // Main UI
 // -----------------------------------------------------------------------------
 
-func appView(content string) tea.View {
+func appView(content string, hoverEnabled bool) tea.View {
 	v := tea.NewView(content)
 	v.AltScreen = true
-	v.MouseMode = tea.MouseModeAllMotion
+	// Passive pointer motion is needed only for message-body hover in the
+	// main chat. Panels have no hover targets, so keep click, wheel, and drag
+	// support without subscribing to every mouse movement.
+	v.MouseMode = tea.MouseModeCellMotion
+	if hoverEnabled {
+		v.MouseMode = tea.MouseModeAllMotion
+	}
 	return v
 }
 
 func (m model) View() tea.View {
 	if m.width == 0 || m.height == 0 {
-		return appView("Starting Zealot…")
+		return appView("Starting Zealot…", false)
 	}
 
 	// -------------------------------------------------------------------------
@@ -122,7 +128,7 @@ func (m model) View() tea.View {
 		for len(visible) < visibleUsers {
 			visible = append(visible, "")
 		}
-		railTop, thumbHeight, trackHeight := m.usersScrollbarThumb()
+		railTop, thumbHeight, trackHeight := m.usersScrollbarThumbForRowCount(len(users))
 		for i, line := range visible {
 			text := padANSIToWidth(line, textWidth, rowFill)
 			glyph := "│"
@@ -267,7 +273,8 @@ func (m model) renderSplashPanel() string {
 	for len(visible) < visibleHeight {
 		visible = append(visible, "")
 	}
-	top, thumbHeight, trackHeight := m.splashScrollbarThumb()
+	maxScroll := max(0, len(lines)-visibleHeight)
+	top, thumbHeight, trackHeight := m.splashScrollbarThumbForRowCount(len(lines))
 	rows := make([]string, 0, visibleHeight)
 	for i, line := range visible {
 		glyph := "│"
@@ -278,7 +285,7 @@ func (m model) renderSplashPanel() string {
 			glyph = "v"
 		default:
 			trackPosition := i - 1
-			if m.maxSplashScroll() > 0 && trackPosition >= top && trackPosition < top+thumbHeight {
+			if maxScroll > 0 && trackPosition >= top && trackPosition < top+thumbHeight {
 				glyph = "█"
 			}
 			if trackPosition >= trackHeight {
@@ -563,5 +570,5 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen 
 		Width(m.width).
 		Height(m.height).
 		Render(lipgloss.JoinVertical(lipgloss.Left, parts...))
-	return appView(content)
+	return appView(content, !usersOpen && !splashOpen)
 }
