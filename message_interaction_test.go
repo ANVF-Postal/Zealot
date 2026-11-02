@@ -320,6 +320,9 @@ func TestReplyMarkersNavigateInArrivalOrder(t *testing.T) {
 		t.Fatalf("[Replied] link does not target the original message: %#v", replyLinks)
 	}
 	badge := replyLinks[0][0]
+	if got, want := badge.End-badge.Start, lipgloss.Width("[Re]"); got != want {
+		t.Fatalf("[Re] hitbox width = %d, want %d (do not include following space)", got, want)
+	}
 	if got := m.messageLinkAt(badge.Start+1, 3); got != parent.ID {
 		t.Fatalf("[Replied] click returned %q, want %q", got, parent.ID)
 	}
