@@ -463,7 +463,7 @@ func renderCompactMessage(
 		}
 		lastNameRow := nameStyle.Render(nameParts[len(nameParts)-1] + ":")
 		lines = append(lines, renderChatRow(rowFill, lastNameRow, contentWidth))
-			wrapped := wrapTextVariable(msg.Text, 0, contentWidth-lipgloss.Width(stamp)-1, contentWidth)
+		wrapped := wrapTextVariable(msg.Text, 0, contentWidth-lipgloss.Width(stamp)-1, contentWidth)
 		if msg.Rainbow {
 			wrapped = rainbowParts(wrapped, msg.RainbowPhase)
 		}
