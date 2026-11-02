@@ -72,6 +72,36 @@ func TestAppViewEnablesAllMouseMotion(t *testing.T) {
 	}
 }
 
+func TestMessageHoverRestylesOnlyAffectedRows(t *testing.T) {
+	first := interactionTestPacket("hover-1", "hover this body")
+	second := interactionTestPacket("hover-2", "another message")
+	m := newMessageInteractionTestModel(80, first, second)
+	if len(m.renderedLines) == 0 {
+		t.Fatal("expected cached message rows")
+	}
+
+	firstBody := m.messageBodyRanges(first, m.width)
+	if len(firstBody) == 0 || firstBody[0].End <= firstBody[0].Start {
+		t.Fatalf("expected a body hitbox, got %#v", firstBody)
+	}
+	lineStorage := &m.renderedLines[0]
+	idStorage := &m.renderedMessageIDs[0]
+	bodyStorage := &m.renderedMessageBodyRanges[0]
+
+	m.mousePositionKnown = true
+	m.lastMouseX = 1 + firstBody[0].Start
+	m.lastMouseY = 2
+	m.refreshMessageHover()
+
+	if m.hoveredMessageID != first.ID {
+		t.Fatalf("hovered message = %q, want %q", m.hoveredMessageID, first.ID)
+	}
+	if !m.renderCacheValid || &m.renderedLines[0] != lineStorage ||
+		&m.renderedMessageIDs[0] != idStorage || &m.renderedMessageBodyRanges[0] != bodyStorage {
+		t.Fatal("hover transition rebuilt the full message cache instead of restyling rows in place")
+	}
+}
+
 func TestMessageBodyHitboxExcludesUsernameAndTimestamp(t *testing.T) {
 	packet := interactionTestPacket("message-1", "hello")
 	m := newMessageInteractionTestModel(80, packet)
