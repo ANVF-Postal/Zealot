@@ -106,11 +106,11 @@ func (m model) View() tea.View {
 		// The existing chat pane becomes the roster. The heading uses a clean
 		// full-width background row; the scrollbar occupies the far-right
 		// interior cell on user rows only.
-		users := m.userRows()
+		totalUserRows := m.userRowCount()
 		visibleUsers := m.usersPanelHeight()
-		userStart := min(m.usersScroll, len(users))
-		userEnd := min(userStart+visibleUsers, len(users))
-		visible := append([]string(nil), users[userStart:userEnd]...)
+		userStart := min(m.usersScroll, totalUserRows)
+		userEnd := min(userStart+visibleUsers, totalUserRows)
+		visible := m.userRowsRange(userStart, userEnd)
 
 		bg := lipgloss.Color(m.cfg.Background)
 		rowFill := lipgloss.NewStyle().Background(bg)
@@ -128,14 +128,14 @@ func (m model) View() tea.View {
 		for len(visible) < visibleUsers {
 			visible = append(visible, "")
 		}
-		railTop, thumbHeight, trackHeight := m.usersScrollbarThumbForRowCount(len(users))
+		railTop, thumbHeight, trackHeight := m.usersScrollbarThumbForRowCount(totalUserRows)
 		for i, line := range visible {
 			text := padANSIToWidth(line, textWidth, rowFill)
 			glyph := "│"
 			switch {
 			case i == visibleUsers-1:
 				glyph = "v"
-			case len(users) > visibleUsers && i < trackHeight &&
+			case totalUserRows > visibleUsers && i < trackHeight &&
 				i >= railTop && i < railTop+thumbHeight:
 				glyph = "█"
 			}
@@ -570,5 +570,5 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen 
 		Width(m.width).
 		Height(m.height).
 		Render(lipgloss.JoinVertical(lipgloss.Left, parts...))
-	return appView(content, !usersOpen && !splashOpen)
+	return appView(content, !usersOpen && !splashOpen && len(m.messages) > 0)
 }
