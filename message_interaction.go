@@ -271,21 +271,24 @@ func (m model) messageLinkRangesForLineCount(msg Packet, width, lineCount int) [
 
 	if msg.ReplyTo != "" && m.hasMessageID(msg.ReplyTo) {
 		badgeStart := 0
+		badge := m.renderReplyBadgeForWidth(msg, width)
 		if width > 48 {
 			bg := lipgloss.Color(m.cfg.Background)
 			nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.User.Color)).Background(bg).Bold(true)
 			bodyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.TextColor)).Background(bg)
 			timestamp := m.styles.time.Render("[" + msg.Time.Local().Format("15:04") + "]")
 			widePrefix := timestamp + bodyStyle.Render(" ") + nameStyle.Render(msg.User.Name)
-			if badge := m.renderReplyBadgeForWidth(msg, width); badge != "" {
+			if badge != "" {
 				widePrefix += bodyStyle.Render(" ") + badge
 			}
 			widePrefix += bodyStyle.Render(": ")
 			if lipgloss.Width(widePrefix) < chatContentWidth(width) {
 				badgeStart = lipgloss.Width(timestamp + " " + nameStyle.Render(msg.User.Name) + " ")
+			} else {
+				badge = m.renderReplyBadgeForWidth(msg, 48)
 			}
 		}
-		regions[0] = append(regions[0], messageLinkRange{Start: badgeStart, End: badgeStart+lipgloss.Width(strings.TrimSpace(m.renderReplyBadgeForWidth(msg, width))), TargetID: msg.ReplyTo})
+		regions[0] = append(regions[0], messageLinkRange{Start: badgeStart, End: badgeStart + lipgloss.Width(strings.TrimSpace(badge)), TargetID: msg.ReplyTo})
 	}
 	replies := m.repliesFor(msg.ID)
 	if len(replies) > 0 && msg.XKeyscore == 0 {
