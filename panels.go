@@ -342,6 +342,7 @@ func (m *model) appendMessage(packet Packet) {
 	m.messages = append(m.messages, packet)
 
 	if m.width < 1 {
+		m.rebuildMessageIndexes()
 		m.renderCacheValid = false
 		return
 	}
@@ -357,9 +358,10 @@ func (m *model) appendMessage(packet Packet) {
 		return
 	}
 
+	m.rebuildMessageIndexes()
 	newLines := m.renderPacketLines(packet, m.width)
-	bodyRanges := m.messageBodyRanges(packet, m.width)
-	linkRanges := m.messageLinkRanges(packet, m.width)
+	bodyRanges := m.messageBodyRangesForLineCount(packet, m.width, len(newLines))
+	linkRanges := m.messageLinkRangesForLineCount(packet, m.width, len(newLines))
 	for i := range newLines {
 		m.renderedMessageIDs = append(m.renderedMessageIDs, packet.ID)
 		if i < len(bodyRanges) {
@@ -389,6 +391,7 @@ func (m *model) appendMessage(packet Packet) {
 }
 
 func (m *model) rebuildMessageCache() {
+	m.rebuildMessageIndexes()
 	if m.width < 1 {
 		m.renderedLines = nil
 		m.renderedMessageIDs = nil
@@ -404,8 +407,8 @@ func (m *model) rebuildMessageCache() {
 	linkRanges := make([][]messageLinkRange, 0, len(m.messages))
 	for _, message := range m.messages {
 		messageLines := m.renderPacketLines(message, m.width)
-		messageRanges := m.messageBodyRanges(message, m.width)
-		messageLinks := m.messageLinkRanges(message, m.width)
+		messageRanges := m.messageBodyRangesForLineCount(message, m.width, len(messageLines))
+		messageLinks := m.messageLinkRangesForLineCount(message, m.width, len(messageLines))
 		lines = append(lines, messageLines...)
 		for i := range messageLines {
 			messageIDs = append(messageIDs, message.ID)
