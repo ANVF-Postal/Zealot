@@ -190,6 +190,7 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 	}
 	contentWidth := chatContentWidth(width)
 	rowFill := lipgloss.NewStyle().Width(contentWidth).Background(lipgloss.Color(m.cfg.Background))
+	separatorStyle := lipgloss.NewStyle().Background(lipgloss.Color(m.cfg.Background))
 	for n := range replies {
 		marker := fmt.Sprintf("[%d]", n+1)
 		styled := m.styles.accent.Render(marker)
@@ -197,7 +198,7 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 		trimmed := trimANSIEndPadding(lines[last])
 		used := visibleChatTextWidth(trimmed)
 		if used+1+lipgloss.Width(marker) <= contentWidth {
-			lines[last] = renderChatRow(rowFill, trimmed+" "+styled, contentWidth)
+			lines[last] = renderChatRow(rowFill, trimmed+separatorStyle.Render(" ")+styled, contentWidth)
 		} else {
 			lines = append(lines, renderChatRow(rowFill, styled, contentWidth))
 		}
@@ -206,30 +207,30 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 }
 
 func (m *model) rebuildMessageIndexes() {
-	messageIDs := make(map[string]struct{}, len(m.messages))
+	messagesByID := make(map[string]Packet, len(m.messages))
 	repliesByMessageID := make(map[string][]string)
 	for _, packet := range m.messages {
 		if packet.Type != "message" || packet.ID == "" {
 			continue
 		}
-		messageIDs[packet.ID] = struct{}{}
+		messagesByID[packet.ID] = packet
 		if packet.ReplyTo != "" {
 			repliesByMessageID[packet.ReplyTo] = append(repliesByMessageID[packet.ReplyTo], packet.ID)
 		}
 	}
-	m.messageIDsByID = messageIDs
+	m.messageByID = messagesByID
 	m.replyIDsByMessageID = repliesByMessageID
 }
 
 func (m *model) addMessageToIndexes(packet Packet) {
-	if m.messageIDsByID == nil || m.replyIDsByMessageID == nil {
+	if m.messageByID == nil || m.replyIDsByMessageID == nil {
 		m.rebuildMessageIndexes()
 		return
 	}
 	if packet.Type != "message" || packet.ID == "" {
 		return
 	}
-	m.messageIDsByID[packet.ID] = struct{}{}
+	m.messageByID[packet.ID] = packet
 	if packet.ReplyTo != "" {
 		m.replyIDsByMessageID[packet.ReplyTo] = append(m.replyIDsByMessageID[packet.ReplyTo], packet.ID)
 	}
@@ -255,8 +256,8 @@ func (m model) hasMessageID(messageID string) bool {
 	if messageID == "" {
 		return false
 	}
-	if m.messageIDsByID != nil {
-		_, exists := m.messageIDsByID[messageID]
+	if m.messageByID != nil {
+		_, exists := m.messageByID[messageID]
 		return exists
 	}
 	for _, packet := range m.messages {
@@ -279,14 +280,15 @@ func (m model) renderReplyBadgeForWidth(msg Packet, width int) string {
 	if !m.hasMessageID(msg.ReplyTo) {
 		color = m.cfg.BorderColor
 	}
-	label := "[Replied]"
-	if width <= 32 { label = "[RE]" }
-	if width <= 20 { label = "[R]" }
+	label := "[Re]"
+	if width <= 48 {
+		label = "[R]"
+	}
 	style := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(color)).
 		Background(lipgloss.Color(m.cfg.Background)).
 		Bold(true)
-	return style.Render(label) + " "
+	return style.Render(label + " ")
 }
 
 func (m model) renderPacketBaseLines(msg Packet, width int) []string {
@@ -502,16 +504,18 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 
 	timestamp := timeStyle.Render("[" + timeText + "]")
 	name := nameStyle.Render(msg.User.Name)
-	badgeSegment := ""
-	if replyBadge != "" { badgeSegment = " " + strings.TrimSpace(replyBadge) }
-	prefix := timestamp + normalBodyStyle.Render(" ") + name + normalBodyStyle.Render(badgeSegment+": ")
+	prefix := timestamp + normalBodyStyle.Render(" ") + name
+	if replyBadge != "" {
+		prefix += normalBodyStyle.Render(" ") + replyBadge
+	}
+	prefix += normalBodyStyle.Render(": ")
 	prefixWidth := lipgloss.Width(prefix)
 	if prefixWidth >= contentWidth {
 		displayMessage := msg
 		if hovered {
 			displayMessage.Rainbow = false
 		}
-		return renderCompactMessage(rowFill, bodyStyle, normalBodyStyle, nameStyle, m.styles.time, replyBadge, displayMessage, timeText, contentWidth)
+		return renderCompactMessage(rowFill, bodyStyle, normalBodyStyle, nameStyle, m.styles.time, m.renderReplyBadgeForWidth(msg, 48), displayMessage, timeText, contentWidth)
 	}
 
 	wrapped := wrapText(msg.Text, contentWidth-prefixWidth)
@@ -569,7 +573,7 @@ func renderCompactMessage(
 			}
 			lines = append(lines, renderChatRow(rowFill, line, contentWidth))
 		}
-		lastNameRow := nameStyle.Render(nameParts[len(nameParts)-1] + ":")
+		lastNameRow := nameStyle.Render(nameParts[len(nameParts)-1]) + separatorStyle.Render(":")
 		lines = append(lines, renderChatRow(rowFill, lastNameRow, contentWidth))
 		wrapped := wrapTextVariable(msg.Text, 0, contentWidth-lipgloss.Width(stamp)-1, contentWidth)
 		if msg.Rainbow {
@@ -599,7 +603,7 @@ func renderCompactMessage(
 	if len(wrapped) == 0 {
 		wrapped = []string{""}
 	}
-	firstRow := replyBadge + nameStyle.Render(nameParts[0] + ":")
+	firstRow := replyBadge + nameStyle.Render(nameParts[0]) + separatorStyle.Render(":")
 	if wrapped[0] != "" {
 		firstRow += separatorStyle.Render(" ") + bodyStyle.Render(wrapped[0])
 	}
