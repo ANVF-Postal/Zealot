@@ -9,7 +9,7 @@ func (m model) inputSelectionArea() (left, top, right, bottom int) {
 		left++
 		right--
 	}
-	top = 2 + m.messageHeight() // header, chat pane, and composer top border
+	top = 4 + m.messageHeight() // header, chat pane, composer border, and content inset
 	bottom = top + m.input.Height()
 	return
 }
