@@ -27,6 +27,10 @@ func (m model) Update(
 		oldWidth := m.width
 		m.width = sizeMsg.Width
 		m.height = sizeMsg.Height
+		if m.inputSelecting {
+			m.input.EndSelection()
+			m.inputSelecting = false
+		}
 		m.resizeInput()
 		if oldWidth != m.width || !m.renderCacheValid {
 			m.rebuildMessageCache()
@@ -198,6 +202,17 @@ func (m model) Update(
 
 	switch mouse := msg.(type) {
 	case tea.MouseClickMsg:
+		// Begin a textarea selection before handling other clickable UI. The
+		// coordinate helper accounts for the composer frame and its first-row
+		// prompt, which is rendered outside the Bubbles textarea.
+		if mouse.Button == tea.MouseLeft && !m.usersOpen && !m.splashOpen &&
+			m.inputSelectionContains(mouse.X, mouse.Y) {
+			localX, localY := m.inputSelectionCoordinates(mouse.X, mouse.Y)
+			m.input.BeginSelection(localX, localY)
+			m.inputSelecting = true
+			return m, nil
+		}
+
 		// Footer actions occupy the final terminal row. Their hitboxes are
 		// calculated by the same layout helper used to render the row.
 		if m.statusBarVisible() && mouse.Button == tea.MouseLeft && mouse.Y == m.height-1 {
@@ -370,6 +385,11 @@ func (m model) Update(
 		}
 
 	case tea.MouseMotionMsg:
+		if m.inputSelecting {
+			localX, localY := m.inputSelectionCoordinates(mouse.X, mouse.Y)
+			m.input.ExtendSelection(localX, localY)
+			return m, nil
+		}
 		if m.splashOpen && m.splashScrollDragging {
 			_, thumbHeight, trackHeight := m.splashScrollbarThumb()
 			target := mouse.Y - 3 - m.splashScrollDragOffset
@@ -396,6 +416,10 @@ func (m model) Update(
 		}
 
 	case tea.MouseReleaseMsg:
+		if m.inputSelecting {
+			m.input.EndSelection()
+			m.inputSelecting = false
+		}
 		m.splashScrollDragging = false
 		m.splashScrollbarHoldDirection = 0
 		m.splashScrollbarHoldGeneration++
