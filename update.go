@@ -408,6 +408,7 @@ func (m model) Update(
 		if m.inputSelecting {
 			localX, localY := m.inputSelectionCoordinates(mouse.X, mouse.Y)
 			m.input.ExtendSelection(localX, localY)
+			m.refreshMessageHover()
 			return m, nil
 		}
 		if m.splashOpen && m.splashScrollDragging {
