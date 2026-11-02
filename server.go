@@ -28,6 +28,7 @@ func nextMessageID() string {
 
 type serverClient struct {
 	enc       *json.Encoder
+	writer    *bufio.Writer
 	mu        sync.Mutex
 	id        string
 	room      string
@@ -107,7 +108,9 @@ func (c *serverClient) send(packet Packet) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	_ = c.enc.Encode(packet)
+	if err := c.enc.Encode(packet); err == nil && c.writer != nil {
+		_ = c.writer.Flush()
+	}
 }
 
 func (s *server) systemMessage(
@@ -136,7 +139,8 @@ func (s *server) handle(conn net.Conn) {
 		bufio.NewReader(conn),
 	)
 
-	encoder := json.NewEncoder(conn)
+	writer := bufio.NewWriterSize(conn, 64*1024)
+	encoder := json.NewEncoder(writer)
 
 	var hello Packet
 
@@ -161,7 +165,8 @@ func (s *server) handle(conn net.Conn) {
 	}
 
 	client := &serverClient{
-		enc: encoder,
+		enc:    encoder,
+		writer: writer,
 		id: fmt.Sprintf(
 			"%d-%p",
 			time.Now().UnixNano(),
@@ -187,6 +192,7 @@ func (s *server) handle(conn net.Conn) {
 			Type: "history_mismatch",
 			Text: fmt.Sprintf("This room already exists with history %s. Remove the --add-history flag and relaunch to join it.", existingPolicy),
 		})
+		_ = writer.Flush()
 		s.mu.Unlock()
 		return
 	}
@@ -243,6 +249,11 @@ func (s *server) handle(conn net.Conn) {
 			Type: "online",
 			Text: strconv.Itoa(onlineCount),
 		})
+	}
+	if writeErr == nil {
+		// History is a replay burst. Flush it as a buffered stream rather than
+		// issuing one socket write for every JSON packet.
+		writeErr = client.writer.Flush()
 	}
 
 	client.mu.Unlock()
