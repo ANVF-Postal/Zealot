@@ -117,45 +117,132 @@ func (m model) usersPanelHeight() int {
 	return max(1, m.messageHeight()-1)
 }
 
-func (m model) userRows() []string {
+// userRowCount calculates the roster height without formatting every user.
+// Scroll clamping and scrollbar geometry need only this count, not rendered rows.
+func (m model) userRowCount() int {
+	if len(m.onlineUsers) == 0 {
+		return 1
+	}
 	width := m.width - 12
-	if width < 8 { width = 8 }
-	rows := []string{}
+	if width < 8 {
+		width = 8
+	}
+	nameWidth := max(1, width-5)
+	total := 0
 	for _, user := range m.onlineUsers {
-		nameWidth := width - 5
-		if nameWidth < 1 { nameWidth = 1 }
 		parts := wrapText(user.Name, nameWidth)
-		if len(parts) == 0 { parts = []string{user.Name} }
-		style := lipgloss.NewStyle().
-			Foreground(lipgloss.Color(user.Color)).
-			Background(lipgloss.Color(m.cfg.Background)).
-			Bold(true)
-		marker := ""
-		switch {
-		case m.userActivity[user.Name] > 0 && m.usersFrame%2 == 0:
-			marker = " [!]"
-		case user.Typing:
-			frames := []string{"·  ", "·· ", "···", " ··", "  ·"}
-			marker = " " + frames[m.usersFrame%len(frames)]
-			style = lipgloss.NewStyle().
-				Foreground(lipgloss.Color(m.cfg.AccentColor)).
-				Background(lipgloss.Color(m.cfg.Background)).
-				Bold(true)
-		}
-		for i, part := range parts {
-			text := part
-			if i == len(parts)-1 {
-				text += marker
-			}
-			rows = append(rows, "    "+style.Render(text))
+		if len(parts) == 0 {
+			total++
+		} else {
+			total += len(parts)
 		}
 	}
-	if len(rows) == 0 { rows = []string{m.styles.system.Render("  Nobody else is here yet.")} }
+	return total
+}
+
+// userRows remains available for callers that need the complete rendered list.
+func (m model) userRows() []string {
+	return m.userRowsRange(0, m.userRowCount())
+}
+
+// userRowsRange formats only the requested visible rows. A large room roster
+// should not require styling and allocating off-screen users on every redraw.
+func (m model) userRowsRange(start, end int) []string {
+	if start < 0 {
+		start = 0
+	}
+	if end <= start {
+		return nil
+	}
+	if len(m.onlineUsers) == 0 {
+		if start == 0 {
+			return []string{m.styles.system.Render("  Nobody else is here yet.")}
+		}
+		return nil
+	}
+
+	width := m.width - 12
+	if width < 8 {
+		width = 8
+	}
+	nameWidth := max(1, width-5)
+	rows := make([]string, 0, end-start)
+	rowIndex := 0
+	for _, user := range m.onlineUsers {
+		parts := wrapText(user.Name, nameWidth)
+		if len(parts) == 0 {
+			parts = []string{user.Name}
+		}
+		rowEnd := rowIndex + len(parts)
+		if rowEnd > start && rowIndex < end {
+			style := lipgloss.NewStyle().
+				Foreground(lipgloss.Color(user.Color)).
+				Background(lipgloss.Color(m.cfg.Background)).
+				Bold(true)
+			marker := ""
+			switch {
+			case m.userActivity[user.Name] > 0 && m.usersFrame%2 == 0:
+				marker = " [!]"
+			case user.Typing:
+				frames := []string{"·  ", "·· ", "···", " ··", "  ·"}
+				marker = " " + frames[m.usersFrame%len(frames)]
+				style = lipgloss.NewStyle().
+					Foreground(lipgloss.Color(m.cfg.AccentColor)).
+					Background(lipgloss.Color(m.cfg.Background)).
+					Bold(true)
+			}
+			for i, part := range parts {
+				if rowIndex >= start && rowIndex < end {
+					text := part
+					if i == len(parts)-1 {
+						text += marker
+					}
+					rows = append(rows, "    "+style.Render(text))
+				}
+				rowIndex++
+				if rowIndex >= end {
+					return rows
+				}
+			}
+		} else {
+			rowIndex = rowEnd
+			if rowIndex >= end {
+				break
+			}
+		}
+	}
 	return rows
 }
 
+// usersAnimationActive prevents a permanently scheduled redraw loop when the
+// roster is open but nobody is typing and there is no recent activity marker.
+func (m model) usersAnimationActive() bool {
+	if len(m.userActivity) > 0 {
+		return true
+	}
+	if !m.usersOpen {
+		return false
+	}
+	for _, user := range m.onlineUsers {
+		if user.Typing {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *model) startUsersAnimation() tea.Cmd {
+	if m.usersAnimationRunning || !m.usersAnimationActive() {
+		return nil
+	}
+	m.usersAnimationRunning = true
+	return tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg {
+		return usersAnimationMsg{}
+	})
+}
+
 func (m model) usersScrollbarThumb() (top, thumbHeight, trackHeight int) {
-	return m.usersScrollbarThumbForRowCount(len(m.userRows()))
+	return m.usersScrollbarThumbForRowCount(m.userRowCount())
 }
 
 func (m model) usersScrollbarThumbForRowCount(total int) (top, thumbHeight, trackHeight int) {
@@ -211,7 +298,7 @@ func (m model) usersScrollbarHoldCmd(generation int) tea.Cmd {
 }
 
 func (m model) maxUsersScroll() int {
-	maxScroll := len(m.userRows()) - m.usersPanelHeight()
+	maxScroll := m.userRowCount() - m.usersPanelHeight()
 	if maxScroll < 0 { return 0 }
 	return maxScroll
 }
