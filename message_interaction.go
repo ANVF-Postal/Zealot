@@ -311,7 +311,7 @@ func (m model) messageLinkRangesForLineCount(msg Packet, width, lineCount int) [
 	return regions
 }
 
-// messageLinkAt detects clicks on [Replied] or an individual ^ reply marker.
+// messageLinkAt detects clicks on [Re] or an individual numbered reply marker.
 func (m model) messageLinkAt(x, y int) string {
 	if m.usersOpen || m.splashOpen || m.width < 1 {
 		return ""
