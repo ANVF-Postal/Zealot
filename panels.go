@@ -335,6 +335,8 @@ func (m model) messageHeight() int {
 }
 
 func (m *model) appendMessage(packet Packet) {
+	oldLineCount := len(m.renderMessageLines())
+	oldScroll := m.scroll
 	m.messages = append(m.messages, packet)
 
 	if m.width < 1 {
@@ -342,14 +344,31 @@ func (m *model) appendMessage(packet Packet) {
 		return
 	}
 
+	// A reply changes its own [Replied] marker and the original message caret
+	// row. Rebuild so both stay aligned.
+	if packet.Type == "message" && packet.ReplyTo != "" {
+		m.rebuildMessageCache()
+		if oldScroll > 0 {
+			m.scroll += len(m.renderedLines) - oldLineCount
+		}
+		m.clampScroll()
+		return
+	}
+
 	newLines := m.renderPacketLines(packet, m.width)
 	bodyRanges := m.messageBodyRanges(packet, m.width)
+	linkRanges := m.messageLinkRanges(packet, m.width)
 	for i := range newLines {
 		m.renderedMessageIDs = append(m.renderedMessageIDs, packet.ID)
 		if i < len(bodyRanges) {
 			m.renderedMessageBodyRanges = append(m.renderedMessageBodyRanges, bodyRanges[i])
 		} else {
 			m.renderedMessageBodyRanges = append(m.renderedMessageBodyRanges, messageBodyRange{})
+		}
+		if i < len(linkRanges) {
+			m.renderedMessageLinks = append(m.renderedMessageLinks, linkRanges[i])
+		} else {
+			m.renderedMessageLinks = append(m.renderedMessageLinks, nil)
 		}
 	}
 	if m.scroll > 0 {
@@ -372,6 +391,7 @@ func (m *model) rebuildMessageCache() {
 		m.renderedLines = nil
 		m.renderedMessageIDs = nil
 		m.renderedMessageBodyRanges = nil
+		m.renderedMessageLinks = nil
 		m.renderCacheValid = false
 		return
 	}
@@ -379,9 +399,11 @@ func (m *model) rebuildMessageCache() {
 	lines := make([]string, 0, len(m.messages))
 	messageIDs := make([]string, 0, len(m.messages))
 	bodyRanges := make([]messageBodyRange, 0, len(m.messages))
+	linkRanges := make([][]messageLinkRange, 0, len(m.messages))
 	for _, message := range m.messages {
 		messageLines := m.renderPacketLines(message, m.width)
 		messageRanges := m.messageBodyRanges(message, m.width)
+		messageLinks := m.messageLinkRanges(message, m.width)
 		lines = append(lines, messageLines...)
 		for i := range messageLines {
 			messageIDs = append(messageIDs, message.ID)
@@ -390,11 +412,17 @@ func (m *model) rebuildMessageCache() {
 			} else {
 				bodyRanges = append(bodyRanges, messageBodyRange{})
 			}
+			if i < len(messageLinks) {
+				linkRanges = append(linkRanges, messageLinks[i])
+			} else {
+				linkRanges = append(linkRanges, nil)
+			}
 		}
 	}
 	m.renderedLines = lines
 	m.renderedMessageIDs = messageIDs
 	m.renderedMessageBodyRanges = bodyRanges
+	m.renderedMessageLinks = linkRanges
 	m.renderCacheWidth = m.width
 	m.renderCacheValid = true
 }
