@@ -22,6 +22,7 @@ type wireClient struct {
 	decoder       *json.Decoder
 	initialPacket Packet
 	hasInitial    bool
+	historyReplay bool
 	mu            sync.Mutex
 }
 
@@ -139,6 +140,7 @@ func connectToServer(
 	}
 	client.initialPacket = response
 	client.hasInitial = true
+	client.historyReplay = response.AddHistory
 
 	return client, nil
 }
