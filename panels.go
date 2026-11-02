@@ -307,11 +307,13 @@ func (m *model) resizeInput() {
 			width += 2
 		}
 	}
+	minInputWidth := 10
 	if m.replyTargetID != "" {
 		width -= len([]rune(replyComposerPrefix))
+		minInputWidth = 1
 	}
-	if width < 10 {
-		width = 10
+	if width < minInputWidth {
+		width = minInputWidth
 	}
 	m.input.SetWidth(width)
 }
