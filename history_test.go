@@ -129,6 +129,9 @@ func TestMouseMotionFilterCoalescesWhileHoverRefreshIsPending(t *testing.T) {
 	if got := filter.filter(m, tea.MouseClickMsg{X: 10, Y: 0}); got == nil {
 		t.Fatal("mouse click was filtered")
 	}
+	if got := filter.filter(m, tea.MouseMotionMsg{X: 21, Y: 4, Button: tea.MouseLeft}); got == nil {
+		t.Fatal("button-held mouse drag was filtered")
+	}
 
 	m.inputSelecting = true
 	if got := filter.filter(m, tea.MouseMotionMsg{X: 21, Y: 4}); got == nil {
