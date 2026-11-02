@@ -430,28 +430,44 @@ func (m model) messageHeight() int {
 }
 
 func (m *model) appendMessage(packet Packet) {
-	oldScroll := m.scroll
-	if m.width < 1 {
-		m.messages = append(m.messages, packet)
-		m.addMessageToIndexes(packet)
-		m.renderCacheValid = false
+	m.appendMessages([]Packet{packet})
+}
+
+// appendMessages updates indexes and cached rows for a group of packets while
+// issuing only one scroll/hover refresh. During history replay this avoids
+// repeating the model-level work for every decoded packet.
+func (m *model) appendMessages(packets []Packet) {
+	if len(packets) == 0 {
 		return
 	}
 
+	oldScroll := m.scroll
 	cacheValid := m.renderCacheValid && m.renderCacheWidth == m.width
 	oldLineCount := 0
 	if cacheValid {
 		oldLineCount = len(m.renderedLines)
-	} else if oldScroll > 0 {
-		// Preserve the reader's historical position if a cache rebuild is
-		// required before applying this append.
+	} else if oldScroll > 0 && m.width > 0 {
+		// Preserve the reader's position if a cache rebuild is required before
+		// applying the batch.
 		m.rebuildMessageCache()
 		oldLineCount = len(m.renderedLines)
 		cacheValid = true
 	}
 
-	m.messages = append(m.messages, packet)
-	m.addMessageToIndexes(packet)
+	m.messages = append(m.messages, packets...)
+	if m.messageByID == nil || m.replyIDsByMessageID == nil {
+		m.rebuildMessageIndexes()
+	} else {
+		for _, packet := range packets {
+			m.addMessageToIndexes(packet)
+		}
+	}
+
+	if m.width < 1 {
+		m.renderCacheValid = false
+		return
+	}
+
 	if !cacheValid {
 		m.rebuildMessageCache()
 		if oldScroll > 0 {
@@ -461,31 +477,38 @@ func (m *model) appendMessage(packet Packet) {
 		return
 	}
 
-	if packet.Type == "message" && packet.ReplyTo != "" {
-		rowDelta := 0
-		if m.hasMessageID(packet.ReplyTo) {
-			delta, ok := m.replaceCachedMessageRows(packet.ReplyTo)
-			if !ok {
-				m.rebuildMessageCache()
-				if oldScroll > 0 {
-					m.scroll += len(m.renderedLines) - oldLineCount
-				}
-				m.clampScroll()
-				return
-			}
-			rowDelta += delta
+	// Existing cached parents need their reply markers refreshed. A parent
+	// that is part of this same batch will be rendered with its complete reply
+	// list below, so only messages already present in the cache are replaced.
+	parents := make(map[string]struct{})
+	for _, packet := range packets {
+		if packet.Type != "message" || packet.ReplyTo == "" {
+			continue
 		}
-		rowDelta += m.appendCachedMessageRows(packet)
-		if oldScroll > 0 {
-			m.scroll += rowDelta
+		if _, cached := m.messageRowsByID[packet.ReplyTo]; cached {
+			parents[packet.ReplyTo] = struct{}{}
 		}
-		m.clampScroll()
-		return
 	}
 
-	newRows := m.appendCachedMessageRows(packet)
+	rowDelta := 0
+	for parentID := range parents {
+		delta, ok := m.replaceCachedMessageRows(parentID)
+		if !ok {
+			m.rebuildMessageCache()
+			if oldScroll > 0 {
+				m.scroll += len(m.renderedLines) - oldLineCount
+			}
+			m.clampScroll()
+			return
+		}
+		rowDelta += delta
+	}
+
+	for _, packet := range packets {
+		rowDelta += m.appendCachedMessageRows(packet)
+	}
 	if oldScroll > 0 {
-		m.scroll += newRows
+		m.scroll += rowDelta
 	}
 	m.clampScroll()
 }
