@@ -80,6 +80,7 @@ type model struct {
 	scrollbarHoldGeneration int
 
 	connected          bool
+	quitting            bool
 	status             string
 	notificationsReady bool
 
