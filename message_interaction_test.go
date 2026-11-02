@@ -224,6 +224,34 @@ func TestAppendingReplyUpdatesOnlyParentRowsAndAppendsReply(t *testing.T) {
 	}
 }
 
+func TestAppendingReplyShiftsCachedRowsWhenMarkerNeedsOverflowRow(t *testing.T) {
+	parent := interactionTestPacket("overflow-parent", strings.Repeat("x", 60))
+	following := interactionTestPacket("overflow-following", "following message")
+	m := newMessageInteractionTestModel(80, parent, following)
+
+	reply := interactionTestPacket("overflow-reply", "reply body")
+	reply.ReplyTo = parent.ID
+	m.appendMessage(reply)
+
+	parentRows := m.messageRowsByID[parent.ID]
+	followingRows := m.messageRowsByID[following.ID]
+	replyRows := m.messageRowsByID[reply.ID]
+	if parentRows.End-parentRows.Start != 2 {
+		t.Fatalf("parent should gain an overflow marker row: %#v", parentRows)
+	}
+	if followingRows.Start != parentRows.End || replyRows.Start != followingRows.End {
+		t.Fatalf("cached ranges overlap or skipped rows: parent=%#v following=%#v reply=%#v", parentRows, followingRows, replyRows)
+	}
+	if !strings.Contains(m.renderedLines[parentRows.End-1], "[1]") {
+		t.Fatalf("overflow row does not display [1]: %q", m.renderedLines[parentRows.End-1])
+	}
+	if len(m.renderedMessageIDs) != len(m.renderedLines) ||
+		len(m.renderedMessageBodyRanges) != len(m.renderedLines) ||
+		len(m.renderedMessageLinks) != len(m.renderedLines) {
+		t.Fatal("render metadata lost alignment after inserting an overflow row")
+	}
+}
+
 func TestReplyMarkersWrapWithoutTakingScrollbarColumn(t *testing.T) {
 	parent := interactionTestPacket("parent-wrap", strings.Repeat("x", 60))
 	first := interactionTestPacket("reply-wrap-1", "first reply")
