@@ -15,8 +15,11 @@ func (m *model) sendCurrentMessage() {
 		return
 	}
 
-	m.sendMessage(text)
+	sent := m.sendMessage(text, m.replyTargetID)
 	m.input.Reset()
+	if sent && m.replyTargetID != "" {
+		m.cancelReply()
+	}
 	m.clampScroll()
 	m.clampUsersScroll()
 	m.clampSplashScroll()
@@ -28,21 +31,22 @@ func (m *model) sendCurrentMessage() {
 	}
 }
 
-func (m *model) sendMessage(text string) {
+func (m *model) sendMessage(text string, replyTo string) bool {
 	trimmed := strings.TrimSpace(text)
 	fields := strings.Fields(trimmed)
 	if len(fields) == 0 {
-		return
+		return false
 	}
 	switch strings.ToLower(fields[0]) {
 	case "/rb":
 		body := strings.TrimSpace(strings.TrimPrefix(trimmed, fields[0]))
 		if body == "" {
 			m.appendMessage(Packet{Type: "system", Text: "Usage: /rb message", Time: time.Now().UTC()})
-			return
+			return false
 		}
 		packet := Packet{
 			Type:         "message",
+			ReplyTo:      replyTo,
 			Room:         m.room,
 			User:         m.user,
 			Text:         body,
@@ -50,7 +54,7 @@ func (m *model) sendMessage(text string) {
 			RainbowPhase: rand.Float64(),
 		}
 		_ = m.client.send(packet)
-		return
+		return true
 	case "/xkeyscore":
 		var variant int
 		if len(fields) == 2 {
@@ -63,6 +67,7 @@ func (m *model) sendMessage(text string) {
 		}
 		packet := Packet{
 			Type:         "message",
+			ReplyTo:      replyTo,
 			Room:         m.room,
 			User:         m.user,
 			Text:         "XKEYSCORE",
@@ -71,7 +76,7 @@ func (m *model) sendMessage(text string) {
 			RainbowPhase: rand.Float64(),
 		}
 		_ = m.client.send(packet)
-		return
+		return true
 	case "/rainbow":
 		if len(fields) != 1 {
 			m.appendMessage(Packet{Type: "system", Text: "Usage: /rainbow", Time: time.Now()})
@@ -166,12 +171,13 @@ func (m *model) sendMessage(text string) {
 		_ = m.client.send(Packet{Type: "me", Room: m.room, User: m.user, Text: body})
 		return
 	}
-	packet := Packet{Type: "message", Room: m.room, User: m.user, Text: text}
+	packet := Packet{Type: "message", ReplyTo: replyTo, Room: m.room, User: m.user, Text: text}
 	if m.rainbowMode {
 		packet.Rainbow = true
 		packet.RainbowPhase = rand.Float64()
 	}
 	_ = m.client.send(packet)
+	return true
 }
 
 // splashRows builds the splash content at the current terminal width. The
