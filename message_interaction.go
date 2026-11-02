@@ -342,7 +342,7 @@ func (m *model) beginReply(id string) {
 		if packet.ID == id && packet.Type == "message" {
 			if m.replyTargetID != id {
 				m.replyTargetID = id
-					m.input.EndSelection()
+				m.input.EndSelection()
 				m.inputSelecting = false
 				m.resizeInput()
 				m.clampScroll()
