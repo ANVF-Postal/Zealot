@@ -157,38 +157,27 @@ func TestReplyMarkersNavigateInArrivalOrder(t *testing.T) {
 	m := newMessageInteractionTestModel(80, parent, first, second)
 
 	parentLinks := m.messageLinkRanges(parent, m.width)
-	if len(parentLinks) == 0 {
-		t.Fatal("expected a caret marker row on the original message")
-	}
-	markers := parentLinks[len(parentLinks)-1]
-	if len(markers) != 2 {
-		t.Fatalf("got %d caret links, want 2", len(markers))
-	}
-	if markers[0].Start != 0 || markers[0].TargetID != first.ID {
-		t.Fatalf("first caret = %#v, want first reply", markers[0])
-	}
-	if markers[1].Start != 2 || markers[1].TargetID != second.ID {
-		t.Fatalf("second caret = %#v, want second reply", markers[1])
-	}
-	if got := m.messageLinkAt(1, 3); got != first.ID {
-		t.Fatalf("first caret click returned %q, want %q", got, first.ID)
-	}
-	if got := m.messageLinkAt(3, 3); got != second.ID {
-		t.Fatalf("second caret click returned %q, want %q", got, second.ID)
-	}
+	if len(parentLinks) == 0 { t.Fatal("expected inline reply marker links") }
+	markers := parentLinks[0]
+	if len(markers) != 2 { t.Fatalf("got %d inline marker links, want 2", len(markers)) }
+	if markers[0].TargetID != first.ID || markers[1].TargetID != second.ID { t.Fatalf("inline marker order = %#v, want first then second reply", markers) }
+	if markers[0].Start <= 0 { t.Fatalf("markers should follow message text, got %#v", markers) }
+	if got := m.messageLinkAt(markers[0].Start+1, 2); got != first.ID { t.Fatalf("first marker click returned %q, want %q", got, first.ID) }
+	if got := m.messageLinkAt(markers[1].Start+1, 2); got != second.ID { t.Fatalf("second marker click returned %q, want %q", got, second.ID) }
 
 	replyLinks := m.messageLinkRanges(first, m.width)
 	if len(replyLinks) == 0 || len(replyLinks[0]) == 0 || replyLinks[0][0].TargetID != parent.ID {
 		t.Fatalf("[Replied] link does not target the original message: %#v", replyLinks)
 	}
-	if got := m.messageLinkAt(1, 4); got != parent.ID {
+	badge := replyLinks[0][0]
+	if got := m.messageLinkAt(badge.Start+1, 4); got != parent.ID {
 		t.Fatalf("[Replied] click returned %q, want %q", got, parent.ID)
 	}
 	replyBody := m.messageBodyRanges(first, m.width)
 	if len(replyBody) == 0 || replyBody[0].End <= replyBody[0].Start {
 		t.Fatalf("expected a reply body hitbox, got %#v", replyBody)
 	}
-	if got := m.messageIDAt(1, 4); got != "" {
+	if got := m.messageIDAt(badge.Start+1, 4); got != "" {
 		t.Fatalf("[Replied] label was treated as body text for %q", got)
 	}
 	if got := m.messageIDAt(1+replyBody[0].Start, 4); got != first.ID {
