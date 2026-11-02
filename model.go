@@ -49,8 +49,9 @@ type model struct {
 	typing      map[string]User
 	typingOrder []string
 
-	input       textarea.Model
-	rainbowMode bool
+	input          textarea.Model
+	inputSelecting bool
+	rainbowMode    bool
 
 	width  int
 	height int
@@ -88,6 +89,9 @@ func newModel(
 	}
 
 	input := textarea.New()
+	// Ctrl+A selects the entire composer; Home remains available for line start.
+	input.KeyMap.LineStart.SetKeys("home")
+	input.KeyMap.SelectAll.SetKeys("ctrl+a")
 
 	input.Prompt = "" // Render the prompt ourselves so wrapped rows stay plain.
 	input.Placeholder = "Type a message…"
