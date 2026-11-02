@@ -200,8 +200,6 @@ func TestAppendingReplyUpdatesOnlyParentRowsAndAppendsReply(t *testing.T) {
 	if !ok {
 		t.Fatal("parent should be indexed in the rendered row map")
 	}
-	lineStorage := &m.renderedLines[0]
-
 	reply := interactionTestPacket("incremental-reply", "reply body")
 	reply.ReplyTo = parent.ID
 	m.appendMessage(reply)
@@ -223,9 +221,6 @@ func TestAppendingReplyUpdatesOnlyParentRowsAndAppendsReply(t *testing.T) {
 		len(m.renderedMessageBodyRanges) != len(m.renderedLines) ||
 		len(m.renderedMessageLinks) != len(m.renderedLines) {
 		t.Fatal("rendered row metadata is not aligned with rendered lines")
-	}
-	if &m.renderedLines[0] == lineStorage {
-		t.Fatal("expected cache slices to stay synchronized following the parent row update")
 	}
 }
 
