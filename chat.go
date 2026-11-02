@@ -199,14 +199,8 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 		Foreground(lipgloss.Color(msg.User.Color)).
 		Background(bg).
 		Bold(true)
-	if hovered {
-		nameStyle = nameStyle.Foreground(lipgloss.Color("#F2D66B"))
-	}
 
 	timeStyle := m.styles.time
-	if hovered {
-		timeStyle = timeStyle.Foreground(lipgloss.Color("#F2D66B"))
-	}
 
 	if msg.XKeyscore > 0 {
 		var lines []string
