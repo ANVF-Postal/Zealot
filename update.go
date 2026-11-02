@@ -402,6 +402,9 @@ func (m model) Update(
 		}
 
 	case tea.MouseMotionMsg:
+		m.lastMouseX = mouse.X
+		m.lastMouseY = mouse.Y
+		m.mousePositionKnown = true
 		if m.inputSelecting {
 			localX, localY := m.inputSelectionCoordinates(mouse.X, mouse.Y)
 			m.input.ExtendSelection(localX, localY)
@@ -431,14 +434,7 @@ func (m model) Update(
 			m.setScrollFromThumbTop(target)
 			return m, nil
 		}
-		if !m.usersOpen && !m.splashOpen {
-			hoveredID := m.messageIDAt(mouse.X, mouse.Y)
-			if hoveredID != m.hoveredMessageID {
-				m.hoveredMessageID = hoveredID
-				m.rebuildMessageCache()
-				return m, nil
-			}
-		}
+		m.refreshMessageHover()
 
 	case tea.MouseReleaseMsg:
 		if m.inputSelecting {
