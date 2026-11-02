@@ -185,20 +185,22 @@ func TestMessageHoverMotionIsDebounced(t *testing.T) {
 	firstBody := m.messageBodyRanges(first, m.width)[0]
 	secondBody := m.messageBodyRanges(second, m.width)[0]
 	m.mousePositionKnown = true
-	_, firstCmd := m.Update(tea.MouseMotionMsg{X: 1 + firstBody.Start, Y: 2})
+	firstUpdated, firstCmd := m.Update(tea.MouseMotionMsg{X: 1 + firstBody.Start, Y: 2})
 	if firstCmd == nil {
 		t.Fatal("first pointer movement did not schedule a hover refresh")
 	}
+	m = firstUpdated.(model)
 	if m.hoveredMessageID != "" {
 		t.Fatalf("hover changed before debounce elapsed: %q", m.hoveredMessageID)
 	}
 
 	// Further motion should update the stored pointer without scheduling
 	// another timer or flashing the message underneath it immediately.
-	_, secondCmd := m.Update(tea.MouseMotionMsg{X: 1 + secondBody.Start, Y: 3})
+	secondUpdated, secondCmd := m.Update(tea.MouseMotionMsg{X: 1 + secondBody.Start, Y: 3})
 	if secondCmd != nil {
 		t.Fatal("pointer movement scheduled overlapping hover refreshes")
 	}
+	m = secondUpdated.(model)
 	if m.hoveredMessageID != "" {
 		t.Fatalf("hover changed during pointer movement: %q", m.hoveredMessageID)
 	}
@@ -431,8 +433,9 @@ func TestCompactReplyMarkerStaysBesideMessageWhenThereIsRoom(t *testing.T) {
 		t.Fatalf("reply marker should stay at the end of the body on the first row: %q", firstRow)
 	}
 	timestampRow := strings.TrimSpace(stripANSISequences(lines[1]))
-	if timestampRow != "[15:04]" {
-		t.Fatalf("timestamp-only row should remain separate from the reply marker: %q", timestampRow)
+	wantTimestamp := "[" + parent.Time.Local().Format("15:04") + "]"
+	if timestampRow != wantTimestamp {
+		t.Fatalf("timestamp-only row = %q, want %q (separate from the reply marker)", timestampRow, wantTimestamp)
 	}
 
 	links := m.messageLinkRanges(parent, m.width)
