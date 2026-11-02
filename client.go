@@ -71,6 +71,13 @@ func connectToServer(
 			return nil, startErr
 		}
 
+		// The daemon is intentionally long-lived, so don't block startup by
+		// waiting here. Reap it asynchronously if it exits while this client
+		// process is still alive.
+		go func() {
+			_ = cmd.Wait()
+		}()
+
 		_ = devNull.Close()
 
 		var lastErr error
