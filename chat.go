@@ -128,6 +128,62 @@ func rainbowParts(parts []string, phase float64) []string {
 }
 
 func (m model) renderPacketLines(msg Packet, width int) []string {
+	lines := m.renderPacketBaseLines(msg, width)
+	if msg.Type == "message" && msg.ID != "" {
+		replies := m.repliesFor(msg.ID)
+		if len(replies) > 0 {
+			contentWidth := chatContentWidth(width)
+			markers := strings.TrimSpace(strings.Repeat("^ ", len(replies)))
+			rowFill := lipgloss.NewStyle().
+				Width(contentWidth).
+				Background(lipgloss.Color(m.cfg.Background))
+			lines = append(lines, renderChatRow(rowFill, m.styles.accent.Render(markers), contentWidth))
+		}
+	}
+	return lines
+}
+
+func (m model) repliesFor(messageID string) []string {
+	if messageID == "" {
+		return nil
+	}
+	var replies []string
+	for _, packet := range m.messages {
+		if packet.Type == "message" && packet.ReplyTo == messageID && packet.ID != "" {
+			replies = append(replies, packet.ID)
+		}
+	}
+	return replies
+}
+
+func (m model) hasMessageID(messageID string) bool {
+	if messageID == "" {
+		return false
+	}
+	for _, packet := range m.messages {
+		if packet.ID == messageID && packet.Type == "message" {
+			return true
+		}
+	}
+	return false
+}
+
+func (m model) renderReplyBadge(msg Packet) string {
+	if msg.ReplyTo == "" {
+		return ""
+	}
+	color := m.cfg.AccentColor
+	if !m.hasMessageID(msg.ReplyTo) {
+		color = m.cfg.BorderColor
+	}
+	style := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(color)).
+		Background(lipgloss.Color(m.cfg.Background)).
+		Bold(true)
+	return style.Render("[Replied]") + " "
+}
+
+func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 	// The final interior column is reserved for the permanent scrollbar.
 	// When the side borders disappear at narrow widths, those two columns
 	// become available to message content.
@@ -137,7 +193,7 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 	text := lipgloss.Color(m.cfg.TextColor)
 	rowFill := lipgloss.NewStyle().Width(contentWidth).Background(bg)
 	bodyStyle := lipgloss.NewStyle().Foreground(text).Background(bg)
-	hovered := msg.Type == "message" && msg.ID != "" && msg.ID == m.hoveredMessageID
+	hovered := msg.Type == "message" && msg.ID != "" && (msg.ID == m.hoveredMessageID || msg.ID == m.highlightedMessageID)
 	if hovered {
 		hoverColor := lipgloss.Color("#F2D66B")
 		bodyStyle = bodyStyle.Foreground(hoverColor)
@@ -202,19 +258,20 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 
 	timeStyle := m.styles.time
 
+	replyBadge := m.renderReplyBadge(msg)
 	if msg.XKeyscore > 0 {
 		var lines []string
 		logoIndent := 0
 		if width <= 48 {
 			header := msg
 			header.Text = ""
-			lines = renderCompactMessage(rowFill, bodyStyle, nameStyle, timeStyle, header, timeText, contentWidth)
+			lines = renderCompactMessage(rowFill, bodyStyle, nameStyle, timeStyle, replyBadge, header, timeText, contentWidth)
 		} else {
-			prefix := m.styles.time.Render("[" + timeText + "]") + bodyStyle.Render(" ") + nameStyle.Render(msg.User.Name) + bodyStyle.Render(":")
+			prefix := replyBadge + m.styles.time.Render("[" + timeText + "]") + bodyStyle.Render(" ") + nameStyle.Render(msg.User.Name) + bodyStyle.Render(":")
 			if lipgloss.Width(prefix) >= contentWidth {
 				header := msg
 				header.Text = ""
-				lines = renderCompactMessage(rowFill, bodyStyle, nameStyle, m.styles.time, header, timeText, contentWidth)
+				lines = renderCompactMessage(rowFill, bodyStyle, nameStyle, m.styles.time, replyBadge, header, timeText, contentWidth)
 			} else {
 				logoIndent = lipgloss.Width(prefix)
 				lines = append(lines, renderChatRow(rowFill, prefix, contentWidth))
@@ -333,21 +390,21 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 		if hovered {
 			displayMessage.Rainbow = false
 		}
-		return renderCompactMessage(rowFill, bodyStyle, nameStyle, timeStyle, displayMessage, timeText, contentWidth)
+		return renderCompactMessage(rowFill, bodyStyle, nameStyle, timeStyle, replyBadge, displayMessage, timeText, contentWidth)
 	}
 
 	timestamp := timeStyle.Render("[" + timeText + "]")
 	separator := bodyStyle.Render(" ")
 	name := nameStyle.Render(msg.User.Name)
 	suffix := bodyStyle.Render(": ")
-	prefix := timestamp + separator + name + suffix
+	prefix := replyBadge + timestamp + separator + name + suffix
 	prefixWidth := lipgloss.Width(prefix)
 	if prefixWidth >= contentWidth {
 		displayMessage := msg
 		if hovered {
 			displayMessage.Rainbow = false
 		}
-		return renderCompactMessage(rowFill, bodyStyle, nameStyle, m.styles.time, displayMessage, timeText, contentWidth)
+		return renderCompactMessage(rowFill, bodyStyle, nameStyle, m.styles.time, replyBadge, displayMessage, timeText, contentWidth)
 	}
 
 	wrapped := wrapText(msg.Text, contentWidth-prefixWidth)
@@ -375,6 +432,7 @@ func renderCompactMessage(
 	bodyStyle lipgloss.Style,
 	nameStyle lipgloss.Style,
 	timeStyle lipgloss.Style,
+	replyBadge string,
 	msg Packet,
 	timeText string,
 	contentWidth int,
@@ -396,10 +454,18 @@ func renderCompactMessage(
 	if len(nameParts) > 1 {
 		// Preserve very long usernames by hyphen-wrapping them rather than
 		// silently chopping the identity off at the viewport edge.
-		for _, part := range nameParts[:len(nameParts)-1] {
-			lines = append(lines, renderChatRow(rowFill, nameStyle.Render(part), contentWidth))
+		for i, part := range nameParts[:len(nameParts)-1] {
+			line := nameStyle.Render(part)
+			if i == 0 {
+				line = replyBadge + line
+			}
+			lines = append(lines, renderChatRow(rowFill, line, contentWidth))
 		}
-		lines = append(lines, renderChatRow(rowFill, nameStyle.Render(nameParts[len(nameParts)-1]+":"), contentWidth))
+		lastNameRow := nameStyle.Render(nameParts[len(nameParts)-1] + ":")
+		if len(nameParts) == 1 {
+			lastNameRow = replyBadge + lastNameRow
+		}
+		lines = append(lines, renderChatRow(rowFill, lastNameRow, contentWidth))
 			wrapped := wrapTextVariable(msg.Text, 0, contentWidth-lipgloss.Width(stamp)-1, contentWidth)
 		if msg.Rainbow {
 			wrapped = rainbowParts(wrapped, msg.RainbowPhase)
@@ -428,7 +494,7 @@ func renderCompactMessage(
 	if len(wrapped) == 0 {
 		wrapped = []string{""}
 	}
-	firstRow := nameStyle.Render(nameParts[0] + ":")
+	firstRow := replyBadge + nameStyle.Render(nameParts[0] + ":")
 	if wrapped[0] != "" {
 		firstRow += bodyStyle.Render(" " + wrapped[0])
 	}
