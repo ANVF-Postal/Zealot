@@ -124,7 +124,7 @@ func (m model) View() tea.View {
 		scrollbarStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color(m.cfg.BorderColor)).
 			Background(bg)
-		contentWidth := max(1, m.width-2)
+		contentWidth := chatInnerWidth(m.width)
 		textWidth := max(1, contentWidth-1)
 
 		rosterRows := make([]string, 0, m.messageHeight())
@@ -158,7 +158,7 @@ func (m model) View() tea.View {
 			rosterRows[i] = renderChatRow(rowFill.Width(contentWidth), rosterRows[i], contentWidth)
 		}
 		chat := strings.Join(rosterRows, "\n")
-		chatBox := m.styles.border.
+		chatBox := m.chatBorderStyle().
 			Width(m.width).
 			Height(m.messageHeight()).
 			Render(chat)
@@ -188,7 +188,7 @@ func (m model) View() tea.View {
 	// and appending to a view into that slice could overwrite cached history.
 	visible := append([]string(nil), lines[start:end]...)
 	chatBlank := lipgloss.NewStyle().
-		Width(m.width - 2).
+		Width(chatInnerWidth(m.width)).
 		Background(lipgloss.Color(m.cfg.Background)).
 		Render("")
 
@@ -223,7 +223,7 @@ func (m model) View() tea.View {
 		}
 	}
 	for i := range visible {
-		visible[i] = truncateANSI(visible[i], m.width-3) + scrollbarRows[i]
+		visible[i] = truncateANSI(visible[i], chatContentWidth(m.width)) + scrollbarRows[i]
 	}
 	chat := strings.Join(visible, "\n")
 
@@ -234,12 +234,12 @@ func (m model) View() tea.View {
 	typing := m.typingText()
 	typingLine := chatBlank
 	if typing != "" {
-		typingLine = m.styles.accent.Width(m.width - 3).Render("  " + typing)
+		typingLine = m.styles.accent.Width(chatContentWidth(m.width)).Render("  " + typing)
 	}
-	typingLine = truncateANSI(typingLine, m.width-3) + scrollbarRows[chatHeight]
+	typingLine = truncateANSI(typingLine, chatContentWidth(m.width)) + scrollbarRows[chatHeight]
 	chat += "\n" + typingLine
 
-	chatBox := m.styles.border.
+	chatBox := m.chatBorderStyle().
 		Width(m.width).
 		Height(m.messageHeight()).
 		Render(chat)
@@ -265,7 +265,7 @@ func (m model) renderSplashPanel() string {
 	scrollbarStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(m.cfg.BorderColor)).
 		Background(bg)
-	contentWidth := max(1, m.width-2)
+	contentWidth := chatInnerWidth(m.width)
 	textWidth := max(1, contentWidth-1)
 
 	for len(visible) < visibleHeight {
@@ -292,7 +292,7 @@ func (m model) renderSplashPanel() string {
 		text := padANSIToWidth(line, textWidth, rowFill)
 		rows = append(rows, renderChatRow(rowFill.Width(contentWidth), text+scrollbarStyle.Render(glyph), contentWidth))
 	}
-	return m.styles.border.
+	return m.chatBorderStyle().
 		Width(m.width).
 		Height(m.messageHeight()).
 		Render(strings.Join(rows, "\n"))
@@ -507,7 +507,10 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen 
 	// The textarea emits shorter/unstyled end-of-buffer rows when empty. Fill
 	// every row's remaining columns with the configured background so those
 	// rows match the rest of the composer before the user starts typing.
-	inputInnerWidth := m.width - 4 // border (2) + composer padding (2)
+	inputInnerWidth := m.width - 4 // side borders (2) + composer padding (2)
+	if narrowBordersHidden(m.width) {
+		inputInnerWidth += 2
+	}
 	if inputInnerWidth < 1 {
 		inputInnerWidth = 1
 	}
@@ -535,7 +538,7 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen 
 		inputView = append(inputView, inputBackground.Render(strings.Repeat(" ", inputInnerWidth)))
 	}
 	inputContent := strings.Join(inputView, "\n")
-	inputBox := m.styles.inputBox.
+	inputBox := m.inputBoxStyle().
 		Width(m.width).
 		Height(inputHeight).
 		Render(inputContent)
