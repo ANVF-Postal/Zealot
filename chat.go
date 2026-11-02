@@ -503,7 +503,7 @@ func renderCompactMessage(
 	}
 	continuation := timeStyle.Render(stamp)
 	if wrapped[1] != "" {
-		continuation += bodyStyle.Render(" " + wrapped[1])
+		continuation += separatorStyle.Render(" ") + bodyStyle.Render(wrapped[1])
 	}
 	lines = append(lines, renderChatRow(rowFill, continuation, contentWidth))
 	for _, part := range wrapped[2:] {
