@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -48,7 +49,7 @@ func (m model) messageBodyRanges(msg Packet, width int) []messageBodyRange {
 		Bold(true)
 	timeText := msg.Time.Local().Format("15:04")
 	timestamp := m.styles.time.Render("[" + timeText + "]")
-	replyBadge := m.renderReplyBadge(msg)
+	replyBadge := m.renderReplyBadgeForWidth(msg, width)
 	badgeWidth := lipgloss.Width(replyBadge)
 	badgeSegment := ""
 	if replyBadge != "" { badgeSegment = " " + strings.TrimSpace(replyBadge) }
@@ -228,7 +229,7 @@ func (m model) messageLinkRanges(msg Packet, width int) [][]messageLinkRange {
 			timestamp := m.styles.time.Render("[" + msg.Time.Local().Format("15:04") + "]")
 			badgeStart = lipgloss.Width(timestamp + " " + nameStyle.Render(msg.User.Name) + " ")
 		}
-		regions[0] = append(regions[0], messageLinkRange{Start: badgeStart, End: badgeStart+lipgloss.Width("[Replied]"), TargetID: msg.ReplyTo})
+		regions[0] = append(regions[0], messageLinkRange{Start: badgeStart, End: badgeStart+lipgloss.Width(strings.TrimSpace(m.renderReplyBadgeForWidth(msg, width))), TargetID: msg.ReplyTo})
 	}
 	replies := m.repliesFor(msg.ID)
 	if len(replies) > 0 && msg.XKeyscore == 0 {
