@@ -75,7 +75,7 @@ func (m model) messageBodyRanges(msg Packet, width int) []messageBodyRange {
 
 	// Compact layout: the username is on its own first row, and the timestamp
 	// shares the continuation row with body text when a continuation exists.
-	nameWidth := contentWidth - 2
+	nameWidth := contentWidth - 2 - badgeWidth
 	if nameWidth < 1 {
 		nameWidth = 1
 	}
