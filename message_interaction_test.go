@@ -66,9 +66,15 @@ func TestReplyComposerKeepsDraftAndUsesSeparatePrefix(t *testing.T) {
 	}
 }
 
-func TestAppViewEnablesAllMouseMotion(t *testing.T) {
-	if got := appView("").MouseMode; got != tea.MouseModeAllMotion {
-		t.Fatalf("appView MouseMode = %v, want MouseModeAllMotion", got)
+func TestAppViewUsesPassiveMotionOnlyWhenHoverIsEnabled(t *testing.T) {
+	chat := appView("", true)
+	if chat.MouseMode != tea.MouseModeAllMotion {
+		t.Fatalf("chat MouseMode = %v, want MouseModeAllMotion for message hover", chat.MouseMode)
+	}
+
+	panel := appView("", false)
+	if panel.MouseMode != tea.MouseModeCellMotion {
+		t.Fatalf("panel MouseMode = %v, want MouseModeCellMotion without passive hover", panel.MouseMode)
 	}
 }
 
