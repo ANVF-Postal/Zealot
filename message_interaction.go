@@ -22,6 +22,11 @@ type messageLinkRange struct {
 	TargetID string
 }
 
+type messageRowRange struct {
+	Start int
+	End   int // exclusive
+}
+
 type messageNavigationHighlightTimeoutMsg struct {
 	generation int
 }
@@ -55,9 +60,11 @@ func (m model) messageBodyRangesForLineCount(msg Packet, width, lineCount int) [
 	timestamp := m.styles.time.Render("[" + timeText + "]")
 	replyBadge := m.renderReplyBadgeForWidth(msg, width)
 	badgeWidth := lipgloss.Width(replyBadge)
-	badgeSegment := ""
-	if replyBadge != "" { badgeSegment = " " + strings.TrimSpace(replyBadge) }
-	prefix := timestamp + bodyStyle.Render(" ") + nameStyle.Render(msg.User.Name) + bodyStyle.Render(badgeSegment+": ")
+	prefix := timestamp + bodyStyle.Render(" ") + nameStyle.Render(msg.User.Name)
+	if replyBadge != "" {
+		prefix += bodyStyle.Render(" ") + replyBadge
+	}
+	prefix += bodyStyle.Render(": ")
 	prefixWidth := lipgloss.Width(prefix)
 
 	// Standard wide layout: timestamp and username precede the body. Wrapped
@@ -143,41 +150,22 @@ func (m *model) restyleMessageRows(messageID string) bool {
 	if messageID == "" {
 		return true
 	}
-	if !m.renderCacheValid || m.renderCacheWidth != m.width || len(m.renderedMessageIDs) != len(m.renderedLines) {
+	if !m.renderCacheValid || m.renderCacheWidth != m.width {
 		return false
 	}
-
-	first, last := -1, -1
-	for row, id := range m.renderedMessageIDs {
-		if id == messageID {
-			if first < 0 {
-				first = row
-			}
-			last = row
-		}
-	}
-	if first < 0 {
+	rows, exists := m.messageRowsByID[messageID]
+	if !exists {
 		return true
 	}
-
-	var target Packet
-	found := false
-	for _, packet := range m.messages {
-		if packet.Type == "message" && packet.ID == messageID {
-			target = packet
-			found = true
-			break
-		}
-	}
-	if !found {
+	target, exists := m.messageByID[messageID]
+	if !exists || rows.Start < 0 || rows.End > len(m.renderedLines) || rows.End < rows.Start {
 		return false
 	}
-
 	updated := m.renderPacketLines(target, m.width)
-	if len(updated) != last-first+1 {
+	if len(updated) != rows.End-rows.Start {
 		return false
 	}
-	copy(m.renderedLines[first:last+1], updated)
+	copy(m.renderedLines[rows.Start:rows.End], updated)
 	return true
 }
 
