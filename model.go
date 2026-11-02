@@ -182,6 +182,8 @@ func (m model) Init() tea.Cmd {
 	)
 }
 
+const historyBatchSize = 128
+
 func readPacket(
 	client *wireClient,
 ) tea.Cmd {
@@ -190,12 +192,30 @@ func readPacket(
 			client.hasInitial = false
 			return messageReceivedMsg(client.initialPacket)
 		}
-		var packet Packet
 
+		if client.historyReplay {
+			packets := make([]Packet, 0, historyBatchSize)
+			for len(packets) < historyBatchSize {
+				var packet Packet
+				if err := client.decoder.Decode(&packet); err != nil {
+					if len(packets) == 0 {
+						return connectionClosedMsg{}
+					}
+					return historyBatchReceivedMsg{Packets: packets}
+				}
+				if packet.Type == "history_end" {
+					client.historyReplay = false
+					return historyBatchReceivedMsg{Packets: packets, Complete: true}
+				}
+				packets = append(packets, packet)
+			}
+			return historyBatchReceivedMsg{Packets: packets}
+		}
+
+		var packet Packet
 		if err := client.decoder.Decode(&packet); err != nil {
 			return connectionClosedMsg{}
 		}
-
 		return messageReceivedMsg(packet)
 	}
 }
