@@ -139,6 +139,48 @@ func clippedMessageBodyRange(start, end, width int) messageBodyRange {
 
 // refreshMessageHover recalculates the body hover under the last pointer
 // position after scrolling, resizing, or opening and closing a side panel.
+func (m *model) restyleMessageRows(messageID string) bool {
+	if messageID == "" {
+		return true
+	}
+	if !m.renderCacheValid || m.renderCacheWidth != m.width || len(m.renderedMessageIDs) != len(m.renderedLines) {
+		return false
+	}
+
+	first, last := -1, -1
+	for row, id := range m.renderedMessageIDs {
+		if id == messageID {
+			if first < 0 {
+				first = row
+			}
+			last = row
+		}
+	}
+	if first < 0 {
+		return true
+	}
+
+	var target Packet
+	found := false
+	for _, packet := range m.messages {
+		if packet.Type == "message" && packet.ID == messageID {
+			target = packet
+			found = true
+			break
+		}
+	}
+	if !found {
+		return false
+	}
+
+	updated := m.renderPacketLines(target, m.width)
+	if len(updated) != last-first+1 {
+		return false
+	}
+	copy(m.renderedLines[first:last+1], updated)
+	return true
+}
+
 func (m *model) refreshMessageHover() {
 	if !m.mousePositionKnown {
 		return
@@ -147,8 +189,16 @@ func (m *model) refreshMessageHover() {
 	if !m.usersOpen && !m.splashOpen {
 		hoveredID = m.messageIDAt(m.lastMouseX, m.lastMouseY)
 	}
-	if hoveredID != m.hoveredMessageID {
-		m.hoveredMessageID = hoveredID
+	if hoveredID == m.hoveredMessageID {
+		return
+	}
+
+	previousID := m.hoveredMessageID
+	m.hoveredMessageID = hoveredID
+	// Hover changes only foreground styling; they do not change wrapping or
+	// hitboxes. Restyle the affected cached rows in place instead of laying
+	// out the entire chat history on every pointer transition.
+	if !m.restyleMessageRows(previousID) || !m.restyleMessageRows(hoveredID) {
 		m.rebuildMessageCache()
 	}
 }
