@@ -350,29 +350,55 @@ func (m *model) appendMessage(packet Packet) {
 	if cacheValid {
 		oldLineCount = len(m.renderedLines)
 	} else if oldScroll > 0 {
-		// Preserve the reader's historical position when the cache is stale.
-		// At the live tail, no pre-append layout is needed.
+		// Preserve the reader's historical position if a cache rebuild is
+		// required before applying this append.
 		m.rebuildMessageCache()
 		oldLineCount = len(m.renderedLines)
 		cacheValid = true
 	}
-	m.messages = append(m.messages, packet)
 
-	// Replies change both their own [Replied] badge and the original message's
-	// numbered markers, so those updates need a complete cache rebuild.
-	if (packet.Type == "message" && packet.ReplyTo != "") || !cacheValid {
-		m.rebuildMessageCache()
+	m.messages = append(m.messages, packet)
+	m.addMessageToIndexes(packet)
+	if !cacheValid {
+		m.renderCacheValid = false
+		return
+	}
+
+	if packet.Type == "message" && packet.ReplyTo != "" {
+		rowDelta := 0
+		if m.hasMessageID(packet.ReplyTo) {
+			delta, ok := m.replaceCachedMessageRows(packet.ReplyTo)
+			if !ok {
+				m.rebuildMessageCache()
+				if oldScroll > 0 {
+					m.scroll += len(m.renderedLines) - oldLineCount
+				}
+				m.clampScroll()
+				return
+			}
+			rowDelta += delta
+		}
+		rowDelta += m.appendCachedMessageRows(packet)
 		if oldScroll > 0 {
-			m.scroll += len(m.renderedLines) - oldLineCount
+			m.scroll += rowDelta
 		}
 		m.clampScroll()
 		return
 	}
 
-	m.addMessageToIndexes(packet)
+	newRows := m.appendCachedMessageRows(packet)
+	if oldScroll > 0 {
+		m.scroll += newRows
+	}
+	m.clampScroll()
+}
+
+func (m *model) appendCachedMessageRows(packet Packet) int {
 	newLines := m.renderPacketLines(packet, m.width)
 	bodyRanges := m.messageBodyRangesForLineCount(packet, m.width, len(newLines))
 	linkRanges := m.messageLinkRangesForLineCount(packet, m.width, len(newLines))
+	start := len(m.renderedLines)
+	m.renderedLines = append(m.renderedLines, newLines...)
 	for i := range newLines {
 		m.renderedMessageIDs = append(m.renderedMessageIDs, packet.ID)
 		if i < len(bodyRanges) {
@@ -386,19 +412,69 @@ func (m *model) appendMessage(packet Packet) {
 			m.renderedMessageLinks = append(m.renderedMessageLinks, nil)
 		}
 	}
-	if m.scroll > 0 {
-		// Scroll is an offset from the bottom. Increase it by the number of
-		// appended rows so the same historical rows remain on screen while
-		// the user is reading back. At zero, continue following the live tail.
-		m.scroll += len(newLines)
+	if packet.ID != "" {
+		if m.messageRowsByID == nil {
+			m.messageRowsByID = make(map[string]messageRowRange)
+		}
+		m.messageRowsByID[packet.ID] = messageRowRange{Start: start, End: start + len(newLines)}
+	}
+	return len(newLines)
+}
+
+func replaceCachedRows[T any](source []T, start, end int, replacement []T) []T {
+	updated := make([]T, 0, len(source)-(end-start)+len(replacement))
+	updated = append(updated, source[:start]...)
+	updated = append(updated, replacement...)
+	updated = append(updated, source[end:]...)
+	return updated
+}
+
+// replaceCachedMessageRows rerenders only one existing message after its reply
+// count changes. In the common case the number of visual rows is unchanged,
+// so cached slices are updated in place without copying the full chat history.
+func (m *model) replaceCachedMessageRows(messageID string) (int, bool) {
+	if !m.renderCacheValid || m.renderCacheWidth != m.width {
+		return 0, false
+	}
+	rows, exists := m.messageRowsByID[messageID]
+	if !exists || rows.Start < 0 || rows.End > len(m.renderedLines) || rows.End <= rows.Start {
+		return 0, false
+	}
+	message, exists := m.messageByID[messageID]
+	if !exists {
+		return 0, false
 	}
 
-	if m.renderCacheValid && m.renderCacheWidth == m.width {
-		m.renderedLines = append(m.renderedLines, newLines...)
-	} else {
-		m.renderCacheValid = false
+	newLines := m.renderPacketLines(message, m.width)
+	newBodies := m.messageBodyRangesForLineCount(message, m.width, len(newLines))
+	newLinks := m.messageLinkRangesForLineCount(message, m.width, len(newLines))
+	newIDs := make([]string, len(newLines))
+	for index := range newIDs {
+		newIDs[index] = messageID
 	}
-	m.clampScroll()
+
+	oldCount := rows.End - rows.Start
+	delta := len(newLines) - oldCount
+	if delta == 0 {
+		copy(m.renderedLines[rows.Start:rows.End], newLines)
+		copy(m.renderedMessageIDs[rows.Start:rows.End], newIDs)
+		copy(m.renderedMessageBodyRanges[rows.Start:rows.End], newBodies)
+		copy(m.renderedMessageLinks[rows.Start:rows.End], newLinks)
+	} else {
+		m.renderedLines = replaceCachedRows(m.renderedLines, rows.Start, rows.End, newLines)
+		m.renderedMessageIDs = replaceCachedRows(m.renderedMessageIDs, rows.Start, rows.End, newIDs)
+		m.renderedMessageBodyRanges = replaceCachedRows(m.renderedMessageBodyRanges, rows.Start, rows.End, newBodies)
+		m.renderedMessageLinks = replaceCachedRows(m.renderedMessageLinks, rows.Start, rows.End, newLinks)
+		for id, other := range m.messageRowsByID {
+			if id != messageID && other.Start >= rows.End {
+				other.Start += delta
+				other.End += delta
+				m.messageRowsByID[id] = other
+			}
+		}
+	}
+	m.messageRowsByID[messageID] = messageRowRange{Start: rows.Start, End: rows.Start + len(newLines)}
+	return delta, true
 }
 
 func (m *model) rebuildMessageCache() {
@@ -408,6 +484,7 @@ func (m *model) rebuildMessageCache() {
 		m.renderedMessageIDs = nil
 		m.renderedMessageBodyRanges = nil
 		m.renderedMessageLinks = nil
+		m.messageRowsByID = nil
 		m.renderCacheValid = false
 		return
 	}
@@ -416,7 +493,9 @@ func (m *model) rebuildMessageCache() {
 	messageIDs := make([]string, 0, len(m.messages))
 	bodyRanges := make([]messageBodyRange, 0, len(m.messages))
 	linkRanges := make([][]messageLinkRange, 0, len(m.messages))
+	messageRows := make(map[string]messageRowRange, len(m.messages))
 	for _, message := range m.messages {
+		start := len(lines)
 		messageLines := m.renderPacketLines(message, m.width)
 		messageRanges := m.messageBodyRangesForLineCount(message, m.width, len(messageLines))
 		messageLinks := m.messageLinkRangesForLineCount(message, m.width, len(messageLines))
@@ -434,11 +513,15 @@ func (m *model) rebuildMessageCache() {
 				linkRanges = append(linkRanges, nil)
 			}
 		}
+		if message.ID != "" {
+			messageRows[message.ID] = messageRowRange{Start: start, End: len(lines)}
+		}
 	}
 	m.renderedLines = lines
 	m.renderedMessageIDs = messageIDs
 	m.renderedMessageBodyRanges = bodyRanges
 	m.renderedMessageLinks = linkRanges
+	m.messageRowsByID = messageRows
 	m.renderCacheWidth = m.width
 	m.renderCacheValid = true
 }
