@@ -63,6 +63,27 @@ func TestMessageBodyHitboxExcludesUsernameAndTimestamp(t *testing.T) {
 	}
 }
 
+func TestWideWrappedMessageHitboxExcludesContinuationIndent(t *testing.T) {
+	packet := interactionTestPacket("wide-wrap", strings.Repeat("word ", 32))
+	m := newMessageInteractionTestModel(80, packet)
+
+	ranges := m.messageBodyRanges(packet, m.width)
+	if len(ranges) < 2 || ranges[1].End <= ranges[1].Start {
+		t.Fatalf("expected a wrapped body row, got %#v", ranges)
+	}
+	if ranges[1].Start == 0 {
+		t.Fatalf("expected continuation indentation before body text, got %#v", ranges[1])
+	}
+
+	left := 1
+	if got := m.messageIDAt(left+ranges[1].Start-1, 3); got != "" {
+		t.Fatalf("continuation indentation returned %q, want no message", got)
+	}
+	if got := m.messageIDAt(left+ranges[1].Start, 3); got != packet.ID {
+		t.Fatalf("wrapped body hitbox returned %q, want %q", got, packet.ID)
+	}
+}
+
 func TestCompactMessageBodyHitboxesFollowWrappedRows(t *testing.T) {
 	packet := interactionTestPacket("compact-1", strings.Repeat("word ", 24))
 	m := newMessageInteractionTestModel(48, packet)
@@ -125,6 +146,16 @@ func TestReplyMarkersNavigateInArrivalOrder(t *testing.T) {
 	}
 	if got := m.messageLinkAt(1, 4); got != parent.ID {
 		t.Fatalf("[Replied] click returned %q, want %q", got, parent.ID)
+	}
+	replyBody := m.messageBodyRanges(first, m.width)
+	if len(replyBody) == 0 || replyBody[0].End <= replyBody[0].Start {
+		t.Fatalf("expected a reply body hitbox, got %#v", replyBody)
+	}
+	if got := m.messageIDAt(1, 4); got != "" {
+		t.Fatalf("[Replied] label was treated as body text for %q", got)
+	}
+	if got := m.messageIDAt(1+replyBody[0].Start, 4); got != first.ID {
+		t.Fatalf("reply body click returned %q, want %q", got, first.ID)
 	}
 
 	lateJoin := newMessageInteractionTestModel(80, first)
