@@ -584,6 +584,7 @@ func (m model) Update(
 				return m, nil
 			}
 			m.scroll = m.maxScroll()
+			m.refreshMessageHover()
 			return m, nil
 
 		case "ctrl+end":
@@ -592,6 +593,7 @@ func (m model) Update(
 				return m, nil
 			}
 			m.scroll = 0
+			m.refreshMessageHover()
 			return m, nil
 
 		case "backspace":
