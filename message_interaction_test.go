@@ -294,6 +294,31 @@ func TestAppendingReplyShiftsCachedRowsWhenMarkerNeedsOverflowRow(t *testing.T) 
 	}
 }
 
+func TestCompactReplyMarkerStaysBesideMessageWhenThereIsRoom(t *testing.T) {
+	parent := interactionTestPacket("compact-marker-parent", "short message")
+	reply := interactionTestPacket("compact-marker-reply", "reply")
+	reply.ReplyTo = parent.ID
+	m := newMessageInteractionTestModel(48, parent, reply)
+
+	lines := m.renderPacketLines(parent, m.width)
+	if len(lines) < 2 {
+		t.Fatalf("expected compact message header and timestamp rows, got %#v", lines)
+	}
+	firstRow := lipgloss.StripANSI(lines[0])
+	if !strings.Contains(firstRow, "short message [1]") {
+		t.Fatalf("reply marker should stay at the end of the body on the first row: %q", firstRow)
+	}
+	timestampRow := strings.TrimSpace(lipgloss.StripANSI(lines[1]))
+	if timestampRow != "[15:04]" {
+		t.Fatalf("timestamp-only row should remain separate from the reply marker: %q", timestampRow)
+	}
+
+	links := m.messageLinkRanges(parent, m.width)
+	if len(links) == 0 || len(links[0]) != 1 || links[0][0].TargetID != reply.ID {
+		t.Fatalf("compact inline marker should remain clickable on the body row: %#v", links)
+	}
+}
+
 func TestReplyMarkersWrapWithoutTakingScrollbarColumn(t *testing.T) {
 	parent := interactionTestPacket("parent-wrap", strings.Repeat("x", 60))
 	first := interactionTestPacket("reply-wrap-1", "first reply")
