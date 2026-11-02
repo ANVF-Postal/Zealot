@@ -112,10 +112,19 @@ func TestReplyMarkersNavigateInArrivalOrder(t *testing.T) {
 	if markers[1].Start != 2 || markers[1].TargetID != second.ID {
 		t.Fatalf("second caret = %#v, want second reply", markers[1])
 	}
+	if got := m.messageLinkAt(1, 3); got != first.ID {
+		t.Fatalf("first caret click returned %q, want %q", got, first.ID)
+	}
+	if got := m.messageLinkAt(3, 3); got != second.ID {
+		t.Fatalf("second caret click returned %q, want %q", got, second.ID)
+	}
 
 	replyLinks := m.messageLinkRanges(first, m.width)
 	if len(replyLinks) == 0 || len(replyLinks[0]) == 0 || replyLinks[0][0].TargetID != parent.ID {
 		t.Fatalf("[Replied] link does not target the original message: %#v", replyLinks)
+	}
+	if got := m.messageLinkAt(1, 4); got != parent.ID {
+		t.Fatalf("[Replied] click returned %q, want %q", got, parent.ID)
 	}
 
 	lateJoin := newMessageInteractionTestModel(80, first)
