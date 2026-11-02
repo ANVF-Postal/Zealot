@@ -199,6 +199,14 @@ func (m model) Update(
 		return m, nil
 	}
 
+	if hoverMsg, ok := msg.(messageHoverRefreshMsg); ok {
+		if hoverMsg.generation == m.messageHoverGeneration {
+			m.messageHoverPending = false
+			m.refreshMessageHover()
+		}
+		return m, nil
+	}
+
 	if clearMsg, ok := msg.(typingClearMsg); ok {
 		if clearMsg.generation == m.typingGeneration {
 			m.isTyping = false
@@ -217,6 +225,10 @@ func (m model) Update(
 		m.lastMouseX = mouse.X
 		m.lastMouseY = mouse.Y
 		m.mousePositionKnown = true
+		// A click takes priority over any pending passive-hover update. In
+		// particular, don't make a header click wait for an old hover timer.
+		m.messageHoverGeneration++
+		m.messageHoverPending = false
 		m.refreshMessageHover()
 
 		// Begin a textarea selection before handling other clickable UI. The
@@ -456,10 +468,9 @@ func (m model) Update(
 			m.setScrollFromThumbTop(target)
 			return m, nil
 		}
-		m.refreshMessageHover()
-		// Motion events belong to hover/drag handling, not the textarea. Avoid
-		// sending every passive pointer update through the rest of Update.
-		return m, nil
+		// Delay passive hover work until pointer motion settles briefly. This
+		// coalesces a sweep across many message rows into one visual update.
+		return m, m.scheduleMessageHover()
 
 	case tea.MouseReleaseMsg:
 		if m.inputSelecting {
