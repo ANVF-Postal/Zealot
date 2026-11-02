@@ -147,6 +147,35 @@ func TestCompactMessageBodyHitboxesFollowWrappedRows(t *testing.T) {
 	}
 }
 
+func TestReplyMarkersWrapWithoutTakingScrollbarColumn(t *testing.T) {
+	parent := interactionTestPacket("parent-wrap", strings.Repeat("x", 60))
+	first := interactionTestPacket("reply-wrap-1", "first reply")
+	first.ReplyTo = parent.ID
+	second := interactionTestPacket("reply-wrap-2", "second reply")
+	second.ReplyTo = parent.ID
+	m := newMessageInteractionTestModel(80, parent, first, second)
+
+	lines := m.renderPacketLines(parent, m.width)
+	if len(lines) != 2 {
+		t.Fatalf("got %d rows, want body plus one marker row", len(lines))
+	}
+	markerRow := lines[1]
+	if !strings.Contains(markerRow, "[1]") || !strings.Contains(markerRow, "[2]") {
+		t.Fatalf("overflow row should contain both markers in arrival order: %q", markerRow)
+	}
+	if got, want := lipgloss.Width(markerRow), chatContentWidth(m.width); got != want {
+		t.Fatalf("marker row width = %d, want %d so scrollbar stays in its own column", got, want)
+	}
+
+	links := m.messageLinkRanges(parent, m.width)
+	if len(links) != 2 || len(links[1]) != 2 {
+		t.Fatalf("overflow marker hitboxes = %#v, want two links on the marker row", links)
+	}
+	if links[1][0].TargetID != first.ID || links[1][1].TargetID != second.ID {
+		t.Fatalf("overflow marker targets = %#v, want arrival order", links[1])
+	}
+}
+
 func TestReplyMarkersNavigateInArrivalOrder(t *testing.T) {
 	parent := interactionTestPacket("parent", "original message")
 	first := interactionTestPacket("reply-1", "first reply")
