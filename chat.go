@@ -135,37 +135,98 @@ func visibleChatTextWidth(line string) int {
 			continue
 		}
 		_, size := utf8.DecodeRuneInString(line[pos:])
-		if size < 1 { break }
-		visible.WriteString(line[pos:pos+size])
+		if size < 1 {
+			break
+		}
+		visible.WriteString(line[pos : pos+size])
 		pos += size
 	}
 	return lipgloss.Width(strings.TrimRight(visible.String(), " "))
 }
 
+// trimANSIEndPadding removes the terminal-width padding from a rendered row
+// while preserving ANSI style sequences, including the resets that close the
+// body and row background. Keeping padding in place would put a reply marker
+// beyond the chat content boundary, where View truncates it behind the scrollbar.
+func trimANSIEndPadding(line string) string {
+	var out, pendingANSI, pendingSpaces strings.Builder
+	for pos := 0; pos < len(line); {
+		if line[pos] == 0x1b {
+			end := ansiSequenceEnd(line, pos)
+			pendingANSI.WriteString(line[pos:end])
+			pos = end
+			continue
+		}
+		_, size := utf8.DecodeRuneInString(line[pos:])
+		if size < 1 {
+			break
+		}
+		piece := line[pos : pos+size]
+		if piece == " " {
+			pendingSpaces.WriteString(piece)
+		} else {
+			out.WriteString(pendingANSI.String())
+			pendingANSI.Reset()
+			out.WriteString(pendingSpaces.String())
+			pendingSpaces.Reset()
+			out.WriteString(piece)
+		}
+		pos += size
+	}
+	// Preserve trailing SGR resets and other ANSI control sequences, but drop
+	// the printable spaces they were painting.
+	out.WriteString(pendingANSI.String())
+	return out.String()
+}
+
 func (m model) renderPacketLines(msg Packet, width int) []string {
 	lines := m.renderPacketBaseLines(msg, width)
-	if msg.Type != "message" || msg.ID == "" || msg.XKeyscore > 0 { return lines }
+	if msg.Type != "message" || msg.ID == "" || msg.XKeyscore > 0 {
+		return lines
+	}
 	replies := m.repliesFor(msg.ID)
-	if len(replies) == 0 || len(lines) == 0 { return lines }
+	if len(replies) == 0 || len(lines) == 0 {
+		return lines
+	}
 	contentWidth := chatContentWidth(width)
 	rowFill := lipgloss.NewStyle().Background(lipgloss.Color(m.cfg.Background))
 	for n := range replies {
 		marker := fmt.Sprintf("[%d]", n+1)
 		styled := m.styles.accent.Render(marker)
-		last := len(lines)-1
-		used := visibleChatTextWidth(lines[last])
+		last := len(lines) - 1
+		trimmed := trimANSIEndPadding(lines[last])
+		used := visibleChatTextWidth(trimmed)
 		if used+1+lipgloss.Width(marker) <= contentWidth {
-			if reset := strings.LastIndex(lines[last], "\x1b[0m"); reset >= 0 {
-				lines[last] = lines[last][:reset] + " " + styled + lines[last][reset:]
-			} else { lines[last] += " " + styled }
-		} else { lines = append(lines, renderChatRow(rowFill, styled, contentWidth)) }
+			lines[last] = renderChatRow(rowFill, trimmed+" "+styled, contentWidth)
+		} else {
+			lines = append(lines, renderChatRow(rowFill, styled, contentWidth))
+		}
 	}
 	return lines
+}
+
+func (m *model) rebuildMessageIndexes() {
+	messageIDs := make(map[string]struct{}, len(m.messages))
+	repliesByMessageID := make(map[string][]string)
+	for _, packet := range m.messages {
+		if packet.Type != "message" || packet.ID == "" {
+			continue
+		}
+		messageIDs[packet.ID] = struct{}{}
+		if packet.ReplyTo != "" {
+			repliesByMessageID[packet.ReplyTo] = append(repliesByMessageID[packet.ReplyTo], packet.ID)
+		}
+	}
+	m.messageIDsByID = messageIDs
+	m.replyIDsByMessageID = repliesByMessageID
 }
 
 func (m model) repliesFor(messageID string) []string {
 	if messageID == "" {
 		return nil
+	}
+	if m.replyIDsByMessageID != nil {
+		return m.replyIDsByMessageID[messageID]
 	}
 	var replies []string
 	for _, packet := range m.messages {
@@ -179,6 +240,10 @@ func (m model) repliesFor(messageID string) []string {
 func (m model) hasMessageID(messageID string) bool {
 	if messageID == "" {
 		return false
+	}
+	if m.messageIDsByID != nil {
+		_, exists := m.messageIDsByID[messageID]
+		return exists
 	}
 	for _, packet := range m.messages {
 		if packet.ID == messageID && packet.Type == "message" {
