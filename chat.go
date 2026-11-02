@@ -380,7 +380,7 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 			if lipgloss.Width(prefix) >= contentWidth {
 				header := msg
 				header.Text = ""
-				lines = renderCompactMessage(rowFill, bodyStyle, normalBodyStyle, nameStyle, m.styles.time, replyBadge, header, timeText, contentWidth)
+				lines = renderCompactMessage(rowFill, bodyStyle, normalBodyStyle, nameStyle, m.styles.time, m.renderReplyBadgeForWidth(msg, 48), header, timeText, contentWidth)
 			} else {
 				logoIndent = lipgloss.Width(prefix)
 				lines = append(lines, renderChatRow(rowFill, prefix, contentWidth))
