@@ -39,6 +39,8 @@ type model struct {
 	client *wireClient
 
 	messages []Packet
+	renderedMessageIDs []string
+	hoveredMessageID string
 
 	// Rendered rows are cached for the current terminal width. New messages
 	// append only their own rows; a width change rebuilds the cache once.
