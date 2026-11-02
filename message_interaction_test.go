@@ -177,6 +177,66 @@ func TestMessageHoverRestylesOnlyAffectedRows(t *testing.T) {
 	}
 }
 
+func TestMessageHoverMotionIsDebounced(t *testing.T) {
+	first := interactionTestPacket("hover-debounce-1", "first message body")
+	second := interactionTestPacket("hover-debounce-2", "second message body")
+	m := newMessageInteractionTestModel(80, first, second)
+
+	firstBody := m.messageBodyRanges(first, m.width)[0]
+	secondBody := m.messageBodyRanges(second, m.width)[0]
+	m.mousePositionKnown = true
+	_, firstCmd := m.Update(tea.MouseMotionMsg{X: 1 + firstBody.Start, Y: 2})
+	if firstCmd == nil {
+		t.Fatal("first pointer movement did not schedule a hover refresh")
+	}
+	if m.hoveredMessageID != "" {
+		t.Fatalf("hover changed before debounce elapsed: %q", m.hoveredMessageID)
+	}
+
+	// Further motion should update the stored pointer without scheduling
+	// another timer or flashing the message underneath it immediately.
+	_, secondCmd := m.Update(tea.MouseMotionMsg{X: 1 + secondBody.Start, Y: 3})
+	if secondCmd != nil {
+		t.Fatal("pointer movement scheduled overlapping hover refreshes")
+	}
+	if m.hoveredMessageID != "" {
+		t.Fatalf("hover changed during pointer movement: %q", m.hoveredMessageID)
+	}
+
+	updated, _ := m.Update(messageHoverRefreshMsg{generation: m.messageHoverGeneration})
+	got := updated.(model)
+	if got.hoveredMessageID != second.ID {
+		t.Fatalf("debounced hover = %q, want latest message %q", got.hoveredMessageID, second.ID)
+	}
+}
+
+func TestHeaderClickCancelsPendingMessageHover(t *testing.T) {
+	packet := interactionTestPacket("hover-cancel", "message body")
+	m := newMessageInteractionTestModel(80, packet)
+	m.mousePositionKnown = true
+	m.lastMouseX = 1 + m.messageBodyRanges(packet, m.width)[0].Start
+	m.lastMouseY = 2
+	m.messageHoverPending = true
+	m.messageHoverGeneration = 4
+
+	updated, _ := m.Update(tea.MouseClickMsg{
+		Button: tea.MouseLeft,
+		X:      0,
+		Y:      0,
+	})
+	got := updated.(model)
+	if got.messageHoverPending {
+		t.Fatal("header click left a passive hover refresh pending")
+	}
+	if got.splashOpen != true {
+		t.Fatal("header click did not open the splash panel")
+	}
+	stale, _ := got.Update(messageHoverRefreshMsg{generation: 4})
+	if stale.(model).hoveredMessageID != "" {
+		t.Fatal("stale hover timer changed hover state after opening the splash")
+	}
+}
+
 func TestMessageBodyHitboxExcludesUsernameAndTimestamp(t *testing.T) {
 	packet := interactionTestPacket("message-1", "hello")
 	m := newMessageInteractionTestModel(80, packet)
