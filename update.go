@@ -187,6 +187,14 @@ func (m model) Update(
 		return m, nil
 	}
 
+	if timeoutMsg, ok := msg.(messageNavigationHighlightTimeoutMsg); ok {
+		if timeoutMsg.generation == m.navigationHighlightGeneration {
+			m.highlightedMessageID = ""
+			m.rebuildMessageCache()
+		}
+		return m, nil
+	}
+
 	if clearMsg, ok := msg.(typingClearMsg); ok {
 		if clearMsg.generation == m.typingGeneration {
 			m.isTyping = false
@@ -384,6 +392,9 @@ func (m model) Update(
 			}
 		}
 		if mouse.Button == tea.MouseLeft && !m.usersOpen && !m.splashOpen {
+			if targetID := m.messageLinkAt(mouse.X, mouse.Y); targetID != "" {
+				return m, m.navigateToMessage(targetID)
+			}
 			if id := m.messageIDAt(mouse.X, mouse.Y); id != "" {
 				m.beginReply(id)
 				return m, nil
