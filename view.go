@@ -93,21 +93,8 @@ func (m model) View() tea.View {
 	header := m.renderHeader()
 
 	// -------------------------------------------------------------------------
-	// Chat
+	// Alternate panels
 	// -------------------------------------------------------------------------
-
-	lines := m.renderMessageLines()
-
-	// ALWAYS reserve one line for the typing indicator.
-	//
-	// When nobody is typing, this line is blank.
-	// When somebody starts typing, the indicator appears on exactly that
-	// same line.
-	chatHeight := m.messageHeight() - 1
-
-	if chatHeight < 1 {
-		chatHeight = 1
-	}
 
 	if m.usersOpen {
 		// The existing chat pane becomes the roster. The heading uses a clean
@@ -168,6 +155,14 @@ func (m model) View() tea.View {
 	if m.splashOpen {
 		chatBox := m.renderSplashPanel()
 		return m.renderViewWithChat(header, chatBox, false, true)
+	}
+
+	// The chat history is not needed by either alternate panel. Avoid
+	// formatting every stored message while the splash/users view is active.
+	lines := m.renderMessageLines()
+	chatHeight := m.messageHeight() - 1
+	if chatHeight < 1 {
+		chatHeight = 1
 	}
 
 	start := len(lines) -
