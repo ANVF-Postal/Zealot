@@ -189,7 +189,7 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 		return lines
 	}
 	contentWidth := chatContentWidth(width)
-	rowFill := lipgloss.NewStyle().Background(lipgloss.Color(m.cfg.Background))
+	rowFill := lipgloss.NewStyle().Width(contentWidth).Background(lipgloss.Color(m.cfg.Background))
 	for n := range replies {
 		marker := fmt.Sprintf("[%d]", n+1)
 		styled := m.styles.accent.Render(marker)
