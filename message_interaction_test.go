@@ -184,17 +184,17 @@ func TestReplyBadgesUseShortForms(t *testing.T) {
 	m := newMessageInteractionTestModel(80, parent, reply)
 
 	wide := m.renderPacketLines(reply, 80)
-	if len(wide) == 0 || !strings.Contains(wide[0], "[Re]") || strings.Contains(wide[0], "[Replied]") {
-		t.Fatalf("wide reply badge should be [Re]: %q", wide)
+	if len(wide) == 0 || !strings.Contains(wide[0], "Bob[Re]:") || strings.Contains(wide[0], "[Replied]") || strings.Contains(wide[0], "[Re] :") {
+		t.Fatalf("wide reply badge should be adjacent to username and colon: %q", wide)
 	}
 	compact := m.renderPacketLines(reply, 48)
-	if len(compact) == 0 || !strings.Contains(compact[0], "[R]") || strings.Contains(compact[0], "[Re]") {
-		t.Fatalf("compact reply badge should be [R]: %q", compact)
+	if len(compact) == 0 || !strings.Contains(compact[0], "Bob[R]:") || strings.Contains(compact[0], "[R] Bob") || strings.Contains(compact[0], "[Re]") {
+		t.Fatalf("compact reply badge should follow username: %q", compact)
 	}
 	compactLinks := m.messageLinkRanges(reply, 48)
 	if len(compactLinks) == 0 || len(compactLinks[0]) == 0 ||
-		compactLinks[0][0].Start != 0 || compactLinks[0][0].End != lipgloss.Width("[R]") {
-		t.Fatalf("compact [R] hitbox should cover only the three-character label: %#v", compactLinks)
+		compactLinks[0][0].Start != lipgloss.Width("Bob") || compactLinks[0][0].End != lipgloss.Width("Bob[R]") {
+		t.Fatalf("compact [R] hitbox should follow username and cover only label: %#v", compactLinks)
 	}
 
 	longNameReply := reply
@@ -206,9 +206,14 @@ func TestReplyBadgesUseShortForms(t *testing.T) {
 		t.Fatalf("wide terminal with compact fallback should use [R]: %q", fallback)
 	}
 	fallbackLinks := longNameModel.messageLinkRanges(longNameReply, 80)
-	if len(fallbackLinks) == 0 || len(fallbackLinks[0]) == 0 ||
-		fallbackLinks[0][0].Start != 0 || fallbackLinks[0][0].End != lipgloss.Width("[R]") {
-		t.Fatalf("compact fallback [R] hitbox should cover only the label: %#v", fallbackLinks)
+	if len(fallbackLinks) == 0 || len(fallbackLinks[0]) == 0 {
+		t.Fatalf("compact fallback [R] hitbox missing: %#v", fallbackLinks)
+	}
+	fallbackName := wrapText(longNameReply.User.Name, chatContentWidth(80)-2-lipgloss.Width("[R]"))
+	wantRow := len(fallbackName)-1
+	if fallbackLinks[wantRow][0].Start != lipgloss.Width(fallbackName[wantRow]) ||
+		fallbackLinks[wantRow][0].End != lipgloss.Width(fallbackName[wantRow])+lipgloss.Width("[R]") {
+		t.Fatalf("compact fallback [R] hitbox should follow final username row: %#v", fallbackLinks)
 	}
 }
 
