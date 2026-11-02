@@ -221,6 +221,20 @@ func (m *model) rebuildMessageIndexes() {
 	m.replyIDsByMessageID = repliesByMessageID
 }
 
+func (m *model) addMessageToIndexes(packet Packet) {
+	if m.messageIDsByID == nil || m.replyIDsByMessageID == nil {
+		m.rebuildMessageIndexes()
+		return
+	}
+	if packet.Type != "message" || packet.ID == "" {
+		return
+	}
+	m.messageIDsByID[packet.ID] = struct{}{}
+	if packet.ReplyTo != "" {
+		m.replyIDsByMessageID[packet.ReplyTo] = append(m.replyIDsByMessageID[packet.ReplyTo], packet.ID)
+	}
+}
+
 func (m model) repliesFor(messageID string) []string {
 	if messageID == "" {
 		return nil
