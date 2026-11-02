@@ -31,7 +31,11 @@ type messageNavigationHighlightTimeoutMsg struct {
 // interactive. The calculations mirror the wide and compact render layouts.
 func (m model) messageBodyRanges(msg Packet, width int) []messageBodyRange {
 	lines := m.renderPacketLines(msg, width)
-	ranges := make([]messageBodyRange, len(lines))
+	return m.messageBodyRangesForLineCount(msg, width, len(lines))
+}
+
+func (m model) messageBodyRangesForLineCount(msg Packet, width, lineCount int) []messageBodyRange {
+	ranges := make([]messageBodyRange, lineCount)
 	if msg.Type != "message" || msg.Text == "" || msg.XKeyscore > 0 || len(lines) == 0 {
 		return ranges
 	}
@@ -217,7 +221,11 @@ func (m model) messageIDAt(x, y int) string {
 
 func (m model) messageLinkRanges(msg Packet, width int) [][]messageLinkRange {
 	lines := m.renderPacketLines(msg, width)
-	regions := make([][]messageLinkRange, len(lines))
+	return m.messageLinkRangesForLineCount(msg, width, len(lines))
+}
+
+func (m model) messageLinkRangesForLineCount(msg Packet, width, lineCount int) [][]messageLinkRange {
+	regions := make([][]messageLinkRange, lineCount)
 	if len(regions) == 0 || msg.Type != "message" {
 		return regions
 	}
