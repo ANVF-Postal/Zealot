@@ -67,8 +67,12 @@ func TestReplyComposerKeepsDraftAndUsesSeparatePrefix(t *testing.T) {
 }
 
 func TestPanelViewsDisablePassiveMouseMotion(t *testing.T) {
-	m := newMessageInteractionTestModel(80)
+	empty := newMessageInteractionTestModel(80)
+	if got := empty.View().MouseMode; got != tea.MouseModeCellMotion {
+		t.Fatalf("empty chat MouseMode = %v, want MouseModeCellMotion without hover targets", got)
+	}
 
+	m := newMessageInteractionTestModel(80, interactionTestPacket("hoverable", "message body"))
 	if got := m.View().MouseMode; got != tea.MouseModeAllMotion {
 		t.Fatalf("main chat MouseMode = %v, want MouseModeAllMotion for message hover", got)
 	}
@@ -82,6 +86,64 @@ func TestPanelViewsDisablePassiveMouseMotion(t *testing.T) {
 	m.usersOpen = true
 	if got := m.View().MouseMode; got != tea.MouseModeCellMotion {
 		t.Fatalf("online users MouseMode = %v, want MouseModeCellMotion without passive hover", got)
+	}
+}
+
+func TestUserRowsRangeMatchesFullRoster(t *testing.T) {
+	m := newMessageInteractionTestModel(40)
+	m.onlineUsers = []User{
+		{Name: "A very long user name that wraps", Color: "#7CFFCB"},
+		{Name: "Bob", Color: "#F2D66B", Typing: true},
+		{Name: "Carol", Color: "#8AA4FF"},
+	}
+	all := m.userRows()
+	if got := m.userRowCount(); got != len(all) {
+		t.Fatalf("userRowCount() = %d, rendered rows = %d", got, len(all))
+	}
+	for start := 0; start < len(all); start++ {
+		end := min(start+2, len(all))
+		got := m.userRowsRange(start, end)
+		if len(got) != end-start {
+			t.Fatalf("userRowsRange(%d, %d) returned %d rows", start, end, len(got))
+		}
+		for i := range got {
+			if got[i] != all[start+i] {
+				t.Fatalf("userRowsRange(%d, %d)[%d] = %q, want %q", start, end, i, got[i], all[start+i])
+			}
+		}
+	}
+}
+
+func TestUsersAnimationStopsWhenRosterIsIdle(t *testing.T) {
+	m := newMessageInteractionTestModel(80)
+	m.usersOpen = true
+	m.onlineUsers = []User{{Name: "Idle", Color: "#7CFFCB"}}
+
+	updated, cmd := m.Update(usersAnimationMsg{})
+	got := updated.(model)
+	if cmd != nil {
+		t.Fatal("idle online-users panel scheduled another animation tick")
+	}
+	if got.usersAnimationRunning {
+		t.Fatal("idle online-users panel left its animation marked as running")
+	}
+}
+
+func TestOpeningOnlineUsersDefersTheRosterRequest(t *testing.T) {
+	m := newMessageInteractionTestModel(80)
+	m.onlineCount = 1
+	// A nil client would panic if Update tried to send the request inline.
+	updated, cmd := m.Update(tea.MouseClickMsg{
+		Button: tea.MouseLeft,
+		X:      72,
+		Y:      0,
+	})
+	got := updated.(model)
+	if !got.usersOpen {
+		t.Fatal("clicking the online count did not open the roster")
+	}
+	if cmd == nil {
+		t.Fatal("opening the roster did not schedule the asynchronous refresh")
 	}
 }
 
