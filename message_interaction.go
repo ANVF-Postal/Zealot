@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -49,7 +50,9 @@ func (m model) messageBodyRanges(msg Packet, width int) []messageBodyRange {
 	timestamp := m.styles.time.Render("[" + timeText + "]")
 	replyBadge := m.renderReplyBadge(msg)
 	badgeWidth := lipgloss.Width(replyBadge)
-	prefix := replyBadge + timestamp + bodyStyle.Render(" ") + nameStyle.Render(msg.User.Name) + bodyStyle.Render(": ")
+	badgeSegment := ""
+	if replyBadge != "" { badgeSegment = " " + strings.TrimSpace(replyBadge) }
+	prefix := timestamp + bodyStyle.Render(" ") + nameStyle.Render(msg.User.Name) + bodyStyle.Render(badgeSegment+": ")
 	prefixWidth := lipgloss.Width(prefix)
 
 	// Standard wide layout: timestamp and username precede the body. Wrapped
@@ -219,20 +222,29 @@ func (m model) messageLinkRanges(msg Packet, width int) [][]messageLinkRange {
 	}
 
 	if msg.ReplyTo != "" && m.hasMessageID(msg.ReplyTo) {
-		badgeEnd := lipgloss.Width("[Replied]")
-		regions[0] = append(regions[0], messageLinkRange{
-			Start: 0, End: badgeEnd, TargetID: msg.ReplyTo,
-		})
+		badgeStart := 0
+		if width > 48 {
+			nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.User.Color)).Background(lipgloss.Color(m.cfg.Background)).Bold(true)
+			timestamp := m.styles.time.Render("[" + msg.Time.Local().Format("15:04") + "]")
+			badgeStart = lipgloss.Width(timestamp + " " + nameStyle.Render(msg.User.Name) + " ")
+		}
+		regions[0] = append(regions[0], messageLinkRange{Start: badgeStart, End: badgeStart+lipgloss.Width("[Replied]"), TargetID: msg.ReplyTo})
 	}
-
 	replies := m.repliesFor(msg.ID)
-	if len(replies) > 0 {
-		row := len(regions) - 1
-		for i, replyID := range replies {
-			start := i * 2
-			regions[row] = append(regions[row], messageLinkRange{
-				Start: start, End: start + 1, TargetID: replyID,
-			})
+	if len(replies) > 0 && msg.XKeyscore == 0 {
+		base := m.renderPacketBaseLines(msg, width)
+		row, column, contentWidth := len(base)-1, lipgloss.Width(base[len(base)-1]), chatContentWidth(width)
+		for n, replyID := range replies {
+			markerWidth := lipgloss.Width(fmt.Sprintf("[%d]", n+1))
+			if column+1+markerWidth <= contentWidth {
+				regions[row] = append(regions[row], messageLinkRange{Start:column+1,End:column+1+markerWidth,TargetID:replyID})
+				column += 1+markerWidth
+			} else {
+				row++; column=0
+				if row >= len(regions) { break }
+				regions[row] = append(regions[row], messageLinkRange{Start:0,End:markerWidth,TargetID:replyID})
+				column=markerWidth
+			}
 		}
 	}
 	return regions
