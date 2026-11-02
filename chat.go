@@ -129,16 +129,21 @@ func rainbowParts(parts []string, phase float64) []string {
 
 func (m model) renderPacketLines(msg Packet, width int) []string {
 	lines := m.renderPacketBaseLines(msg, width)
-	if msg.Type == "message" && msg.ID != "" {
-		replies := m.repliesFor(msg.ID)
-		if len(replies) > 0 {
-			contentWidth := chatContentWidth(width)
-			markers := strings.TrimSpace(strings.Repeat("^ ", len(replies)))
-			rowFill := lipgloss.NewStyle().
-				Width(contentWidth).
-				Background(lipgloss.Color(m.cfg.Background))
-			lines = append(lines, renderChatRow(rowFill, m.styles.accent.Render(markers), contentWidth))
-		}
+	if msg.Type != "message" || msg.ID == "" || msg.XKeyscore > 0 { return lines }
+	replies := m.repliesFor(msg.ID)
+	if len(replies) == 0 || len(lines) == 0 { return lines }
+	contentWidth := chatContentWidth(width)
+	rowFill := lipgloss.NewStyle().Background(lipgloss.Color(m.cfg.Background))
+	for n := range replies {
+		marker := fmt.Sprintf("[%d]", n+1)
+		styled := m.styles.accent.Render(marker)
+		last := len(lines)-1
+		used := lipgloss.Width(lines[last])
+		if used+1+lipgloss.Width(marker) <= contentWidth {
+			if reset := strings.LastIndex(lines[last], "\x1b[0m"); reset >= 0 {
+				lines[last] = lines[last][:reset] + " " + styled + lines[last][reset:]
+			} else { lines[last] += " " + styled }
+		} else { lines = append(lines, renderChatRow(rowFill, styled, contentWidth)) }
 	}
 	return lines
 }
@@ -396,7 +401,9 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 
 	timestamp := timeStyle.Render("[" + timeText + "]")
 	name := nameStyle.Render(msg.User.Name)
-	prefix := replyBadge + timestamp + normalBodyStyle.Render(" ") + name + normalBodyStyle.Render(": ")
+	badgeSegment := ""
+	if replyBadge != "" { badgeSegment = " " + strings.TrimSpace(replyBadge) }
+	prefix := timestamp + normalBodyStyle.Render(" ") + name + normalBodyStyle.Render(badgeSegment+": ")
 	prefixWidth := lipgloss.Width(prefix)
 	if prefixWidth >= contentWidth {
 		displayMessage := msg
