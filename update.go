@@ -56,6 +56,17 @@ func (m model) Update(
 	// Network messages
 	// -------------------------------------------------------------------------
 
+	if batch, ok := msg.(historyBatchReceivedMsg); ok {
+		m.appendMessages(batch.Packets)
+		if batch.Complete {
+			readyCmd := tea.Tick(750*time.Millisecond, func(time.Time) tea.Msg {
+				return notificationsReadyMsg{}
+			})
+			return m, tea.Batch(readPacket(m.client), readyCmd)
+		}
+		return m, readPacket(m.client)
+	}
+
 	if received, ok := msg.(messageReceivedMsg); ok {
 		packet := Packet(received)
 
