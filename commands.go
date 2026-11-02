@@ -80,7 +80,7 @@ func (m *model) sendMessage(text string, replyTo string) bool {
 	case "/rainbow":
 		if len(fields) != 1 {
 			m.appendMessage(Packet{Type: "system", Text: "Usage: /rainbow", Time: time.Now()})
-			return
+			return false
 		}
 		m.rainbowMode = !m.rainbowMode
 		status := "enabled"
@@ -88,11 +88,11 @@ func (m *model) sendMessage(text string, replyTo string) bool {
 			status = "disabled"
 		}
 		m.appendMessage(Packet{Type: "system", Text: "Rainbow mode " + status + " for your messages.", Time: time.Now().UTC()})
-		return
+		return false
 	case "/who":
 		if len(fields) != 1 {
 			m.appendMessage(Packet{Type: "system", Text: "Usage: /who", Time: time.Now()})
-			return
+			return false
 		}
 		// The room roster is maintained continuously from server broadcasts,
 		// so /who can display the current snapshot without requesting another
@@ -118,18 +118,18 @@ func (m *model) sendMessage(text string, replyTo string) bool {
 			Text: text,
 			Time: time.Now().UTC(),
 		})
-		return
+		return false
 	case "/history":
 		if len(fields) != 1 {
 			m.appendMessage(Packet{Type: "system", Text: "Usage: /history", Time: time.Now()})
-			return
+			return false
 		}
 		_ = m.client.send(Packet{Type: "history_status", Room: m.room})
-		return
+		return false
 	case "/rename":
 		if len(fields) != 2 {
 			m.appendMessage(Packet{Type: "system", Text: "Usage: /rename name", Time: time.Now()})
-			return
+			return false
 		}
 		// Stop typing under the old identity before asking the server to rename us.
 		if m.isTyping {
@@ -142,14 +142,14 @@ func (m *model) sendMessage(text string, replyTo string) bool {
 		if err := saveConfig(m.cfg); err != nil {
 			m.cfg.Name = old
 			m.appendMessage(Packet{Type: "system", Text: "Could not save config: " + err.Error(), Time: time.Now()})
-			return
+			return false
 		}
 		_ = m.client.send(Packet{Type: "rename", Room: m.room, User: User{Name: fields[1], Color: m.user.Color}})
-		return
+		return false
 	case "/color":
 		if len(fields) != 2 || !validUserColor(fields[1]) {
 			m.appendMessage(Packet{Type: "system", Text: "Usage: /color #RRGGBB (or an ANSI color number 0–255)", Time: time.Now()})
-			return
+			return false
 		}
 		old := m.cfg.UserColor
 		m.cfg.UserColor = fields[1]
@@ -158,18 +158,18 @@ func (m *model) sendMessage(text string, replyTo string) bool {
 			m.cfg.UserColor = old
 			m.user.Color = old
 			m.appendMessage(Packet{Type: "system", Text: "Could not save config: " + err.Error(), Time: time.Now()})
-			return
+			return false
 		}
 		_ = m.client.send(Packet{Type: "color", Room: m.room, User: m.user})
-		return
+		return false
 	case "/me":
 		body := strings.TrimSpace(strings.TrimPrefix(trimmed, fields[0]))
 		if body == "" {
 			m.appendMessage(Packet{Type: "system", Text: "Usage: /me action", Time: time.Now()})
-			return
+			return false
 		}
 		_ = m.client.send(Packet{Type: "me", Room: m.room, User: m.user, Text: body})
-		return
+		return false
 	}
 	packet := Packet{Type: "message", ReplyTo: replyTo, Room: m.room, User: m.user, Text: text}
 	if m.rainbowMode {
