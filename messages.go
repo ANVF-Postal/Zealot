@@ -19,6 +19,11 @@ func terminalBellCmd() tea.Cmd {
 
 type messageReceivedMsg Packet
 
+type historyBatchReceivedMsg struct {
+	Packets  []Packet
+	Complete bool
+}
+
 type connectionClosedMsg struct{}
 
 type typingClearMsg struct {
