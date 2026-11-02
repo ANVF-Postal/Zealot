@@ -360,7 +360,7 @@ func (m *model) appendMessage(packet Packet) {
 
 	// Replies change both their own [Replied] badge and the original message's
 	// numbered markers, so those updates need a complete cache rebuild.
-	if packet.Type == "message" && packet.ReplyTo != "" || !cacheValid {
+	if (packet.Type == "message" && packet.ReplyTo != "") || !cacheValid {
 		m.rebuildMessageCache()
 		if oldScroll > 0 {
 			m.scroll += len(m.renderedLines) - oldLineCount
