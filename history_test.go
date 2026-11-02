@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 func TestReadPacketBatchesHistoryUntilEndMarker(t *testing.T) {
@@ -105,5 +107,60 @@ func TestAppendInitialHistoryBatchBuildsConsistentReplyIndexes(t *testing.T) {
 	m.rebuildMessageCache()
 	if got, want := strings.Join(cachedLines, "\n"), strings.Join(m.renderedLines, "\n"); got != want {
 		t.Fatal("initial history batch cache differs from a full rebuild")
+	}
+}
+
+func TestMouseMotionFilterCoalescesWhileHoverRefreshIsPending(t *testing.T) {
+	first := interactionTestPacket("filter-first", "First message body")
+	second := interactionTestPacket("filter-second", "Second message body")
+	m := newMessageInteractionTestModel(80, first, second)
+	state := &mouseMotionState{}
+	filter := mouseMotionFilter{state: state}
+	m.messageHoverPending = true
+
+	motion := tea.MouseMotionMsg{X: 20, Y: 2}
+	if got := filter.filter(m, motion); got != nil {
+		t.Fatal("passive motion reached Update while a hover refresh was pending")
+	}
+	if x, y, known := state.position(); !known || x != motion.X || y != motion.Y {
+		t.Fatalf("filtered pointer position = (%d, %d, %t), want (%d, %d, true)", x, y, known, motion.X, motion.Y)
+	}
+
+	if got := filter.filter(m, tea.MouseClickMsg{X: 10, Y: 0}); got == nil {
+		t.Fatal("mouse click was filtered")
+	}
+
+	m.inputSelecting = true
+	if got := filter.filter(m, tea.MouseMotionMsg{X: 21, Y: 4}); got == nil {
+		t.Fatal("motion during active text selection was filtered")
+	}
+}
+
+func TestHoverRefreshUsesLatestFilteredPointerPosition(t *testing.T) {
+	first := interactionTestPacket("latest-first", "First message body")
+	second := interactionTestPacket("latest-second", "Second message body")
+	m := newMessageInteractionTestModel(80, first, second)
+	m.mouseMotion = &mouseMotionState{}
+
+	body := m.messageBodyRanges(second, m.width)
+	if len(body) == 0 || body[0].End <= body[0].Start {
+		t.Fatal("expected a body hitbox for the second message")
+	}
+	latestX := 1 + body[0].Start + 1
+	firstBody := m.messageBodyRanges(first, m.width)
+	if len(firstBody) == 0 || firstBody[0].End <= firstBody[0].Start {
+		t.Fatal("expected a body hitbox for the first message")
+	}
+	m.lastMouseX = 1 + firstBody[0].Start + 1
+	m.lastMouseY = 2
+	m.mousePositionKnown = true
+	m.messageHoverGeneration = 7
+	m.messageHoverPending = true
+	m.mouseMotion.record(latestX, 3)
+
+	updated, _ := m.Update(messageHoverRefreshMsg{generation: 7})
+	got := updated.(model)
+	if got.hoveredMessageID != second.ID {
+		t.Fatalf("hovered message = %q, want latest pointer target %q", got.hoveredMessageID, second.ID)
 	}
 }
