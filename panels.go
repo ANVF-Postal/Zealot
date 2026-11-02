@@ -337,19 +337,30 @@ func (m model) messageHeight() int {
 }
 
 func (m *model) appendMessage(packet Packet) {
-	oldLineCount := len(m.renderMessageLines())
 	oldScroll := m.scroll
-	m.messages = append(m.messages, packet)
-
 	if m.width < 1 {
+		m.messages = append(m.messages, packet)
 		m.rebuildMessageIndexes()
 		m.renderCacheValid = false
 		return
 	}
 
-	// A reply changes its own [Replied] marker and the original message caret
-	// row. Rebuild so both stay aligned.
-	if packet.Type == "message" && packet.ReplyTo != "" {
+	cacheValid := m.renderCacheValid && m.renderCacheWidth == m.width
+	oldLineCount := 0
+	if cacheValid {
+		oldLineCount = len(m.renderedLines)
+	} else if oldScroll > 0 {
+		// Preserve the reader's historical position when the cache is stale.
+		// At the live tail, no pre-append layout is needed.
+		m.rebuildMessageCache()
+		oldLineCount = len(m.renderedLines)
+		cacheValid = true
+	}
+	m.messages = append(m.messages, packet)
+
+	// Replies change both their own [Replied] badge and the original message's
+	// numbered markers, so those updates need a complete cache rebuild.
+	if packet.Type == "message" && packet.ReplyTo != "" || !cacheValid {
 		m.rebuildMessageCache()
 		if oldScroll > 0 {
 			m.scroll += len(m.renderedLines) - oldLineCount
@@ -463,20 +474,33 @@ func (m model) scrollbarContains(x, y int) bool {
 }
 
 func (m model) scrollbarThumb() (top, thumbHeight, trackHeight int) {
+	return m.scrollbarThumbForLineCount(len(m.renderMessageLines()))
+}
+
+func (m model) scrollbarThumbForLineCount(total int) (top, thumbHeight, trackHeight int) {
 	trackHeight = m.messageHeight() - 2
-	if trackHeight < 1 { trackHeight = 1 }
-	total := len(m.renderMessageLines())
+	if trackHeight < 1 {
+		trackHeight = 1
+	}
 	visible := m.messageHeight() - 1
-	if visible < 1 { visible = 1 }
-	if total <= visible { return 0, trackHeight, trackHeight }
+	if visible < 1 {
+		visible = 1
+	}
+	if total <= visible {
+		return 0, trackHeight, trackHeight
+	}
 
 	thumbHeight = visible * trackHeight / total
-	if thumbHeight < 1 { thumbHeight = 1 }
-	if thumbHeight > trackHeight { thumbHeight = trackHeight }
+	if thumbHeight < 1 {
+		thumbHeight = 1
+	}
+	if thumbHeight > trackHeight {
+		thumbHeight = trackHeight
+	}
 	maxTop := trackHeight - thumbHeight
-	maxScroll := m.maxScroll()
+	maxScroll := total - visible
 	if maxScroll > 0 {
-		top = (maxScroll-m.scroll) * maxTop / maxScroll
+		top = (maxScroll - m.scroll) * maxTop / maxScroll
 	}
 	return
 }
