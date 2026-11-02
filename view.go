@@ -502,11 +502,12 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen 
 		Background(lipgloss.Color(m.cfg.Background)).
 		Bold(true).
 		Render("> ")
+	firstInputRow := inputView[0]
 	inputView[0] = prompt
 	if m.replyTargetID != "" {
 		inputView[0] += m.styles.accent.Render(replyComposerPrefix)
 	}
-	inputView[0] += strings.TrimPrefix(strings.Join([]string{}, ""), "")
+	inputView[0] += firstInputRow
 
 	// The textarea emits shorter/unstyled end-of-buffer rows when empty. Fill
 	// every row's remaining columns with the configured background so those
