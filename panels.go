@@ -340,8 +340,14 @@ func (m *model) appendMessage(packet Packet) {
 	}
 
 	newLines := m.renderPacketLines(packet, m.width)
-	for range newLines {
+	bodyRanges := m.messageBodyRanges(packet, m.width)
+	for i := range newLines {
 		m.renderedMessageIDs = append(m.renderedMessageIDs, packet.ID)
+		if i < len(bodyRanges) {
+			m.renderedMessageBodyRanges = append(m.renderedMessageBodyRanges, bodyRanges[i])
+		} else {
+			m.renderedMessageBodyRanges = append(m.renderedMessageBodyRanges, messageBodyRange{})
+		}
 	}
 	if m.scroll > 0 {
 		// Scroll is an offset from the bottom. Increase it by the number of
@@ -361,21 +367,31 @@ func (m *model) appendMessage(packet Packet) {
 func (m *model) rebuildMessageCache() {
 	if m.width < 1 {
 		m.renderedLines = nil
+		m.renderedMessageIDs = nil
+		m.renderedMessageBodyRanges = nil
 		m.renderCacheValid = false
 		return
 	}
 
 	lines := make([]string, 0, len(m.messages))
 	messageIDs := make([]string, 0, len(m.messages))
+	bodyRanges := make([]messageBodyRange, 0, len(m.messages))
 	for _, message := range m.messages {
 		messageLines := m.renderPacketLines(message, m.width)
+		messageRanges := m.messageBodyRanges(message, m.width)
 		lines = append(lines, messageLines...)
-		for range messageLines {
+		for i := range messageLines {
 			messageIDs = append(messageIDs, message.ID)
+			if i < len(messageRanges) {
+				bodyRanges = append(bodyRanges, messageRanges[i])
+			} else {
+				bodyRanges = append(bodyRanges, messageBodyRange{})
+			}
 		}
 	}
 	m.renderedLines = lines
 	m.renderedMessageIDs = messageIDs
+	m.renderedMessageBodyRanges = bodyRanges
 	m.renderCacheWidth = m.width
 	m.renderCacheValid = true
 }
