@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -289,7 +288,7 @@ func (m model) messageLinkRangesForLineCount(msg Packet, width, lineCount int) [
 				badge = m.renderReplyBadgeForWidth(msg, 48)
 			}
 		}
-		regions[0] = append(regions[0], messageLinkRange{Start: badgeStart, End: badgeStart + lipgloss.Width(strings.TrimSpace(badge)), TargetID: msg.ReplyTo})
+		regions[0] = append(regions[0], messageLinkRange{Start: badgeStart, End: badgeStart + lipgloss.Width(replyBadgeLabelForWidth(widthForBadge)), TargetID: msg.ReplyTo})
 	}
 	replies := m.repliesFor(msg.ID)
 	if len(replies) > 0 && msg.XKeyscore == 0 {
