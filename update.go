@@ -133,8 +133,15 @@ func (m model) Update(
 		next := readPacket(m.client)
 		var commands []tea.Cmd
 		commands = append(commands, next)
+		if packet.Type == "users" {
+			if animationCmd := m.startUsersAnimation(); animationCmd != nil {
+				commands = append(commands, animationCmd)
+			}
+		}
 		if packet.Type == "message" && packet.User.Name != m.user.Name {
-			commands = append(commands, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg { return usersAnimationMsg{} }))
+			if animationCmd := m.startUsersAnimation(); animationCmd != nil {
+				commands = append(commands, animationCmd)
+			}
 			if m.notificationsReady && m.cfg.Bell {
 				commands = append(commands, terminalBellCmd())
 			}
@@ -143,20 +150,17 @@ func (m model) Update(
 	}
 
 	if _, ok := msg.(usersAnimationMsg); ok {
+		m.usersAnimationRunning = false
 		m.usersFrame++
-		active := m.usersOpen
 		for name, remaining := range m.userActivity {
 			if remaining <= 1 {
 				delete(m.userActivity, name)
 			} else {
 				m.userActivity[name] = remaining - 1
-				active = true
 			}
 		}
-		if active {
-			return m, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg {
-				return usersAnimationMsg{}
-			})
+		if animationCmd := m.startUsersAnimation(); animationCmd != nil {
+			return m, animationCmd
 		}
 		return m, nil
 	}
@@ -305,8 +309,17 @@ func (m model) Update(
 			m.scrollDragging = false
 			m.scrollbarHoldDirection = 0
 			m.scrollbarHoldGeneration++
-			_ = m.client.send(Packet{Type: "who", Room: m.room})
-			return m, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg { return usersAnimationMsg{} })
+			// Do not let a slow socket write hold up the UI response to the click.
+			sendWhoCmd := func() tea.Msg {
+				if m.client != nil {
+					_ = m.client.send(Packet{Type: "who", Room: m.room})
+				}
+				return nil
+			}
+			if animationCmd := m.startUsersAnimation(); animationCmd != nil {
+				return m, tea.Batch(sendWhoCmd, animationCmd)
+			}
+			return m, sendWhoCmd
 		}
 		if m.usersOpen && mouse.Button == tea.MouseLeft && mouse.X == m.chatScrollbarX() && m.maxUsersScroll() > 0 {
 			visible := m.usersPanelHeight()
@@ -405,6 +418,9 @@ func (m model) Update(
 				return m, nil
 			}
 		}
+		// Mouse clicks outside the composer are fully handled above. Do not
+		// feed panel/header clicks into the textarea or adaptive layout code.
+		return m, nil
 
 	case tea.MouseMotionMsg:
 		m.lastMouseX = mouse.X
@@ -441,6 +457,9 @@ func (m model) Update(
 			return m, nil
 		}
 		m.refreshMessageHover()
+		// Motion events belong to hover/drag handling, not the textarea. Avoid
+		// sending every passive pointer update through the rest of Update.
+		return m, nil
 
 	case tea.MouseReleaseMsg:
 		if m.inputSelecting {
@@ -622,6 +641,7 @@ func (m model) Update(
 	// -------------------------------------------------------------------------
 
 	var inputCmd tea.Cmd
+	previousInputHeight := m.input.Height()
 
 	if !handledNewline {
 		m.input, inputCmd = m.input.Update(msg)
@@ -631,7 +651,9 @@ func (m model) Update(
 			m.cancelReply()
 		}
 	}
-	if m.cfg.AdaptiveHeight {
+	if m.cfg.AdaptiveHeight && m.input.Height() != previousInputHeight {
+		// Scroll limits depend on the available pane height, so recompute them
+		// only when the adaptive textarea actually changes height.
 		m.clampScroll()
 		m.clampUsersScroll()
 		m.clampSplashScroll()
