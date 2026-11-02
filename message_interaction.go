@@ -66,6 +66,9 @@ func (m model) messageBodyRangesForLineCount(msg Packet, width, lineCount int) [
 	}
 	prefix += bodyStyle.Render(": ")
 	prefixWidth := lipgloss.Width(prefix)
+	if width > 48 && prefixWidth >= contentWidth {
+		badgeWidth = lipgloss.Width(m.renderReplyBadgeForWidth(msg, 48))
+	}
 
 	// Standard wide layout: timestamp and username precede the body. Wrapped
 	// body rows retain the same indentation as the first row.
@@ -269,9 +272,18 @@ func (m model) messageLinkRangesForLineCount(msg Packet, width, lineCount int) [
 	if msg.ReplyTo != "" && m.hasMessageID(msg.ReplyTo) {
 		badgeStart := 0
 		if width > 48 {
-			nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.User.Color)).Background(lipgloss.Color(m.cfg.Background)).Bold(true)
+			bg := lipgloss.Color(m.cfg.Background)
+			nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.User.Color)).Background(bg).Bold(true)
+			bodyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.TextColor)).Background(bg)
 			timestamp := m.styles.time.Render("[" + msg.Time.Local().Format("15:04") + "]")
-			badgeStart = lipgloss.Width(timestamp + " " + nameStyle.Render(msg.User.Name) + " ")
+			widePrefix := timestamp + bodyStyle.Render(" ") + nameStyle.Render(msg.User.Name)
+			if badge := m.renderReplyBadgeForWidth(msg, width); badge != "" {
+				widePrefix += bodyStyle.Render(" ") + badge
+			}
+			widePrefix += bodyStyle.Render(": ")
+			if lipgloss.Width(widePrefix) < chatContentWidth(width) {
+				badgeStart = lipgloss.Width(timestamp + " " + nameStyle.Render(msg.User.Name) + " ")
+			}
 		}
 		regions[0] = append(regions[0], messageLinkRange{Start: badgeStart, End: badgeStart+lipgloss.Width(strings.TrimSpace(m.renderReplyBadgeForWidth(msg, width))), TargetID: msg.ReplyTo})
 	}
