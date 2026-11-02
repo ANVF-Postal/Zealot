@@ -340,6 +340,9 @@ func (m *model) appendMessage(packet Packet) {
 	}
 
 	newLines := m.renderPacketLines(packet, m.width)
+	for range newLines {
+		m.renderedMessageIDs = append(m.renderedMessageIDs, packet.ID)
+	}
 	if m.scroll > 0 {
 		// Scroll is an offset from the bottom. Increase it by the number of
 		// appended rows so the same historical rows remain on screen while
@@ -363,10 +366,16 @@ func (m *model) rebuildMessageCache() {
 	}
 
 	lines := make([]string, 0, len(m.messages))
+	messageIDs := make([]string, 0, len(m.messages))
 	for _, message := range m.messages {
-		lines = append(lines, m.renderPacketLines(message, m.width)...)
+		messageLines := m.renderPacketLines(message, m.width)
+		lines = append(lines, messageLines...)
+		for range messageLines {
+			messageIDs = append(messageIDs, message.ID)
+		}
 	}
 	m.renderedLines = lines
+	m.renderedMessageIDs = messageIDs
 	m.renderCacheWidth = m.width
 	m.renderCacheValid = true
 }
