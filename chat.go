@@ -189,6 +189,10 @@ func (m model) hasMessageID(messageID string) bool {
 }
 
 func (m model) renderReplyBadge(msg Packet) string {
+	return m.renderReplyBadgeForWidth(msg, 999)
+}
+
+func (m model) renderReplyBadgeForWidth(msg Packet, width int) string {
 	if msg.ReplyTo == "" {
 		return ""
 	}
@@ -196,11 +200,14 @@ func (m model) renderReplyBadge(msg Packet) string {
 	if !m.hasMessageID(msg.ReplyTo) {
 		color = m.cfg.BorderColor
 	}
+	label := "[Replied]"
+	if width <= 32 { label = "[RE]" }
+	if width <= 20 { label = "[R]" }
 	style := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(color)).
 		Background(lipgloss.Color(m.cfg.Background)).
 		Bold(true)
-	return style.Render("[Replied]") + " "
+	return style.Render(label) + " "
 }
 
 func (m model) renderPacketBaseLines(msg Packet, width int) []string {
@@ -279,7 +286,7 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 
 	timeStyle := m.styles.time
 
-	replyBadge := m.renderReplyBadge(msg)
+	replyBadge := m.renderReplyBadgeForWidth(msg, width)
 	if msg.XKeyscore > 0 {
 		var lines []string
 		logoIndent := 0
