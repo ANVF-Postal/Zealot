@@ -67,16 +67,19 @@ func (m *model) clampSplashScroll() {
 }
 
 func (m model) splashScrollbarThumb() (top, thumbHeight, trackHeight int) {
+	return m.splashScrollbarThumbForRowCount(len(m.splashRows()))
+}
+
+func (m model) splashScrollbarThumbForRowCount(total int) (top, thumbHeight, trackHeight int) {
 	visible := m.splashPanelHeight()
 	trackHeight = visible - 2
 	if trackHeight < 1 { trackHeight = 1 }
-	total := len(m.splashRows())
 	if total <= visible { return 0, trackHeight, trackHeight }
 	thumbHeight = visible * trackHeight / total
 	if thumbHeight < 1 { thumbHeight = 1 }
 	if thumbHeight > trackHeight { thumbHeight = trackHeight }
 	maxTop := trackHeight - thumbHeight
-	if maxScroll := m.maxSplashScroll(); maxScroll > 0 {
+	if maxScroll := total - visible; maxScroll > 0 {
 		top = m.splashScroll * maxTop / maxScroll
 	}
 	return
@@ -152,6 +155,10 @@ func (m model) userRows() []string {
 }
 
 func (m model) usersScrollbarThumb() (top, thumbHeight, trackHeight int) {
+	return m.usersScrollbarThumbForRowCount(len(m.userRows()))
+}
+
+func (m model) usersScrollbarThumbForRowCount(total int) (top, thumbHeight, trackHeight int) {
 	visible := m.usersPanelHeight()
 	// The heading row carries the top arrow. The final user row carries the
 	// bottom arrow, leaving one track cell for each intervening user row.
@@ -159,7 +166,6 @@ func (m model) usersScrollbarThumb() (top, thumbHeight, trackHeight int) {
 	if trackHeight < 1 {
 		trackHeight = 1
 	}
-	total := len(m.userRows())
 	if total <= visible {
 		return 0, trackHeight, trackHeight
 	}
@@ -171,7 +177,7 @@ func (m model) usersScrollbarThumb() (top, thumbHeight, trackHeight int) {
 		thumbHeight = trackHeight
 	}
 	maxTop := trackHeight - thumbHeight
-	maxScroll := m.maxUsersScroll()
+	maxScroll := max(0, total-visible)
 	if maxScroll > 0 {
 		top = m.usersScroll * maxTop / maxScroll
 	}
