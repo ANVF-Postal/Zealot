@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/lipgloss/v2"
 )
@@ -32,6 +33,12 @@ func interactionTestPacket(id, text string) Packet {
 		User: User{Name: "Alice", Color: "#7CFFCB"},
 		Text: text,
 		Time: time.Date(2026, time.January, 2, 15, 4, 0, 0, time.UTC),
+	}
+}
+
+func TestAppViewEnablesAllMouseMotion(t *testing.T) {
+	if got := appView("").MouseMode; got != tea.MouseModeAllMotion {
+		t.Fatalf("appView MouseMode = %v, want MouseModeAllMotion", got)
 	}
 }
 
