@@ -177,6 +177,9 @@ func (m model) Update(
 	}
 
 	if _, ok := msg.(connectionClosedMsg); ok {
+		if m.quitting {
+			return m, tea.Quit
+		}
 		m.connected = false
 		m.status = "Disconnected"
 
@@ -285,7 +288,9 @@ func (m model) Update(
 					m.quitConfirm = false
 					m.quitConfirmGeneration++
 					m.sendTyping(false)
-					_ = m.client.conn.Close()
+					m.quitting = true
+					// main closes the socket after Program.Run returns. Closing it
+					// here can race the packet reader and briefly render Disconnected.
 					return m, tea.Quit
 				}
 				m.quitConfirm = true
@@ -613,8 +618,9 @@ func (m model) Update(
 
 		case "ctrl+c", "ctrl+q":
 			m.sendTyping(false)
-			_ = m.client.conn.Close()
-
+			m.quitting = true
+			// main closes the socket after Program.Run returns; avoid racing the
+			// packet reader and rendering a transient Disconnected state.
 			return m, tea.Quit
 
 		case "pgup":
