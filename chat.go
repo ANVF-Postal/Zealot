@@ -127,6 +127,23 @@ func rainbowParts(parts []string, phase float64) []string {
 	return colored
 }
 
+func stripANSISequences(line string) string {
+	var visible strings.Builder
+	for pos := 0; pos < len(line); {
+		if line[pos] == 0x1b {
+			pos = ansiSequenceEnd(line, pos)
+			continue
+		}
+		_, size := utf8.DecodeRuneInString(line[pos:])
+		if size < 1 {
+			break
+		}
+		visible.WriteString(line[pos : pos+size])
+		pos += size
+	}
+	return visible.String()
+}
+
 func visibleChatTextWidth(line string) int {
 	var visible strings.Builder
 	for pos := 0; pos < len(line); {
@@ -197,7 +214,7 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 	// the message body, not after that timestamp-only row.
 	markerRow := len(lines) - 1
 	if markerRow > 0 {
-		plainLast := strings.TrimSpace(lipgloss.StripANSI(lines[markerRow]))
+		plainLast := strings.TrimSpace(stripANSISequences(lines[markerRow]))
 		if plainLast == "["+msg.Time.Local().Format("15:04")+"]" {
 			markerRow--
 		}
