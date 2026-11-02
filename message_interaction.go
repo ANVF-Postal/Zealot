@@ -322,7 +322,18 @@ func (m model) messageLinkRangesForLineCount(msg Packet, width, lineCount int) [
 	replies := m.repliesFor(msg.ID)
 	if len(replies) > 0 && msg.XKeyscore == 0 {
 		base := m.renderPacketBaseLines(msg, width)
-		row, column, contentWidth := len(base)-1, visibleChatTextWidth(base[len(base)-1]), chatContentWidth(width)
+		row := len(base) - 1
+		// In compact layout, a short body can fit beside the username while
+		// the timestamp is rendered on a separate final row. Markers are
+		// appended to the body row in that case, matching renderPacketLines.
+		if width <= 48 && row > 0 {
+			plainLast := strings.TrimSpace(stripANSISequences(base[row]))
+			if plainLast == "["+msg.Time.Local().Format("15:04")+"]" {
+				row--
+			}
+		}
+		trimmed := trimANSIEndPadding(base[row])
+		column, contentWidth := visibleChatTextWidth(trimmed), chatContentWidth(width)
 		for n, replyID := range replies {
 			markerWidth := lipgloss.Width(fmt.Sprintf("[%d]", n+1))
 			if column+1+markerWidth <= contentWidth {
