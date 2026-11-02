@@ -177,6 +177,58 @@ func TestCompactMessageBodyHitboxesFollowWrappedRows(t *testing.T) {
 	}
 }
 
+func TestReplyBadgesUseShortForms(t *testing.T) {
+	parent := interactionTestPacket("badge-parent", "original")
+	reply := interactionTestPacket("badge-reply", "reply")
+	reply.ReplyTo = parent.ID
+	m := newMessageInteractionTestModel(80, parent, reply)
+
+	wide := m.renderPacketLines(reply, 80)
+	if len(wide) == 0 || !strings.Contains(wide[0], "[Re]") || strings.Contains(wide[0], "[Replied]") {
+		t.Fatalf("wide reply badge should be [Re]: %q", wide)
+	}
+	compact := m.renderPacketLines(reply, 48)
+	if len(compact) == 0 || !strings.Contains(compact[0], "[R]") || strings.Contains(compact[0], "[Re]") {
+		t.Fatalf("compact reply badge should be [R]: %q", compact)
+	}
+}
+
+func TestAppendingReplyUpdatesOnlyParentRowsAndAppendsReply(t *testing.T) {
+	parent := interactionTestPacket("incremental-parent", "parent body")
+	m := newMessageInteractionTestModel(80, parent)
+	parentRowsBefore, ok := m.messageRowsByID[parent.ID]
+	if !ok {
+		t.Fatal("parent should be indexed in the rendered row map")
+	}
+	lineStorage := &m.renderedLines[0]
+
+	reply := interactionTestPacket("incremental-reply", "reply body")
+	reply.ReplyTo = parent.ID
+	m.appendMessage(reply)
+
+	if !m.renderCacheValid {
+		t.Fatal("reply append should leave the render cache valid")
+	}
+	parentRowsAfter := m.messageRowsByID[parent.ID]
+	if parentRowsAfter.End-parentRowsAfter.Start != parentRowsBefore.End-parentRowsBefore.Start {
+		t.Fatalf("parent row count changed unexpectedly: before=%#v after=%#v", parentRowsBefore, parentRowsAfter)
+	}
+	if !strings.Contains(strings.Join(m.renderedLines[parentRowsAfter.Start:parentRowsAfter.End], "\n"), "[1]") {
+		t.Fatal("parent message should show [1] after reply append")
+	}
+	if rows, ok := m.messageRowsByID[reply.ID]; !ok || rows.Start != parentRowsAfter.End {
+		t.Fatalf("reply row range = %#v (present %v), want append immediately after parent", rows, ok)
+	}
+	if len(m.renderedMessageIDs) != len(m.renderedLines) ||
+		len(m.renderedMessageBodyRanges) != len(m.renderedLines) ||
+		len(m.renderedMessageLinks) != len(m.renderedLines) {
+		t.Fatal("rendered row metadata is not aligned with rendered lines")
+	}
+	if &m.renderedLines[0] == lineStorage {
+		t.Fatal("expected cache slices to stay synchronized following the parent row update")
+	}
+}
+
 func TestReplyMarkersWrapWithoutTakingScrollbarColumn(t *testing.T) {
 	parent := interactionTestPacket("parent-wrap", strings.Repeat("x", 60))
 	first := interactionTestPacket("reply-wrap-1", "first reply")
