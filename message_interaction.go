@@ -90,7 +90,7 @@ func (m model) messageBodyRanges(msg Packet, width int) []messageBodyRange {
 		}
 		bodyRow := len(nameParts)
 		if len(wrapped) >= 2 && bodyRow < len(ranges) {
-			ranges[bodyRow] = clippedMessageBodyRange(stampWidth+1, stampWidth+1+lipgloss.Width(wrapped[1]), contentWidth)
+			ranges[bodyRow] = clippedMessageBodyRange(stampWidth+2, stampWidth+2+lipgloss.Width(wrapped[1]), contentWidth)
 		}
 		for i := 2; i < len(wrapped) && bodyRow+i-1 < len(ranges); i++ {
 			ranges[bodyRow+i-1] = clippedMessageBodyRange(0, lipgloss.Width(wrapped[i]), contentWidth)
@@ -105,10 +105,10 @@ func (m model) messageBodyRanges(msg Packet, width int) []messageBodyRange {
 		wrapped = rainbowParts(wrapped, msg.RainbowPhase)
 	}
 	if len(wrapped) > 0 && wrapped[0] != "" {
-		ranges[0] = clippedMessageBodyRange(labelWidth, labelWidth+lipgloss.Width(wrapped[0]), contentWidth)
+		ranges[0] = clippedMessageBodyRange(labelWidth+1, labelWidth+1+lipgloss.Width(wrapped[0]), contentWidth)
 	}
 	if len(wrapped) >= 2 && len(ranges) > 1 {
-		ranges[1] = clippedMessageBodyRange(stampWidth+1, stampWidth+1+lipgloss.Width(wrapped[1]), contentWidth)
+		ranges[1] = clippedMessageBodyRange(stampWidth+2, stampWidth+2+lipgloss.Width(wrapped[1]), contentWidth)
 	}
 	for i := 2; i < len(wrapped) && i < len(ranges); i++ {
 		ranges[i] = clippedMessageBodyRange(0, lipgloss.Width(wrapped[i]), contentWidth)
