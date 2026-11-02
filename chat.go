@@ -127,6 +127,21 @@ func rainbowParts(parts []string, phase float64) []string {
 	return colored
 }
 
+func visibleChatTextWidth(line string) int {
+	var visible strings.Builder
+	for pos := 0; pos < len(line); {
+		if line[pos] == 0x1b {
+			pos = ansiSequenceEnd(line, pos)
+			continue
+		}
+		_, size := utf8.DecodeRuneInString(line[pos:])
+		if size < 1 { break }
+		visible.WriteString(line[pos:pos+size])
+		pos += size
+	}
+	return lipgloss.Width(strings.TrimRight(visible.String(), " "))
+}
+
 func (m model) renderPacketLines(msg Packet, width int) []string {
 	lines := m.renderPacketBaseLines(msg, width)
 	if msg.Type != "message" || msg.ID == "" || msg.XKeyscore > 0 { return lines }
@@ -138,7 +153,7 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 		marker := fmt.Sprintf("[%d]", n+1)
 		styled := m.styles.accent.Render(marker)
 		last := len(lines)-1
-		used := lipgloss.Width(lines[last])
+		used := visibleChatTextWidth(lines[last])
 		if used+1+lipgloss.Width(marker) <= contentWidth {
 			if reset := strings.LastIndex(lines[last], "\x1b[0m"); reset >= 0 {
 				lines[last] = lines[last][:reset] + " " + styled + lines[last][reset:]
