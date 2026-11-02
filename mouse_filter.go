@@ -56,7 +56,7 @@ func (f mouseMotionFilter) filter(current tea.Model, msg tea.Msg) tea.Msg {
 	if !ok {
 		return msg
 	}
-	if m.inputSelecting || m.scrollDragging || m.usersScrollDragging || m.splashScrollDragging {
+	if motion.Button != 0 || m.inputSelecting || m.scrollDragging || m.usersScrollDragging || m.splashScrollDragging {
 		return msg
 	}
 	if m.messageHoverPending {
