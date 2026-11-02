@@ -156,6 +156,19 @@ func TestReplyMarkersNavigateInArrivalOrder(t *testing.T) {
 
 	m := newMessageInteractionTestModel(80, parent, first, second)
 
+	parentLines := m.renderPacketLines(parent, m.width)
+	if len(parentLines) == 0 {
+		t.Fatal("expected the original message to render")
+	}
+	if !strings.Contains(parentLines[0], "original message") ||
+		!strings.Contains(parentLines[0], "[1]") ||
+		!strings.Contains(parentLines[0], "[2]") {
+		t.Fatalf("expected both numbered markers inline after the body; first row = %q", parentLines[0])
+	}
+	if got, want := lipgloss.Width(parentLines[0]), chatContentWidth(m.width); got != want {
+		t.Fatalf("inline marker row width = %d, want content width %d (marker must not enter scrollbar column)", got, want)
+	}
+
 	parentLinks := m.messageLinkRanges(parent, m.width)
 	if len(parentLinks) == 0 { t.Fatal("expected inline reply marker links") }
 	markers := parentLinks[0]
