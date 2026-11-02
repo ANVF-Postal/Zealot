@@ -233,7 +233,7 @@ func (m model) messageLinkRanges(msg Packet, width int) [][]messageLinkRange {
 	replies := m.repliesFor(msg.ID)
 	if len(replies) > 0 && msg.XKeyscore == 0 {
 		base := m.renderPacketBaseLines(msg, width)
-		row, column, contentWidth := len(base)-1, lipgloss.Width(base[len(base)-1]), chatContentWidth(width)
+		row, column, contentWidth := len(base)-1, visibleChatTextWidth(base[len(base)-1]), chatContentWidth(width)
 		for n, replyID := range replies {
 			markerWidth := lipgloss.Width(fmt.Sprintf("[%d]", n+1))
 			if column+1+markerWidth <= contentWidth {
