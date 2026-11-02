@@ -329,7 +329,11 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 	// the next row. This preserves room for readable body text instead of
 	// allowing the timestamp + username prefix to consume the entire width.
 	if width <= 48 {
-		return renderCompactMessage(rowFill, bodyStyle, nameStyle, timeStyle, msg, timeText, contentWidth)
+		displayMessage := msg
+		if hovered {
+			displayMessage.Rainbow = false
+		}
+		return renderCompactMessage(rowFill, bodyStyle, nameStyle, timeStyle, displayMessage, timeText, contentWidth)
 	}
 
 	timestamp := timeStyle.Render("[" + timeText + "]")
@@ -339,11 +343,15 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 	prefix := timestamp + separator + name + suffix
 	prefixWidth := lipgloss.Width(prefix)
 	if prefixWidth >= contentWidth {
-		return renderCompactMessage(rowFill, bodyStyle, nameStyle, m.styles.time, msg, timeText, contentWidth)
+		displayMessage := msg
+		if hovered {
+			displayMessage.Rainbow = false
+		}
+		return renderCompactMessage(rowFill, bodyStyle, nameStyle, m.styles.time, displayMessage, timeText, contentWidth)
 	}
 
 	wrapped := wrapText(msg.Text, contentWidth-prefixWidth)
-	if msg.Rainbow {
+	if msg.Rainbow && !hovered {
 		wrapped = rainbowParts(wrapped, msg.RainbowPhase)
 	}
 	if len(wrapped) == 0 {
