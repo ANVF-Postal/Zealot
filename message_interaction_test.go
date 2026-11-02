@@ -184,12 +184,14 @@ func TestReplyBadgesUseShortForms(t *testing.T) {
 	m := newMessageInteractionTestModel(80, parent, reply)
 
 	wide := m.renderPacketLines(reply, 80)
-	if len(wide) == 0 || !strings.Contains(wide[0], "Bob[Re]:") || strings.Contains(wide[0], "[Replied]") || strings.Contains(wide[0], "[Re] :") {
-		t.Fatalf("wide reply badge should be adjacent to username and colon: %q", wide)
+	widePlain := lipgloss.StripANSI(strings.Join(wide, "\n"))
+	if len(wide) == 0 || !strings.Contains(widePlain, "Bob[Re]:") || strings.Contains(widePlain, "[Replied]") || strings.Contains(widePlain, "[Re] :") {
+		t.Fatalf("wide reply badge should be adjacent to username and colon: %q", widePlain)
 	}
 	compact := m.renderPacketLines(reply, 48)
-	if len(compact) == 0 || !strings.Contains(compact[0], "Bob[R]:") || strings.Contains(compact[0], "[R] Bob") || strings.Contains(compact[0], "[Re]") {
-		t.Fatalf("compact reply badge should follow username: %q", compact)
+	compactPlain := lipgloss.StripANSI(strings.Join(compact, "\n"))
+	if len(compact) == 0 || !strings.Contains(compactPlain, "Bob[R]:") || strings.Contains(compactPlain, "[R] Bob") || strings.Contains(compactPlain, "[Re]") {
+		t.Fatalf("compact reply badge should follow username: %q", compactPlain)
 	}
 	compactLinks := m.messageLinkRanges(reply, 48)
 	if len(compactLinks) == 0 || len(compactLinks[0]) == 0 ||
