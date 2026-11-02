@@ -137,6 +137,11 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 	text := lipgloss.Color(m.cfg.TextColor)
 	rowFill := lipgloss.NewStyle().Width(contentWidth).Background(bg)
 	bodyStyle := lipgloss.NewStyle().Foreground(text).Background(bg)
+	hovered := msg.Type == "message" && msg.ID != "" && msg.ID == m.hoveredMessageID
+	if hovered {
+		hoverColor := lipgloss.Color("#F2D66B")
+		bodyStyle = bodyStyle.Foreground(hoverColor)
+	}
 
 	if msg.Type == "letter" {
 		header := fmt.Sprintf("  [%s] sent a letter:", msg.User.Name)
@@ -194,6 +199,14 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 		Foreground(lipgloss.Color(msg.User.Color)).
 		Background(bg).
 		Bold(true)
+	if hovered {
+		nameStyle = nameStyle.Foreground(lipgloss.Color("#F2D66B"))
+	}
+
+	timeStyle := m.styles.time
+	if hovered {
+		timeStyle = timeStyle.Foreground(lipgloss.Color("#F2D66B"))
+	}
 
 	if msg.XKeyscore > 0 {
 		var lines []string
@@ -201,7 +214,7 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 		if width <= 48 {
 			header := msg
 			header.Text = ""
-			lines = renderCompactMessage(rowFill, bodyStyle, nameStyle, m.styles.time, header, timeText, contentWidth)
+			lines = renderCompactMessage(rowFill, bodyStyle, nameStyle, timeStyle, header, timeText, contentWidth)
 		} else {
 			prefix := m.styles.time.Render("[" + timeText + "]") + bodyStyle.Render(" ") + nameStyle.Render(msg.User.Name) + bodyStyle.Render(":")
 			if lipgloss.Width(prefix) >= contentWidth {
@@ -322,10 +335,10 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 	// the next row. This preserves room for readable body text instead of
 	// allowing the timestamp + username prefix to consume the entire width.
 	if width <= 48 {
-		return renderCompactMessage(rowFill, bodyStyle, nameStyle, m.styles.time, msg, timeText, contentWidth)
+		return renderCompactMessage(rowFill, bodyStyle, nameStyle, timeStyle, msg, timeText, contentWidth)
 	}
 
-	timestamp := m.styles.time.Render("[" + timeText + "]")
+	timestamp := timeStyle.Render("[" + timeText + "]")
 	separator := bodyStyle.Render(" ")
 	name := nameStyle.Render(msg.User.Name)
 	suffix := bodyStyle.Render(": ")
