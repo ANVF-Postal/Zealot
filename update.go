@@ -597,7 +597,7 @@ func (m model) Update(
 			return m, nil
 
 		case "backspace":
-			if m.replyTargetID != "" && m.input.Line() == 0 && m.input.Column() == 0 {
+			if m.replyTargetID != "" && !m.input.HasSelection() && m.input.Line() == 0 && m.input.Column() == 0 {
 				m.cancelReply()
 				return m, nil
 			}
