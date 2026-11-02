@@ -210,6 +210,11 @@ func (m model) Update(
 
 	switch mouse := msg.(type) {
 	case tea.MouseClickMsg:
+		m.lastMouseX = mouse.X
+		m.lastMouseY = mouse.Y
+		m.mousePositionKnown = true
+		m.refreshMessageHover()
+
 		// Begin a textarea selection before handling other clickable UI. The
 		// coordinate helper accounts for the composer frame and its first-row
 		// prompt, which is rendered outside the Bubbles textarea.
