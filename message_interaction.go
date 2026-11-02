@@ -260,12 +260,10 @@ func (m model) messageIDAt(x, y int) string {
 		return ""
 	}
 	id := ids[row]
-	for _, packet := range m.messages {
-		if packet.ID == id && packet.Type == "message" {
-			return id
-		}
+	if !m.hasMessageID(id) {
+		return ""
 	}
-	return ""
+	return id
 }
 
 
