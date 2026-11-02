@@ -535,3 +535,33 @@ func TestReplyMarkersNavigateInArrivalOrder(t *testing.T) {
 		t.Fatalf("missing original message should not produce an active link: %#v", lateJoinLinks)
 	}
 }
+
+func TestConnectionCloseDoesNotRenderDisconnectedDuringQuit(t *testing.T) {
+	m := newMessageInteractionTestModel(80)
+	m.quitting = true
+
+	updated, cmd := m.Update(connectionClosedMsg{})
+	got := updated.(model)
+	if !got.connected {
+		t.Fatal("intentional quit changed connected state before the TUI exited")
+	}
+	if got.status == "Disconnected" {
+		t.Fatal("intentional quit rendered a transient Disconnected status")
+	}
+	if cmd == nil {
+		t.Fatal("connection close during intentional quit should finish quitting")
+	}
+}
+
+func TestUnexpectedConnectionCloseStillShowsDisconnected(t *testing.T) {
+	m := newMessageInteractionTestModel(80)
+
+	updated, cmd := m.Update(connectionClosedMsg{})
+	got := updated.(model)
+	if got.connected || got.status != "Disconnected" {
+		t.Fatalf("unexpected close state = connected:%t status:%q, want disconnected", got.connected, got.status)
+	}
+	if cmd != nil {
+		t.Fatal("unexpected connection close should not quit the application")
+	}
+}
