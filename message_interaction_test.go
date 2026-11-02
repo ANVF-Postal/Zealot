@@ -170,17 +170,17 @@ func TestReplyMarkersNavigateInArrivalOrder(t *testing.T) {
 		t.Fatalf("[Replied] link does not target the original message: %#v", replyLinks)
 	}
 	badge := replyLinks[0][0]
-	if got := m.messageLinkAt(badge.Start+1, 4); got != parent.ID {
+	if got := m.messageLinkAt(badge.Start+1, 3); got != parent.ID {
 		t.Fatalf("[Replied] click returned %q, want %q", got, parent.ID)
 	}
 	replyBody := m.messageBodyRanges(first, m.width)
 	if len(replyBody) == 0 || replyBody[0].End <= replyBody[0].Start {
 		t.Fatalf("expected a reply body hitbox, got %#v", replyBody)
 	}
-	if got := m.messageIDAt(badge.Start+1, 4); got != "" {
+	if got := m.messageIDAt(badge.Start+1, 3); got != "" {
 		t.Fatalf("[Replied] label was treated as body text for %q", got)
 	}
-	if got := m.messageIDAt(1+replyBody[0].Start, 4); got != first.ID {
+	if got := m.messageIDAt(1+replyBody[0].Start, 3); got != first.ID {
 		t.Fatalf("reply body click returned %q, want %q", got, first.ID)
 	}
 
