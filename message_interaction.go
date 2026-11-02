@@ -189,7 +189,7 @@ func (m model) messageIDAt(x, y int) string {
 		ranges = make([]messageBodyRange, 0, len(lines))
 		for _, packet := range m.messages {
 			messageLines := m.renderPacketLines(packet, m.width)
-			messageRanges := m.messageBodyRanges(packet, m.width)
+			messageRanges := m.messageBodyRangesForLineCount(packet, m.width, len(messageLines))
 			for i := range messageLines {
 				ids = append(ids, packet.ID)
 				if i < len(messageRanges) {
@@ -291,7 +291,7 @@ func (m model) messageLinkAt(x, y int) string {
 		links = make([][]messageLinkRange, 0, len(lines))
 		for _, packet := range m.messages {
 			messageLines := m.renderPacketLines(packet, m.width)
-			messageLinks := m.messageLinkRanges(packet, m.width)
+			messageLinks := m.messageLinkRangesForLineCount(packet, m.width, len(messageLines))
 			for i := range messageLines {
 				if i < len(messageLinks) {
 					links = append(links, messageLinks[i])
