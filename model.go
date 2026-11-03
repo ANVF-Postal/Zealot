@@ -43,6 +43,13 @@ type model struct {
 	messageByID map[string]Packet
 	replyIDsByMessageID map[string][]string
 	messageRowsByID map[string]messageRowRange
+	// messageRowRanges stores the absolute row range of each message in history
+	// order. The full history needs these lightweight counts for scrolling,
+	// but styled rows are kept only around the current viewport.
+	messageRowRanges []messageRowRange
+	renderWindowStart int
+	renderWindowEnd int
+	renderWindowValid bool
 	renderedMessageIDs []string
 	renderedMessageBodyRanges []messageBodyRange
 	renderedMessageLinks [][]messageLinkRange
