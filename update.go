@@ -464,11 +464,11 @@ func (m model) Update(
 
 	case tea.MouseMotionMsg:
 		if m.mouseMotion == nil {
+			// The production filter owns the shared pointer state. This fallback
+			// keeps direct model tests safe when they bypass program filtering.
 			m.mouseMotion = &mouseMotionState{}
+			m.mouseMotion.record(mouse.X, mouse.Y)
 		}
-		// The input filter has already saved the newest coordinates. Record
-		// them here as well so direct Update calls and tests use the same path.
-		m.mouseMotion.record(mouse.X, mouse.Y)
 		m.mouseMotionFrameGeneration++
 		generation := m.mouseMotionFrameGeneration
 		return m, tea.Tick(mouseMotionFrameInterval, func(time.Time) tea.Msg {
