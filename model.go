@@ -50,9 +50,6 @@ type model struct {
 	renderWindowStart int
 	renderWindowEnd int
 	renderWindowValid bool
-	renderedMessageIDs []string
-	renderedMessageBodyRanges []messageBodyRange
-	renderedMessageLinks [][]messageLinkRange
 	// Interaction geometry is calculated on demand for messages the pointer
 	// reaches, instead of laying out hitboxes for the entire history on resize.
 	messageBodyRangesByID map[string][]messageBodyRange
