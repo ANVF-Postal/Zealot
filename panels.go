@@ -709,22 +709,35 @@ func (m model) scrollbarThumbForLineCount(total int) (top, thumbHeight, trackHei
 }
 
 func (m *model) setScrollFromTrack(trackPosition int) {
-	_, thumbHeight, trackHeight := m.scrollbarThumb()
-	m.setScrollFromThumbTop(trackPosition-thumbHeight/2)
-	_ = trackHeight
+	total := len(m.renderMessageLines())
+	_, thumbHeight, _ := m.scrollbarThumbForLineCount(total)
+	m.setScrollFromThumbTopForLineCount(trackPosition-thumbHeight/2, total)
 }
 
 func (m *model) setScrollFromThumbTop(top int) {
-	_, thumbHeight, trackHeight := m.scrollbarThumb()
-	maxTop := trackHeight-thumbHeight
-	if top < 0 { top = 0 }
-	if top > maxTop { top = maxTop }
+	total := len(m.renderMessageLines())
+	m.setScrollFromThumbTopForLineCount(top, total)
+}
+
+func (m *model) setScrollFromThumbTopForLineCount(top, total int) {
+	_, thumbHeight, trackHeight := m.scrollbarThumbForLineCount(total)
+	maxTop := trackHeight - thumbHeight
+	if maxTop < 0 {
+		maxTop = 0
+	}
+	if top < 0 {
+		top = 0
+	}
+	if top > maxTop {
+		top = maxTop
+	}
+	visible := max(1, m.messageHeight()-1)
+	maxScroll := max(0, total-visible)
 	if maxTop > 0 {
-		m.scroll = m.maxScroll() - top*m.maxScroll()/maxTop
+		m.scroll = maxScroll - top*maxScroll/maxTop
 	} else {
 		m.scroll = 0
 	}
-	m.clampScroll()
 }
 
 func (m model) scrollbarHoldCmd(generation int) tea.Cmd {
