@@ -30,6 +30,10 @@ type typingClearMsg struct {
 	generation int
 }
 
+type mouseMotionFrameMsg struct {
+	generation int
+}
+
 type notificationsReadyMsg struct{}
 
 type quitConfirmTimeoutMsg struct {
