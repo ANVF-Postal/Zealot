@@ -148,6 +148,36 @@ func TestOpeningOnlineUsersDefersTheRosterRequest(t *testing.T) {
 	}
 }
 
+func TestRenderCacheCalculatesInteractionHitboxesOnDemand(t *testing.T) {
+	parent := interactionTestPacket("lazy-parent", "original message body")
+	reply := interactionTestPacket("lazy-reply", "reply body")
+	reply.ReplyTo = parent.ID
+	m := newMessageInteractionTestModel(80, parent, reply)
+
+	if len(m.messageBodyRangesByID) != 0 || len(m.messageLinkRangesByID) != 0 {
+		t.Fatal("cache rebuild eagerly calculated interaction geometry for every message")
+	}
+	if len(m.renderedMessageBodyRanges) != len(m.renderedLines) || len(m.renderedMessageLinks) != len(m.renderedLines) {
+		t.Fatal("placeholder row metadata is not aligned with rendered lines")
+	}
+
+	body := m.messageBodyRanges(parent, m.width)[0]
+	if got := m.messageIDAt(1+body.Start, 2); got != parent.ID {
+		t.Fatalf("body hover returned %q, want %q", got, parent.ID)
+	}
+	if len(m.messageBodyRangesByID) != 1 {
+		t.Fatalf("body hitbox cache contains %d messages, want only the hovered message", len(m.messageBodyRangesByID))
+	}
+
+	badge := m.messageLinkRanges(reply, m.width)[0][0]
+	if got := m.messageLinkAt(1+badge.Start+1, 3); got != parent.ID {
+		t.Fatalf("reply badge click returned %q, want %q", got, parent.ID)
+	}
+	if len(m.messageLinkRangesByID) != 1 {
+		t.Fatalf("reply-link cache contains %d messages, want only the clicked message", len(m.messageLinkRangesByID))
+	}
+}
+
 func TestMessageHoverRestylesOnlyAffectedRows(t *testing.T) {
 	first := interactionTestPacket("hover-1", "hover this body")
 	second := interactionTestPacket("hover-2", "another message")
