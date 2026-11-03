@@ -275,6 +275,52 @@ func TestMouseMotionFilterCoalescesScrollbarDragAndPreservesActions(t *testing.T
 	}
 }
 
+func TestMouseReleaseFlushesLatestCoalescedDragPosition(t *testing.T) {
+	messages := make([]Packet, 40)
+	for i := range messages {
+		messages[i] = interactionTestPacket(fmt.Sprintf("release-drag-%d", i), "scrollable message")
+	}
+	m := newMessageInteractionTestModel(80, messages...)
+	m.mouseMotion = &mouseMotionState{}
+	m.scrollDragging = true
+	filter := mouseMotionFilter{state: m.mouseMotion}
+
+	_, thumbHeight, trackHeight := m.scrollbarThumb()
+	targetTop := (trackHeight - thumbHeight) / 2
+	targetY := 3 + targetTop
+	first := tea.MouseMotionMsg{X: m.chatScrollbarX(), Y: 4, Button: tea.MouseLeft}
+	if filter.filter(m, first) == nil {
+		t.Fatal("first drag event was filtered")
+	}
+	updated, cmd := m.Update(first)
+	if cmd == nil {
+		t.Fatal("first drag event did not schedule a frame")
+	}
+	m = updated.(model)
+
+	latest := tea.MouseMotionMsg{X: m.chatScrollbarX(), Y: targetY, Button: tea.MouseLeft}
+	if filter.filter(m, latest) != nil {
+		t.Fatal("intermediate drag event was not coalesced")
+	}
+	updated, _ = m.Update(tea.MouseReleaseMsg{})
+	got := updated.(model)
+	if got.scrollDragging {
+		t.Fatal("mouse release left scrollbar dragging active")
+	}
+	expected := m
+	expected.setScrollFromThumbTopForLineCount(targetTop, len(expected.renderMessageLines()))
+	if got.scroll != expected.scroll {
+		t.Fatalf("release scroll = %d, want latest dragged position %d", got.scroll, expected.scroll)
+	}
+
+	// The already-scheduled frame is still valid, but must not resume dragging.
+	generation := got.mouseMotionFrameGeneration
+	updated, _ = got.Update(mouseMotionFrameMsg{generation: generation})
+	if after := updated.(model); after.scroll != got.scroll || after.scrollDragging {
+		t.Fatalf("post-release frame changed scroll state: scroll=%d dragging=%t", after.scroll, after.scrollDragging)
+	}
+}
+
 func TestHeaderClickClearsMessageHoverImmediately(t *testing.T) {
 	packet := interactionTestPacket("hover-header", "message body")
 	m := newMessageInteractionTestModel(80, packet)
