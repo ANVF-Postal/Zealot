@@ -64,9 +64,9 @@ type model struct {
 	lastMouseY int
 	mousePositionKnown bool
 
-	// Rendered rows are cached for the current terminal width. New messages
-	// append only their own rows; a width change rebuilds the cache once.
-	renderedLines    []string
+	// renderedLines is indexed by absolute history row, but styled strings
+	// are populated only for the visible window and its small prefetch buffer.
+	renderedLines []string
 	renderCacheWidth int
 	renderCacheValid bool
 
