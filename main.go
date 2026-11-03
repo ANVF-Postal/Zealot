@@ -131,8 +131,7 @@ func main() {
 		client,
 	)
 
-	motionFilter := mouseMotionFilter{state: m.mouseMotion}
-	program := tea.NewProgram(m, tea.WithFilter(motionFilter.filter))
+	program := tea.NewProgram(m)
 
 	if _, err := program.Run(); err != nil {
 		fmt.Fprintln(
