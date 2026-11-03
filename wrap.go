@@ -289,6 +289,107 @@ func wrapTextVariable(text string, firstWidth, secondWidth, fullWidth int) []str
 	return result
 }
 
+
+ // wrapTextLineCountVariable mirrors wrapTextVariable without constructing
+ // wrapped output strings. Resize uses it to keep an exact history height
+ // index while formatting only the messages near the viewport.
+func wrapTextLineCountVariable(text string, firstWidth, secondWidth, fullWidth int) int {
+	if firstWidth < 0 {
+		firstWidth = 0
+	}
+	if secondWidth < 1 {
+		secondWidth = 1
+	}
+	if fullWidth < 1 {
+		fullWidth = 1
+	}
+	lineWidth := func(lineIndex int) int {
+		switch lineIndex {
+		case 0:
+			return firstWidth
+		case 1:
+			return secondWidth
+		default:
+			return fullWidth
+		}
+	}
+
+	lineCount := 0
+	currentWidth := 0
+	for _, paragraph := range strings.Split(text, "\n") {
+		words := strings.Fields(paragraph)
+		if len(words) == 0 {
+			if currentWidth > 0 {
+				lineCount++
+				currentWidth = 0
+			}
+			lineCount++
+			continue
+		}
+
+		for _, token := range words {
+			remaining := token
+			for remaining != "" {
+				capacity := lineWidth(lineCount)
+				if capacity < 1 {
+					if currentWidth > 0 {
+						lineCount++
+						currentWidth = 0
+						continue
+					}
+					lineCount++
+					continue
+				}
+
+				remainingWidth := lipgloss.Width(remaining)
+				if currentWidth > 0 {
+					if currentWidth+1+remainingWidth <= capacity {
+						currentWidth += 1 + remainingWidth
+						remaining = ""
+						break
+					}
+					lineCount++
+					currentWidth = 0
+					continue
+				}
+
+				if remainingWidth <= capacity {
+					currentWidth = remainingWidth
+					remaining = ""
+					break
+				}
+
+				part, rest := splitLongWordPrefix(remaining, capacity, isURLLike(token))
+				if part == "" || rest == remaining {
+					_, size := utf8.DecodeRuneInString(remaining)
+					if size < 1 {
+						remaining = ""
+						break
+					}
+					part, rest = remaining[:size], remaining[size:]
+				}
+				lineCount++
+				remaining = rest
+			}
+		}
+		if currentWidth > 0 {
+			lineCount++
+			currentWidth = 0
+		}
+	}
+	if lineCount == 0 {
+		return 1
+	}
+	return lineCount
+}
+
+func wrapTextLineCount(text string, width int) int {
+	if width < 1 {
+		width = 1
+	}
+	return wrapTextLineCountVariable(text, width, width, width)
+}
+
 func splitLongWordPrefix(word string, width int, urlLike bool) (string, string) {
 	if width < 1 || word == "" {
 		return "", word
