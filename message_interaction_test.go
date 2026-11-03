@@ -220,31 +220,57 @@ func TestMessageHoverMotionUsesLatestPositionPerFrame(t *testing.T) {
 }
 
 func TestMouseMotionFilterCoalescesScrollbarDragAndPreservesActions(t *testing.T) {
-	m := newMessageInteractionTestModel(80)
+	messages := make([]Packet, 40)
+	for i := range messages {
+		messages[i] = interactionTestPacket(fmt.Sprintf("drag-%d", i), "scrollable message")
+	}
+	m := newMessageInteractionTestModel(80, messages...)
 	m.mouseMotion = &mouseMotionState{}
 	m.scrollDragging = true
 	filter := mouseMotionFilter{state: m.mouseMotion}
 
-	first := tea.MouseMotionMsg{X: 79, Y: 4, Button: tea.MouseLeft}
+	_, thumbHeight, trackHeight := m.scrollbarThumb()
+	maxTop := trackHeight - thumbHeight
+	targetTop := maxTop / 2
+	targetY := 3 + targetTop + m.scrollDragOffset
+	first := tea.MouseMotionMsg{X: m.chatScrollbarX(), Y: 4, Button: tea.MouseLeft}
 	if filter.filter(m, first) == nil {
 		t.Fatal("first scrollbar drag motion was filtered")
 	}
+	updated, frameCmd := m.Update(first)
+	if frameCmd == nil {
+		t.Fatal("first scrollbar drag motion did not schedule a frame refresh")
+	}
+	m = updated.(model)
+
 	for i := 0; i < 1000; i++ {
-		motion := tea.MouseMotionMsg{X: 79, Y: 5 + i%10, Button: tea.MouseLeft}
+		motion := tea.MouseMotionMsg{X: m.chatScrollbarX(), Y: 5 + i%10, Button: tea.MouseLeft}
 		if i == 999 {
-			motion.Y = 20
+			motion.Y = targetY
 		}
 		if filter.filter(m, motion) != nil {
 			t.Fatalf("scrollbar drag motion %d was not coalesced", i)
 		}
 	}
-	if x, y, known := m.mouseMotion.position(); !known || x != 79 || y != 20 {
-		t.Fatalf("latest drag position = (%d, %d, %t), want (79, 20, true)", x, y, known)
+	if x, y, known := m.mouseMotion.position(); !known || x != m.chatScrollbarX() || y != targetY {
+		t.Fatalf("latest drag position = (%d, %d, %t), want (%d, %d, true)", x, y, known, m.chatScrollbarX(), targetY)
 	}
-	if filter.filter(m, tea.MouseClickMsg{Button: tea.MouseLeft, X: 79, Y: 20}) == nil {
+	generation := m.mouseMotionFrameGeneration
+	updated, next := m.Update(mouseMotionFrameMsg{generation: generation})
+	if next != nil {
+		t.Fatal("drag frame unexpectedly scheduled an additional command")
+	}
+	got := updated.(model)
+	expected := m
+	expected.setScrollFromThumbTopForLineCount(targetTop, len(expected.renderMessageLines()))
+	if got.scroll != expected.scroll || got.scroll == 0 || got.scroll == got.maxScroll() {
+		t.Fatalf("coalesced drag scroll = %d, expected middle position %d (range 0..%d)", got.scroll, expected.scroll, got.maxScroll())
+	}
+
+	if filter.filter(got, tea.MouseClickMsg{Button: tea.MouseLeft, X: 79, Y: targetY}) == nil {
 		t.Fatal("click was filtered while a motion frame was pending")
 	}
-	if filter.filter(m, tea.MouseReleaseMsg{}) == nil {
+	if filter.filter(got, tea.MouseReleaseMsg{}) == nil {
 		t.Fatal("mouse release was filtered while a motion frame was pending")
 	}
 }
