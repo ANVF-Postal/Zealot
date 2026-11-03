@@ -178,6 +178,66 @@ func TestRenderCacheCalculatesInteractionHitboxesOnDemand(t *testing.T) {
 	}
 }
 
+func TestPacketRowCountMatchesRendererAtCommonWidths(t *testing.T) {
+	parent := interactionTestPacket("count-parent", strings.Repeat("word ", 18))
+	reply := interactionTestPacket("count-reply", "reply body")
+	reply.ReplyTo = parent.ID
+	longName := interactionTestPacket("count-long-name", strings.Repeat("U", 70)+" message")
+	packets := []Packet{
+		interactionTestPacket("count-short", "short body"),
+		interactionTestPacket("count-wrap", strings.Repeat("word ", 35)),
+		interactionTestPacket("count-newlines", "first line\n\nthird line"),
+		interactionTestPacket("count-long-token", strings.Repeat("x", 120)),
+		longName,
+		parent,
+		reply,
+		{Type: "system", Text: strings.Repeat("system notice ", 10), Time: parent.Time},
+		{Type: "me", Text: strings.Repeat("waves ", 12), User: parent.User, Time: parent.Time},
+		{Type: "letter", Text: "letter body\n"+strings.Repeat("wide text ", 12), User: parent.User, Time: parent.Time},
+		{Type: "message", ID: "count-xkeyscore", Text: "XKEYSCORE", User: parent.User, Time: parent.Time, XKeyscore: 1},
+		{Type: "message", ID: "count-xkeyscore-3", Text: "XKEYSCORE", User: parent.User, Time: parent.Time, XKeyscore: 3, Rainbow: true},
+	}
+	m := newMessageInteractionTestModel(80, packets...)
+	m.rebuildMessageIndexes()
+	for _, width := range []int{20, 32, 48, 49, 64, 80, 120} {
+		for _, packet := range packets {
+			got := m.renderPacketLineCount(packet, width)
+			want := len(m.renderPacketLines(packet, width))
+			if got != want {
+				t.Errorf("row count for %s at width %d = %d, renderer produced %d", packet.ID, width, got, want)
+			}
+		}
+	}
+}
+
+func TestOnlyViewportAndThreeRowBufferAreStyled(t *testing.T) {
+	messages := make([]Packet, 100)
+	for i := range messages {
+		messages[i] = interactionTestPacket(fmt.Sprintf("virtual-%d", i), "short message")
+	}
+	m := newMessageInteractionTestModel(80, messages...)
+	first := m.messageRowsByID[messages[0].ID]
+	last := m.messageRowsByID[messages[len(messages)-1].ID]
+	if m.renderedLines[first.Start] != "" {
+		t.Fatal("off-screen first message was styled during initial viewport render")
+	}
+	if m.renderedLines[last.Start] == "" {
+		t.Fatal("latest message in the viewport was not styled")
+	}
+	if !m.renderWindowValid || m.renderWindowStart <= first.Start {
+		t.Fatalf("rendered window = %d..%d, want a bounded window near the bottom", m.renderWindowStart, m.renderWindowEnd)
+	}
+
+	m.scroll = m.maxScroll()
+	m.clampScroll()
+	if m.renderedLines[first.Start] == "" {
+		t.Fatal("scrolling to the top did not render the first message")
+	}
+	if m.renderedLines[last.Start] != "" {
+		t.Fatal("scrolling to the top left the off-screen latest message styled")
+	}
+}
+
 func TestMessageHoverRestylesOnlyAffectedRows(t *testing.T) {
 	first := interactionTestPacket("hover-1", "hover this body")
 	second := interactionTestPacket("hover-2", "another message")
