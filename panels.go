@@ -740,9 +740,14 @@ func (m model) maxScroll() int {
 }
 
 func (m *model) clampScroll() {
-	max := m.maxScroll()
-	if m.scroll < 0 { m.scroll = 0 }
-	if m.scroll > max { m.scroll = max }
+	maxScroll := m.maxScroll()
+	if m.scroll < 0 {
+		m.scroll = 0
+	}
+	if m.scroll > maxScroll {
+		m.scroll = maxScroll
+	}
+	m.refreshRenderedWindow()
 	m.refreshMessageHover()
 }
 
@@ -812,6 +817,7 @@ func (m *model) setScrollFromThumbTopForLineCount(top, total int) {
 	} else {
 		m.scroll = 0
 	}
+	m.refreshRenderedWindow()
 	m.refreshMessageHover()
 }
 
