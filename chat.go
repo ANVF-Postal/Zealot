@@ -21,6 +21,76 @@ func (m model) renderMessageLines() []string {
 	return m.renderAllMessageLines()
 }
 
+
+ // renderPacketLineCount calculates the exact wrapped height without styling
+ // or constructing terminal row strings. It is used for off-screen messages
+ // so scroll geometry remains accurate while rendering stays viewport-bound.
+func (m model) renderPacketLineCount(msg Packet, width int) int {
+	if width < 1 {
+		return 1
+	}
+	if msg.Type != "message" || msg.XKeyscore > 0 {
+		return max(1, len(m.renderPacketBaseLines(msg, width)))
+	}
+	// Reply markers can add rows at the end of a parent message. These are
+	// uncommon, so use the existing renderer to keep their placement exact.
+	if len(m.repliesFor(msg.ID)) > 0 {
+		return max(1, len(m.renderPacketLines(msg, width)))
+	}
+
+	contentWidth := chatContentWidth(width)
+	replyBadge := m.renderReplyBadgeForWidth(msg, width)
+	if width <= 48 {
+		return m.compactMessageLineCount(msg, width, replyBadge)
+	}
+
+	bg := lipgloss.Color(m.cfg.Background)
+	bodyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.TextColor)).Background(bg)
+	nameStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(msg.User.Color)).
+		Background(bg).
+		Bold(true)
+	timestamp := m.styles.time.Render("[" + msg.Time.Local().Format("15:04") + "]")
+	prefix := timestamp + bodyStyle.Render(" ") + nameStyle.Render(msg.User.Name)
+	if replyBadge != "" {
+		prefix += replyBadge
+	}
+	prefix += bodyStyle.Render(": ")
+	prefixWidth := lipgloss.Width(prefix)
+	if prefixWidth >= contentWidth {
+		return m.compactMessageLineCount(msg, width, m.renderReplyBadgeForWidth(msg, 48))
+	}
+	return max(1, wrapTextLineCount(msg.Text, contentWidth-prefixWidth))
+}
+
+func (m model) compactMessageLineCount(msg Packet, width int, replyBadge string) int {
+	contentWidth := chatContentWidth(width)
+	nameWidth := contentWidth - 2 - lipgloss.Width(replyBadge)
+	if nameWidth < 1 {
+		nameWidth = 1
+	}
+	nameParts := wrapText(msg.User.Name, nameWidth)
+	if len(nameParts) == 0 {
+		nameParts = []string{""}
+	}
+	stampWidth := lipgloss.Width("[" + msg.Time.Local().Format("15:04") + "]")
+	if len(nameParts) > 1 {
+		wrappedCount := wrapTextLineCountVariable(msg.Text, 0, contentWidth-stampWidth-1, contentWidth)
+		if wrappedCount < 2 {
+			return len(nameParts) + 1
+		}
+		return len(nameParts) + wrappedCount
+	}
+
+	labelWidth := lipgloss.Width(replyBadge) + lipgloss.Width(nameParts[0]+": ")
+	firstWidth := contentWidth - labelWidth
+	wrappedCount := wrapTextLineCountVariable(msg.Text, firstWidth, contentWidth-stampWidth-1, contentWidth)
+	if wrappedCount < 2 {
+		return 2 // A one-row body is followed by its timestamp row.
+	}
+	return wrappedCount
+}
+
 func (m model) renderAllMessageLines() []string {
 	var lines []string
 	for _, message := range m.messages {
