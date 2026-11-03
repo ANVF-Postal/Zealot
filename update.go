@@ -747,10 +747,8 @@ func (m *model) applyMouseMotion(x, y int) {
 		return
 	}
 	if m.scrollDragging && !m.usersOpen && !m.splashOpen {
-		_, thumbHeight, trackHeight := m.scrollbarThumb()
 		target := y - 3 - m.scrollDragOffset
-		target = min(max(target, 0), max(0, trackHeight-thumbHeight))
-		m.setScrollFromThumbTop(target)
+		m.setScrollFromThumbTopForLineCount(target, len(m.renderMessageLines()))
 		return
 	}
 	m.refreshMessageHover()
