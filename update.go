@@ -207,8 +207,9 @@ func (m model) Update(
 
 	if timeoutMsg, ok := msg.(messageNavigationHighlightTimeoutMsg); ok {
 		if timeoutMsg.generation == m.navigationHighlightGeneration {
+			previousID := m.highlightedMessageID
 			m.highlightedMessageID = ""
-			m.rebuildMessageCache()
+			m.restyleMessageRows(previousID)
 		}
 		return m, nil
 	}
@@ -625,6 +626,7 @@ func (m model) Update(
 				return m, nil
 			}
 			m.scroll = m.maxScroll()
+			m.refreshRenderedWindow()
 			m.refreshMessageHover()
 			return m, nil
 
@@ -634,6 +636,7 @@ func (m model) Update(
 				return m, nil
 			}
 			m.scroll = 0
+			m.refreshRenderedWindow()
 			m.refreshMessageHover()
 			return m, nil
 
