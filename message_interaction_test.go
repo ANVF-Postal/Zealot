@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -177,49 +178,42 @@ func TestMessageHoverRestylesOnlyAffectedRows(t *testing.T) {
 	}
 }
 
-func TestMessageHoverMotionIsDebounced(t *testing.T) {
-	first := interactionTestPacket("hover-debounce-1", "first message body")
-	second := interactionTestPacket("hover-debounce-2", "second message body")
+func TestMessageHoverMotionUpdatesImmediately(t *testing.T) {
+	first := interactionTestPacket("hover-now-1", "first message body")
+	second := interactionTestPacket("hover-now-2", "second message body")
 	m := newMessageInteractionTestModel(80, first, second)
 
 	firstBody := m.messageBodyRanges(first, m.width)[0]
 	secondBody := m.messageBodyRanges(second, m.width)[0]
-	m.mousePositionKnown = true
 	firstUpdated, firstCmd := m.Update(tea.MouseMotionMsg{X: 1 + firstBody.Start, Y: 2})
-	if firstCmd == nil {
-		t.Fatal("first pointer movement did not schedule a hover refresh")
+	if firstCmd != nil {
+		t.Fatal("passive hover unexpectedly scheduled a timer command")
 	}
 	m = firstUpdated.(model)
-	if m.hoveredMessageID != "" {
-		t.Fatalf("hover changed before debounce elapsed: %q", m.hoveredMessageID)
+	if m.hoveredMessageID != first.ID {
+		t.Fatalf("first hover = %q, want immediate highlight of %q", m.hoveredMessageID, first.ID)
 	}
 
-	// Further motion should update the stored pointer without scheduling
-	// another timer or flashing the message underneath it immediately.
 	secondUpdated, secondCmd := m.Update(tea.MouseMotionMsg{X: 1 + secondBody.Start, Y: 3})
 	if secondCmd != nil {
-		t.Fatal("pointer movement scheduled overlapping hover refreshes")
+		t.Fatal("second passive hover unexpectedly scheduled a timer command")
 	}
 	m = secondUpdated.(model)
-	if m.hoveredMessageID != "" {
-		t.Fatalf("hover changed during pointer movement: %q", m.hoveredMessageID)
-	}
-
-	updated, _ := m.Update(messageHoverRefreshMsg{generation: m.messageHoverGeneration})
-	got := updated.(model)
-	if got.hoveredMessageID != second.ID {
-		t.Fatalf("debounced hover = %q, want latest message %q", got.hoveredMessageID, second.ID)
+	if m.hoveredMessageID != second.ID {
+		t.Fatalf("second hover = %q, want immediate highlight of %q", m.hoveredMessageID, second.ID)
 	}
 }
 
-func TestHeaderClickCancelsPendingMessageHover(t *testing.T) {
-	packet := interactionTestPacket("hover-cancel", "message body")
+func TestHeaderClickClearsMessageHoverImmediately(t *testing.T) {
+	packet := interactionTestPacket("hover-header", "message body")
 	m := newMessageInteractionTestModel(80, packet)
 	m.mousePositionKnown = true
 	m.lastMouseX = 1 + m.messageBodyRanges(packet, m.width)[0].Start
 	m.lastMouseY = 2
-	m.messageHoverPending = true
-	m.messageHoverGeneration = 4
+	m.refreshMessageHover()
+	if m.hoveredMessageID != packet.ID {
+		t.Fatal("test setup did not establish a hovered message")
+	}
 
 	updated, _ := m.Update(tea.MouseClickMsg{
 		Button: tea.MouseLeft,
@@ -227,15 +221,69 @@ func TestHeaderClickCancelsPendingMessageHover(t *testing.T) {
 		Y:      0,
 	})
 	got := updated.(model)
-	if got.messageHoverPending {
-		t.Fatal("header click left a passive hover refresh pending")
+	if got.hoveredMessageID != "" {
+		t.Fatal("header click did not clear message hover immediately")
 	}
-	if got.splashOpen != true {
+	if !got.splashOpen {
 		t.Fatal("header click did not open the splash panel")
 	}
-	stale, _ := got.Update(messageHoverRefreshMsg{generation: 4})
-	if stale.(model).hoveredMessageID != "" {
-		t.Fatal("stale hover timer changed hover state after opening the splash")
+}
+
+func TestSetScrollFromThumbTopUsesFullRangeEndpoints(t *testing.T) {
+	messages := make([]Packet, 40)
+	for i := range messages {
+		messages[i] = interactionTestPacket(
+			fmt.Sprintf("scroll-%d", i),
+			"short line",
+		)
+	}
+	m := newMessageInteractionTestModel(80, messages...)
+	if maxScroll := m.maxScroll(); maxScroll < 1 {
+		t.Fatalf("test history only provides %d scroll rows; want a scrollable history", maxScroll)
+	}
+	_, thumbHeight, trackHeight := m.scrollbarThumb()
+	maxTop := trackHeight - thumbHeight
+	if maxTop < 1 {
+		t.Fatalf("test scrollbar has no draggable range: thumb=%d track=%d", thumbHeight, trackHeight)
+	}
+
+	m.setScrollFromThumbTop(-100)
+	if m.scroll != m.maxScroll() {
+		t.Fatalf("top clamp scroll = %d, want maximum %d", m.scroll, m.maxScroll())
+	}
+	m.setScrollFromThumbTop(maxTop + 100)
+	if m.scroll != 0 {
+		t.Fatalf("bottom clamp scroll = %d, want 0", m.scroll)
+	}
+}
+
+func TestTypingClearTimerIsCoalescedAcrossKeystrokes(t *testing.T) {
+	m := newMessageInteractionTestModel(80)
+	firstCmd := m.scheduleTypingClear()
+	if firstCmd == nil {
+		t.Fatal("first key did not schedule a typing clear timer")
+	}
+	firstGeneration := m.typingGeneration
+
+	secondCmd := m.scheduleTypingClear()
+	if secondCmd != nil {
+		t.Fatal("a second key scheduled an overlapping typing clear timer")
+	}
+	if !m.typingTimerPending {
+		t.Fatal("typing timeout was not kept pending across the burst")
+	}
+	if m.typingGeneration <= firstGeneration {
+		t.Fatal("later key did not move the typing deadline generation")
+	}
+
+	m.isTyping = true
+	updated, rearmCmd := m.Update(typingClearMsg{generation: firstGeneration})
+	got := updated.(model)
+	if rearmCmd == nil {
+		t.Fatal("stale first timer did not re-arm for the latest key deadline")
+	}
+	if !got.typingTimerPending {
+		t.Fatal("re-arming the timer cleared the pending state")
 	}
 }
 
