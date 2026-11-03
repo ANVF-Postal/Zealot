@@ -213,25 +213,22 @@ func (m model) Update(
 		return m, nil
 	}
 
-	if hoverMsg, ok := msg.(messageHoverRefreshMsg); ok {
-		if hoverMsg.generation == m.messageHoverGeneration {
-			m.messageHoverPending = false
-			if x, y, known := m.mouseMotion.position(); known {
-				m.lastMouseX = x
-				m.lastMouseY = y
-				m.mousePositionKnown = true
-			}
-			m.refreshMessageHover()
-		}
-		return m, nil
-	}
-
 	if clearMsg, ok := msg.(typingClearMsg); ok {
-		if clearMsg.generation == m.typingGeneration {
+		if !m.typingTimerPending {
+			return m, nil
+		}
+		remaining := time.Until(m.lastTypingAt.Add(typingClearDelay))
+		if clearMsg.generation != m.typingGeneration && remaining > 0 {
+			generation := m.typingGeneration
+			return m, tea.Tick(remaining, func(time.Time) tea.Msg {
+				return typingClearMsg{generation: generation}
+			})
+		}
+		m.typingTimerPending = false
+		if m.isTyping {
 			m.isTyping = false
 			m.sendTyping(false)
 		}
-
 		return m, nil
 	}
 
@@ -247,8 +244,6 @@ func (m model) Update(
 		m.mouseMotion.record(mouse.X, mouse.Y)
 		// A click takes priority over any pending passive-hover update. In
 		// particular, don't make a header click wait for an old hover timer.
-		m.messageHoverGeneration++
-		m.messageHoverPending = false
 		m.refreshMessageHover()
 
 		// Begin a textarea selection before handling other clickable UI. The
@@ -483,16 +478,14 @@ func (m model) Update(
 			return m, nil
 		}
 		if m.scrollDragging && !m.usersOpen && !m.splashOpen {
-			_, thumbHeight, trackHeight := m.scrollbarThumb()
 			target := mouse.Y - 3 - m.scrollDragOffset
-			if target < 0 { target = 0 }
-			if target > trackHeight-thumbHeight { target = trackHeight-thumbHeight }
 			m.setScrollFromThumbTop(target)
 			return m, nil
 		}
-		// Delay passive hover work until pointer motion settles briefly. This
-		// coalesces a sweep across many message rows into one visual update.
-		return m, m.scheduleMessageHover()
+		// Hover is backed by cached message rows, so update it on this input
+		// event rather than adding a timer-sized delay to the visible feedback.
+		m.refreshMessageHover()
+		return m, nil
 
 	case tea.MouseReleaseMsg:
 		if m.inputSelecting {
@@ -700,10 +693,6 @@ func (m model) Update(
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		if m.connected && isTextInputKey(keyMsg) {
 
-			m.typingGeneration++
-
-			generation := m.typingGeneration
-
 			// Start blinking only when there is actual text.
 			blinkCmd := m.startCursorBlink()
 
@@ -714,14 +703,7 @@ func (m model) Update(
 
 			// Consider the user to have stopped typing after
 			// 1.2 seconds without another editing key.
-			typingCmd := tea.Tick(
-				1200*time.Millisecond,
-				func(time.Time) tea.Msg {
-					return typingClearMsg{
-						generation: generation,
-					}
-				},
-			)
+			typingCmd := m.scheduleTypingClear()
 
 			return m, tea.Batch(
 				inputCmd,
@@ -788,6 +770,24 @@ func isTextInputKey(
 	}
 
 	return false
+}
+
+const typingClearDelay = 1200 * time.Millisecond
+
+// scheduleTypingClear keeps only one outstanding timer for a continuous
+// typing burst. Later keystrokes move the deadline; the first timer wakes once
+// and, if necessary, arms a single replacement for the remaining quiet time.
+func (m *model) scheduleTypingClear() tea.Cmd {
+	m.typingGeneration++
+	m.lastTypingAt = time.Now()
+	if m.typingTimerPending {
+		return nil
+	}
+	m.typingTimerPending = true
+	generation := m.typingGeneration
+	return tea.Tick(typingClearDelay, func(time.Time) tea.Msg {
+		return typingClearMsg{generation: generation}
+	})
 }
 
 func (m model) sendTyping(
