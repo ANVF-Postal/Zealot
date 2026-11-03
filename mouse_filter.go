@@ -6,8 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// mouseMotionState shares the latest terminal pointer position between
-// Bubble Tea's input filter and the delayed hover-refresh message.
+// mouseMotionState shares the latest terminal pointer position with the model.
 type mouseMotionState struct {
 	mu    sync.Mutex
 	x     int
@@ -40,27 +39,12 @@ type mouseMotionFilter struct {
 	state *mouseMotionState
 }
 
-// filter runs before Update and View. While a passive hover refresh is
-// pending, motion events only update the shared pointer position; they do not
-// trigger another model update or render. Clicks and active drags always pass.
-func (f mouseMotionFilter) filter(current tea.Model, msg tea.Msg) tea.Msg {
-	motion, ok := msg.(tea.MouseMotionMsg)
-	if !ok {
-		return msg
-	}
-	if f.state != nil {
+// filter records pointer coordinates but always lets motion through. Passive
+// hover is now cheap enough to update immediately, and active scrollbar drags
+// must never be throttled or discarded.
+func (f mouseMotionFilter) filter(_ tea.Model, msg tea.Msg) tea.Msg {
+	if motion, ok := msg.(tea.MouseMotionMsg); ok && f.state != nil {
 		f.state.record(motion.X, motion.Y)
-	}
-
-	m, ok := current.(model)
-	if !ok {
-		return msg
-	}
-	if motion.Button != 0 || m.inputSelecting || m.scrollDragging || m.usersScrollDragging || m.splashScrollDragging {
-		return msg
-	}
-	if m.messageHoverPending {
-		return nil
 	}
 	return msg
 }
