@@ -44,19 +44,8 @@ func (m model) renderPacketLineCount(msg Packet, width int) int {
 		return m.compactMessageLineCount(msg, width, replyBadge)
 	}
 
-	bg := lipgloss.Color(m.cfg.Background)
-	bodyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.TextColor)).Background(bg)
-	nameStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(msg.User.Color)).
-		Background(bg).
-		Bold(true)
-	timestamp := m.styles.time.Render("[" + msg.Time.Local().Format("15:04") + "]")
-	prefix := timestamp + bodyStyle.Render(" ") + nameStyle.Render(msg.User.Name)
-	if replyBadge != "" {
-		prefix += replyBadge
-	}
-	prefix += bodyStyle.Render(": ")
-	prefixWidth := lipgloss.Width(prefix)
+	prefixWidth := lipgloss.Width("[" + msg.Time.Local().Format("15:04") + "]") +
+		1 + lipgloss.Width(msg.User.Name) + lipgloss.Width(replyBadge) + 2
 	if prefixWidth >= contentWidth {
 		return m.compactMessageLineCount(msg, width, m.renderReplyBadgeForWidth(msg, 48))
 	}
