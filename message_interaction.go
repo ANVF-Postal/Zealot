@@ -325,7 +325,6 @@ func (m model) messageIDAt(x, y int) string {
 	if localX < body.Start || localX >= body.End {
 		return ""
 	}
-	id := ids[row]
 	if !m.hasMessageID(id) {
 		return ""
 	}
