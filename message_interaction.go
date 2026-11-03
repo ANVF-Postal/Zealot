@@ -147,6 +147,73 @@ func clippedMessageBodyRange(start, end, width int) messageBodyRange {
 	return messageBodyRange{Start: start, End: end}
 }
 
+// cachedBodyRangesForMessage calculates hover geometry only when a message is
+// actually under the pointer. The result is reused until that message is
+// rerendered or the terminal width changes.
+func (m model) cachedBodyRangesForMessage(messageID string, lineCount int) []messageBodyRange {
+	if m.renderCacheValid {
+		if ranges, ok := m.messageBodyRangesByID[messageID]; ok {
+			return ranges
+		}
+		if rows, ok := m.messageRowsByID[messageID]; ok {
+			lineCount = rows.End - rows.Start
+		}
+	}
+	packet, exists := m.messageByID[messageID]
+	if !exists {
+		for _, candidate := range m.messages {
+			if candidate.ID == messageID && candidate.Type == "message" {
+				packet, exists = candidate, true
+				break
+			}
+		}
+	}
+	if !exists {
+		return nil
+	}
+	if lineCount < 1 {
+		lineCount = len(m.renderPacketLines(packet, m.width))
+	}
+	ranges := m.messageBodyRangesForLineCount(packet, m.width, lineCount)
+	if m.renderCacheValid && m.messageBodyRangesByID != nil {
+		m.messageBodyRangesByID[messageID] = ranges
+	}
+	return ranges
+}
+
+// cachedLinkRangesForMessage calculates reply-link geometry on demand. Most
+// messages are never clicked, so resize work no longer builds their hitboxes.
+func (m model) cachedLinkRangesForMessage(messageID string, lineCount int) [][]messageLinkRange {
+	if m.renderCacheValid {
+		if ranges, ok := m.messageLinkRangesByID[messageID]; ok {
+			return ranges
+		}
+		if rows, ok := m.messageRowsByID[messageID]; ok {
+			lineCount = rows.End - rows.Start
+		}
+	}
+	packet, exists := m.messageByID[messageID]
+	if !exists {
+		for _, candidate := range m.messages {
+			if candidate.ID == messageID && candidate.Type == "message" {
+				packet, exists = candidate, true
+				break
+			}
+		}
+	}
+	if !exists {
+		return nil
+	}
+	if lineCount < 1 {
+		lineCount = len(m.renderPacketLines(packet, m.width))
+	}
+	ranges := m.messageLinkRangesForLineCount(packet, m.width, lineCount)
+	if m.renderCacheValid && m.messageLinkRangesByID != nil {
+		m.messageLinkRangesByID[messageID] = ranges
+	}
+	return ranges
+}
+
 // refreshMessageHover recalculates the body hover under the last pointer
 // position after scrolling, resizing, or opening and closing a side panel.
 func (m *model) restyleMessageRows(messageID string) bool {
@@ -224,29 +291,37 @@ func (m model) messageIDAt(x, y int) string {
 	}
 
 	ids := m.renderedMessageIDs
-	ranges := m.renderedMessageBodyRanges
-	if !m.renderCacheValid || len(ids) != len(lines) || len(ranges) != len(lines) {
+	rowsByID := m.messageRowsByID
+	if !m.renderCacheValid || len(ids) != len(lines) {
 		ids = make([]string, 0, len(lines))
-		ranges = make([]messageBodyRange, 0, len(lines))
+		rowsByID = make(map[string]messageRowRange, len(m.messages))
 		for _, packet := range m.messages {
 			messageLines := m.renderPacketLines(packet, m.width)
-			messageRanges := m.messageBodyRangesForLineCount(packet, m.width, len(messageLines))
-			for i := range messageLines {
+			rowStart := len(ids)
+			for range messageLines {
 				ids = append(ids, packet.ID)
-				if i < len(messageRanges) {
-					ranges = append(ranges, messageRanges[i])
-				} else {
-					ranges = append(ranges, messageBodyRange{})
-				}
+			}
+			if packet.ID != "" {
+				rowsByID[packet.ID] = messageRowRange{Start: rowStart, End: len(ids)}
 			}
 		}
 	}
-	if row >= len(ids) || row >= len(ranges) || ids[row] == "" {
+	if row >= len(ids) || ids[row] == "" {
 		return ""
 	}
 
+	id := ids[row]
+	messageRows, ok := rowsByID[id]
+	if !ok || row < messageRows.Start || row >= messageRows.End {
+		return ""
+	}
+	bodyRanges := m.cachedBodyRangesForMessage(id, messageRows.End-messageRows.Start)
+	relativeRow := row - messageRows.Start
+	if relativeRow >= len(bodyRanges) {
+		return ""
+	}
 	localX := x - left
-	body := ranges[row]
+	body := bodyRanges[relativeRow]
 	if localX < body.Start || localX >= body.End {
 		return ""
 	}
@@ -359,26 +434,37 @@ func (m model) messageLinkAt(x, y int) string {
 		return ""
 	}
 
-	links := m.renderedMessageLinks
-	if !m.renderCacheValid || len(links) != len(lines) {
-		links = make([][]messageLinkRange, 0, len(lines))
+	ids := m.renderedMessageIDs
+	rowsByID := m.messageRowsByID
+	if !m.renderCacheValid || len(ids) != len(lines) {
+		ids = make([]string, 0, len(lines))
+		rowsByID = make(map[string]messageRowRange, len(m.messages))
 		for _, packet := range m.messages {
 			messageLines := m.renderPacketLines(packet, m.width)
-			messageLinks := m.messageLinkRangesForLineCount(packet, m.width, len(messageLines))
-			for i := range messageLines {
-				if i < len(messageLinks) {
-					links = append(links, messageLinks[i])
-				} else {
-					links = append(links, nil)
-				}
+			rowStart := len(ids)
+			for range messageLines {
+				ids = append(ids, packet.ID)
+			}
+			if packet.ID != "" {
+				rowsByID[packet.ID] = messageRowRange{Start: rowStart, End: len(ids)}
 			}
 		}
 	}
-	if row >= len(links) {
+	if row >= len(ids) || ids[row] == "" {
+		return ""
+	}
+	id := ids[row]
+	messageRows, ok := rowsByID[id]
+	if !ok || row < messageRows.Start || row >= messageRows.End {
+		return ""
+	}
+	links := m.cachedLinkRangesForMessage(id, messageRows.End-messageRows.Start)
+	relativeRow := row - messageRows.Start
+	if relativeRow >= len(links) {
 		return ""
 	}
 	localX := x - left
-	for _, region := range links[row] {
+	for _, region := range links[relativeRow] {
 		if localX >= region.Start && localX < region.End {
 			return region.TargetID
 		}
