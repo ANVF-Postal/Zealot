@@ -47,7 +47,6 @@ type model struct {
 	renderedMessageBodyRanges []messageBodyRange
 	renderedMessageLinks [][]messageLinkRange
 	hoveredMessageID string
-	mouseMotion *mouseMotionState
 	replyTargetID string
 	highlightedMessageID string
 	navigationHighlightGeneration int
@@ -162,7 +161,6 @@ func newModel(
 		roomExplicit: roomExplicit,
 		user:         user,
 		client:       client,
-		mouseMotion:  &mouseMotionState{},
 		typing:       make(map[string]User),
 		userActivity: make(map[string]int),
 		input:        input,
