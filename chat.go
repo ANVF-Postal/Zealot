@@ -29,7 +29,34 @@ func (m model) renderPacketLineCount(msg Packet, width int) int {
 	if width < 1 {
 		return 1
 	}
-	if msg.Type != "message" || msg.XKeyscore > 0 {
+	contentWidth := chatContentWidth(width)
+	switch msg.Type {
+	case "letter":
+		indent := 4
+		if contentWidth <= 4 {
+			indent = 0
+		} else if contentWidth < 14 {
+			indent = 2
+		}
+		bodyWidth := max(1, contentWidth-indent)
+		count := 1 // letter heading
+		for _, line := range strings.Split(msg.Text, "\n") {
+			line = strings.TrimSuffix(line, "\r")
+			line = strings.ReplaceAll(line, "\t", "    ")
+			count += len(wrapANSIHardLine(line, bodyWidth))
+		}
+		return count
+	case "system":
+		text := fmt.Sprintf("[%s] %s", msg.Time.Local().Format("15:04"), msg.Text)
+		return max(1, wrapTextLineCount(text, contentWidth-2))
+	case "me":
+		text := fmt.Sprintf("[%s] * %s %s", msg.Time.Local().Format("15:04"), msg.User.Name, msg.Text)
+		return max(1, wrapTextLineCount(text, contentWidth-2))
+	case "message":
+		if msg.XKeyscore > 0 {
+			return m.xkeyscoreLineCount(msg, width)
+		}
+	default:
 		return max(1, len(m.renderPacketBaseLines(msg, width)))
 	}
 	// Reply markers can add rows at the end of a parent message. These are
@@ -38,7 +65,6 @@ func (m model) renderPacketLineCount(msg Packet, width int) int {
 		return max(1, len(m.renderPacketLines(msg, width)))
 	}
 
-	contentWidth := chatContentWidth(width)
 	replyBadge := m.renderReplyBadgeForWidth(msg, width)
 	if width <= 48 {
 		return m.compactMessageLineCount(msg, width, replyBadge)
@@ -50,6 +76,31 @@ func (m model) renderPacketLineCount(msg Packet, width int) int {
 		return m.compactMessageLineCount(msg, width, m.renderReplyBadgeForWidth(msg, 48))
 	}
 	return max(1, wrapTextLineCount(msg.Text, contentWidth-prefixWidth))
+}
+
+
+func (m model) xkeyscoreLineCount(msg Packet, width int) int {
+	badge := m.renderReplyBadgeForWidth(msg, width)
+	header := msg
+	header.Text = ""
+	headerLines := 1
+	if width <= 48 {
+		headerLines = m.compactMessageLineCount(header, width, badge)
+	} else {
+		prefixWidth := lipgloss.Width("[" + msg.Time.Local().Format("15:04") + "]") +
+			1 + lipgloss.Width(msg.User.Name) + lipgloss.Width(badge) + 1 // colon, no body gap
+		if prefixWidth >= chatContentWidth(width) {
+			headerLines = m.compactMessageLineCount(header, width, m.renderReplyBadgeForWidth(msg, 48))
+		}
+	}
+	logoRows := 7
+	switch msg.XKeyscore {
+	case 2:
+		logoRows = 8
+	case 3:
+		logoRows = 5 // four logo rows plus the filled tile's bottom row
+	}
+	return headerLines + logoRows
 }
 
 func (m model) compactMessageLineCount(msg Packet, width int, replyBadge string) int {
