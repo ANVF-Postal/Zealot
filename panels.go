@@ -515,21 +515,24 @@ func (m *model) appendMessages(packets []Packet) {
 }
 
 func (m *model) appendCachedMessageRows(packet Packet) int {
-	newLines := m.renderPacketLines(packet, m.width)
+	lineCount := max(1, m.renderPacketLineCount(packet, m.width))
 	start := len(m.renderedLines)
-	m.renderedLines = append(m.renderedLines, newLines...)
-	for range newLines {
+	m.renderedLines = append(m.renderedLines, make([]string, lineCount)...)
+	for range lineCount {
 		m.renderedMessageIDs = append(m.renderedMessageIDs, packet.ID)
 		m.renderedMessageBodyRanges = append(m.renderedMessageBodyRanges, messageBodyRange{})
 		m.renderedMessageLinks = append(m.renderedMessageLinks, nil)
 	}
+	rows := messageRowRange{Start: start, End: start + lineCount}
+	m.messageRowRanges = append(m.messageRowRanges, rows)
 	if packet.ID != "" {
 		if m.messageRowsByID == nil {
 			m.messageRowsByID = make(map[string]messageRowRange)
 		}
-		m.messageRowsByID[packet.ID] = messageRowRange{Start: start, End: start + len(newLines)}
+		m.messageRowsByID[packet.ID] = rows
 	}
-	return len(newLines)
+	m.renderWindowValid = false
+	return lineCount
 }
 
 func replaceCachedRows[T any](source []T, start, end int, replacement []T) []T {
@@ -540,9 +543,46 @@ func replaceCachedRows[T any](source []T, start, end int, replacement []T) []T {
 	return updated
 }
 
-// replaceCachedMessageRows rerenders only one existing message after its reply
-// count changes. In the common case the number of visual rows is unchanged,
-// so cached slices are updated in place without copying the full chat history.
+func (m *model) resizeCachedMessageRows(index, newCount int) int {
+	if index < 0 || index >= len(m.messageRowRanges) {
+		return 0
+	}
+	if newCount < 1 {
+		newCount = 1
+	}
+	oldRows := m.messageRowRanges[index]
+	delta := newCount - (oldRows.End - oldRows.Start)
+	if delta == 0 {
+		return 0
+	}
+	messageID := m.messages[index].ID
+	newIDs := make([]string, newCount)
+	for i := range newIDs {
+		newIDs[i] = messageID
+	}
+	m.renderedLines = replaceCachedRows(m.renderedLines, oldRows.Start, oldRows.End, make([]string, newCount))
+	m.renderedMessageIDs = replaceCachedRows(m.renderedMessageIDs, oldRows.Start, oldRows.End, newIDs)
+	m.renderedMessageBodyRanges = replaceCachedRows(m.renderedMessageBodyRanges, oldRows.Start, oldRows.End, make([]messageBodyRange, newCount))
+	m.renderedMessageLinks = replaceCachedRows(m.renderedMessageLinks, oldRows.Start, oldRows.End, make([][]messageLinkRange, newCount))
+	m.messageRowRanges[index] = messageRowRange{Start: oldRows.Start, End: oldRows.Start + newCount}
+	for i := index + 1; i < len(m.messageRowRanges); i++ {
+		m.messageRowRanges[i].Start += delta
+		m.messageRowRanges[i].End += delta
+	}
+	for id, rows := range m.messageRowsByID {
+		if id != messageID && rows.Start >= oldRows.End {
+			rows.Start += delta
+			rows.End += delta
+			m.messageRowsByID[id] = rows
+		}
+	}
+	m.messageRowsByID[messageID] = m.messageRowRanges[index]
+	delete(m.messageBodyRangesByID, messageID)
+	delete(m.messageLinkRangesByID, messageID)
+	m.renderWindowValid = false
+	return delta
+}
+
 func (m *model) replaceCachedMessageRows(messageID string) (int, bool) {
 	if !m.renderCacheValid || m.renderCacheWidth != m.width {
 		return 0, false
@@ -551,42 +591,22 @@ func (m *model) replaceCachedMessageRows(messageID string) (int, bool) {
 	if !exists || rows.Start < 0 || rows.End > len(m.renderedLines) || rows.End <= rows.Start {
 		return 0, false
 	}
+	index := sort.Search(len(m.messageRowRanges), func(i int) bool {
+		return m.messageRowRanges[i].Start >= rows.Start
+	})
+	if index >= len(m.messageRowRanges) || m.messages[index].ID != messageID {
+		return 0, false
+	}
 	message, exists := m.messageByID[messageID]
 	if !exists {
 		return 0, false
 	}
-
-	newLines := m.renderPacketLines(message, m.width)
-	newBodies := make([]messageBodyRange, len(newLines))
-	newLinks := make([][]messageLinkRange, len(newLines))
-	delete(m.messageBodyRangesByID, messageID)
-	delete(m.messageLinkRangesByID, messageID)
-	newIDs := make([]string, len(newLines))
-	for index := range newIDs {
-		newIDs[index] = messageID
-	}
-
-	oldCount := rows.End - rows.Start
-	delta := len(newLines) - oldCount
+	lineCount := m.renderPacketLineCount(message, m.width)
+	delta := m.resizeCachedMessageRows(index, lineCount)
 	if delta == 0 {
-		copy(m.renderedLines[rows.Start:rows.End], newLines)
-		copy(m.renderedMessageIDs[rows.Start:rows.End], newIDs)
-		copy(m.renderedMessageBodyRanges[rows.Start:rows.End], newBodies)
-		copy(m.renderedMessageLinks[rows.Start:rows.End], newLinks)
-	} else {
-		m.renderedLines = replaceCachedRows(m.renderedLines, rows.Start, rows.End, newLines)
-		m.renderedMessageIDs = replaceCachedRows(m.renderedMessageIDs, rows.Start, rows.End, newIDs)
-		m.renderedMessageBodyRanges = replaceCachedRows(m.renderedMessageBodyRanges, rows.Start, rows.End, newBodies)
-		m.renderedMessageLinks = replaceCachedRows(m.renderedMessageLinks, rows.Start, rows.End, newLinks)
-		for id, other := range m.messageRowsByID {
-			if id != messageID && other.Start >= rows.End {
-				other.Start += delta
-				other.End += delta
-				m.messageRowsByID[id] = other
-			}
-		}
+		clear(m.renderedLines[rows.Start:rows.End])
+		m.renderWindowValid = false
 	}
-	m.messageRowsByID[messageID] = messageRowRange{Start: rows.Start, End: rows.Start + len(newLines)}
 	return delta, true
 }
 
