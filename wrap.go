@@ -334,9 +334,10 @@ func wrapTextLineCountVariable(text string, firstWidth, secondWidth, fullWidth i
 			for remaining != "" {
 				capacity := lineWidth(lineCount)
 				if capacity < 1 {
-					if currentWidth > 0 {
+					if currentHasText {
 						lineCount++
 						currentWidth = 0
+						currentHasText = false
 						continue
 					}
 					lineCount++
