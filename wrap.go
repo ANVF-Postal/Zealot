@@ -316,12 +316,14 @@ func wrapTextLineCountVariable(text string, firstWidth, secondWidth, fullWidth i
 
 	lineCount := 0
 	currentWidth := 0
+	currentHasText := false
 	for _, paragraph := range strings.Split(text, "\n") {
 		words := strings.Fields(paragraph)
 		if len(words) == 0 {
-			if currentWidth > 0 {
+			if currentHasText {
 				lineCount++
 				currentWidth = 0
+				currentHasText = false
 			}
 			lineCount++
 			continue
@@ -342,7 +344,7 @@ func wrapTextLineCountVariable(text string, firstWidth, secondWidth, fullWidth i
 				}
 
 				remainingWidth := lipgloss.Width(remaining)
-				if currentWidth > 0 {
+				if currentHasText {
 					if currentWidth+1+remainingWidth <= capacity {
 						currentWidth += 1 + remainingWidth
 						remaining = ""
@@ -350,11 +352,13 @@ func wrapTextLineCountVariable(text string, firstWidth, secondWidth, fullWidth i
 					}
 					lineCount++
 					currentWidth = 0
+					currentHasText = false
 					continue
 				}
 
 				if remainingWidth <= capacity {
 					currentWidth = remainingWidth
+					currentHasText = true
 					remaining = ""
 					break
 				}
@@ -372,9 +376,10 @@ func wrapTextLineCountVariable(text string, firstWidth, secondWidth, fullWidth i
 				remaining = rest
 			}
 		}
-		if currentWidth > 0 {
+		if currentHasText {
 			lineCount++
 			currentWidth = 0
+			currentHasText = false
 		}
 	}
 	if lineCount == 0 {
