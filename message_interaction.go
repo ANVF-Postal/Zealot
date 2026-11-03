@@ -31,25 +31,6 @@ type messageNavigationHighlightTimeoutMsg struct {
 	generation int
 }
 
-type messageHoverRefreshMsg struct {
-	generation int
-}
-
-// scheduleMessageHover coalesces passive pointer motion into one delayed
-// hover refresh. Bubble Tea redraws after every input message, so doing the
-// layout/style work on each cell crossed can visibly delay later clicks.
-func (m *model) scheduleMessageHover() tea.Cmd {
-	if m.messageHoverPending {
-		return nil
-	}
-	m.messageHoverPending = true
-	m.messageHoverGeneration++
-	generation := m.messageHoverGeneration
-	return tea.Tick(75*time.Millisecond, func(time.Time) tea.Msg {
-		return messageHoverRefreshMsg{generation: generation}
-	})
-}
-
 // messageBodyRanges returns one body-only hitbox for every rendered row of a
 // message. Header rows, timestamps, indentation and unused row space are not
 // interactive. The calculations mirror the wide and compact render layouts.
