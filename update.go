@@ -241,7 +241,6 @@ func (m model) Update(
 		m.lastMouseX = mouse.X
 		m.lastMouseY = mouse.Y
 		m.mousePositionKnown = true
-		m.mouseMotion.record(mouse.X, mouse.Y)
 		// A click takes priority over any pending passive-hover update. In
 		// particular, don't make a header click wait for an old hover timer.
 		m.refreshMessageHover()
