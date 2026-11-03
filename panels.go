@@ -546,11 +546,18 @@ func (m *model) resizeCachedMessageRows(index, newCount int) int {
 		newCount = 1
 	}
 	oldRows := m.messageRowRanges[index]
+	messageID := m.messages[index].ID
+	// A message can change its reply markers without changing its height.
+	// Its cached body/link hitboxes must still be discarded in that case.
+	delete(m.messageBodyRangesByID, messageID)
+	delete(m.messageLinkRangesByID, messageID)
+
 	delta := newCount - (oldRows.End - oldRows.Start)
 	if delta == 0 {
+		clear(m.renderedLines[oldRows.Start:oldRows.End])
+		m.renderWindowValid = false
 		return 0
 	}
-	messageID := m.messages[index].ID
 	m.renderedLines = replaceCachedRows(m.renderedLines, oldRows.Start, oldRows.End, make([]string, newCount))
 	m.messageRowRanges[index] = messageRowRange{Start: oldRows.Start, End: oldRows.Start + newCount}
 	for i := index + 1; i < len(m.messageRowRanges); i++ {
@@ -565,8 +572,6 @@ func (m *model) resizeCachedMessageRows(index, newCount int) int {
 		}
 	}
 	m.messageRowsByID[messageID] = m.messageRowRanges[index]
-	delete(m.messageBodyRangesByID, messageID)
-	delete(m.messageLinkRangesByID, messageID)
 	m.renderWindowValid = false
 	return delta
 }
