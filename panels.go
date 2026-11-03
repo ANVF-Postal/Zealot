@@ -618,8 +618,10 @@ func (m *model) rebuildMessageCache() {
 		m.renderedMessageBodyRanges = nil
 		m.renderedMessageLinks = nil
 		m.messageRowsByID = nil
+		m.messageRowRanges = nil
 		m.messageBodyRangesByID = nil
 		m.messageLinkRangesByID = nil
+		m.renderWindowValid = false
 		m.renderCacheValid = false
 		return
 	}
@@ -631,18 +633,20 @@ func (m *model) rebuildMessageCache() {
 	bodyRanges := make([]messageBodyRange, 0, len(m.messages))
 	linkRanges := make([][]messageLinkRange, 0, len(m.messages))
 	messageRows := make(map[string]messageRowRange, len(m.messages))
-	for _, message := range m.messages {
+	rowRanges := make([]messageRowRange, len(m.messages))
+	for index, message := range m.messages {
 		start := len(lines)
-		messageLines := m.renderPacketLines(message, m.width)
-		lines = append(lines, messageLines...)
-		for range messageLines {
+		lineCount := max(1, m.renderPacketLineCount(message, m.width))
+		lines = append(lines, make([]string, lineCount)...)
+		for range lineCount {
 			messageIDs = append(messageIDs, message.ID)
-			// Keep row metadata aligned; detailed hitboxes are lazy per message.
 			bodyRanges = append(bodyRanges, messageBodyRange{})
 			linkRanges = append(linkRanges, nil)
 		}
+		rows := messageRowRange{Start: start, End: len(lines)}
+		rowRanges[index] = rows
 		if message.ID != "" {
-			messageRows[message.ID] = messageRowRange{Start: start, End: len(lines)}
+			messageRows[message.ID] = rows
 		}
 	}
 	m.renderedLines = lines
@@ -650,8 +654,70 @@ func (m *model) rebuildMessageCache() {
 	m.renderedMessageBodyRanges = bodyRanges
 	m.renderedMessageLinks = linkRanges
 	m.messageRowsByID = messageRows
+	m.messageRowRanges = rowRanges
 	m.renderCacheWidth = m.width
 	m.renderCacheValid = true
+	m.renderWindowValid = false
+	m.refreshRenderedWindow()
+}
+
+// refreshRenderedWindow styles only the visible rows plus a small three-row
+// buffer. The row index still spans the full history for accurate scrolling.
+func (m *model) refreshRenderedWindow() {
+	if !m.renderCacheValid || m.renderCacheWidth != m.width || m.width < 1 {
+		return
+	}
+	total := len(m.renderedLines)
+	if total == 0 || len(m.messageRowRanges) == 0 {
+		if m.renderWindowValid && m.renderWindowEnd > m.renderWindowStart {
+			clear(m.renderedLines[m.renderWindowStart:m.renderWindowEnd])
+		}
+		m.renderWindowStart, m.renderWindowEnd = 0, 0
+		m.renderWindowValid = true
+		return
+	}
+
+	visibleHeight := max(1, m.messageHeight()-1)
+	maxScroll := max(0, total-visibleHeight)
+	scroll := min(max(m.scroll, 0), maxScroll)
+	visibleStart := max(0, total-visibleHeight-scroll)
+	visibleEnd := min(total, visibleStart+visibleHeight)
+	requestedStart := max(0, visibleStart-3)
+	requestedEnd := min(total, visibleEnd+3)
+	first := sort.Search(len(m.messageRowRanges), func(i int) bool {
+		return m.messageRowRanges[i].End > requestedStart
+	})
+	last := sort.Search(len(m.messageRowRanges), func(i int) bool {
+		return m.messageRowRanges[i].Start >= requestedEnd
+	})
+	if first >= last {
+		return
+	}
+	actualStart := m.messageRowRanges[first].Start
+	actualEnd := m.messageRowRanges[last-1].End
+	if m.renderWindowValid && actualStart >= m.renderWindowStart && actualEnd <= m.renderWindowEnd {
+		return
+	}
+
+	if m.renderWindowValid && m.renderWindowEnd > m.renderWindowStart {
+		clear(m.renderedLines[m.renderWindowStart:m.renderWindowEnd])
+	}
+	for index := first; index < last; index++ {
+		rows := m.messageRowRanges[index]
+		rendered := m.renderPacketLines(m.messages[index], m.width)
+		expected := rows.End - rows.Start
+		if len(rendered) != expected {
+			// Correct this message's index if the lightweight counter ever drifts
+			// from the renderer, then retry with the updated global row offsets.
+			m.resizeCachedMessageRows(index, len(rendered))
+			m.refreshRenderedWindow()
+			return
+		}
+		copy(m.renderedLines[rows.Start:rows.End], rendered)
+	}
+	m.renderWindowStart = actualStart
+	m.renderWindowEnd = actualEnd
+	m.renderWindowValid = true
 }
 
 func (m model) maxScroll() int {
