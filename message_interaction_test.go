@@ -157,8 +157,8 @@ func TestRenderCacheCalculatesInteractionHitboxesOnDemand(t *testing.T) {
 	if len(m.messageBodyRangesByID) != 0 || len(m.messageLinkRangesByID) != 0 {
 		t.Fatal("cache rebuild eagerly calculated interaction geometry for every message")
 	}
-	if len(m.renderedMessageBodyRanges) != len(m.renderedLines) || len(m.renderedMessageLinks) != len(m.renderedLines) {
-		t.Fatal("placeholder row metadata is not aligned with rendered lines")
+	if len(m.messageRowRanges) != len(m.messages) {
+		t.Fatal("absolute row index is not aligned with the message history")
 	}
 
 	body := m.messageBodyRanges(parent, m.width)[0]
@@ -251,8 +251,7 @@ func TestMessageHoverRestylesOnlyAffectedRows(t *testing.T) {
 		t.Fatalf("expected a body hitbox, got %#v", firstBody)
 	}
 	lineStorage := &m.renderedLines[0]
-	idStorage := &m.renderedMessageIDs[0]
-	bodyStorage := &m.renderedMessageBodyRanges[0]
+	rowStorage := &m.messageRowRanges[0]
 
 	m.mousePositionKnown = true
 	m.lastMouseX = 1 + firstBody[0].Start
@@ -263,7 +262,7 @@ func TestMessageHoverRestylesOnlyAffectedRows(t *testing.T) {
 		t.Fatalf("hovered message = %q, want %q", m.hoveredMessageID, first.ID)
 	}
 	if !m.renderCacheValid || &m.renderedLines[0] != lineStorage ||
-		&m.renderedMessageIDs[0] != idStorage || &m.renderedMessageBodyRanges[0] != bodyStorage {
+		&m.messageRowRanges[0] != rowStorage {
 		t.Fatal("hover transition rebuilt the full message cache instead of restyling rows in place")
 	}
 }
@@ -646,10 +645,8 @@ func TestAppendingReplyUpdatesOnlyParentRowsAndAppendsReply(t *testing.T) {
 	if rows, ok := m.messageRowsByID[reply.ID]; !ok || rows.Start != parentRowsAfter.End {
 		t.Fatalf("reply row range = %#v (present %v), want append immediately after parent", rows, ok)
 	}
-	if len(m.renderedMessageIDs) != len(m.renderedLines) ||
-		len(m.renderedMessageBodyRanges) != len(m.renderedLines) ||
-		len(m.renderedMessageLinks) != len(m.renderedLines) {
-		t.Fatal("rendered row metadata is not aligned with rendered lines")
+	if len(m.messageRowRanges) != len(m.messages) || len(m.messageRowsByID) != len(m.messages) {
+		t.Fatal("absolute message row index is not aligned with the message history")
 	}
 }
 
@@ -674,10 +671,8 @@ func TestAppendingReplyShiftsCachedRowsWhenMarkerNeedsOverflowRow(t *testing.T) 
 	if !strings.Contains(m.renderedLines[parentRows.End-1], "[1]") {
 		t.Fatalf("overflow row does not display [1]: %q", m.renderedLines[parentRows.End-1])
 	}
-	if len(m.renderedMessageIDs) != len(m.renderedLines) ||
-		len(m.renderedMessageBodyRanges) != len(m.renderedLines) ||
-		len(m.renderedMessageLinks) != len(m.renderedLines) {
-		t.Fatal("render metadata lost alignment after inserting an overflow row")
+	if len(m.messageRowRanges) != len(m.messages) || len(m.messageRowsByID) != len(m.messages) {
+		t.Fatal("message row index lost alignment after inserting an overflow row")
 	}
 }
 
