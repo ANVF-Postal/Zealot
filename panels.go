@@ -518,11 +518,6 @@ func (m *model) appendCachedMessageRows(packet Packet) int {
 	lineCount := max(1, m.renderPacketLineCount(packet, m.width))
 	start := len(m.renderedLines)
 	m.renderedLines = append(m.renderedLines, make([]string, lineCount)...)
-	for range lineCount {
-		m.renderedMessageIDs = append(m.renderedMessageIDs, packet.ID)
-		m.renderedMessageBodyRanges = append(m.renderedMessageBodyRanges, messageBodyRange{})
-		m.renderedMessageLinks = append(m.renderedMessageLinks, nil)
-	}
 	rows := messageRowRange{Start: start, End: start + lineCount}
 	m.messageRowRanges = append(m.messageRowRanges, rows)
 	if packet.ID != "" {
@@ -556,14 +551,7 @@ func (m *model) resizeCachedMessageRows(index, newCount int) int {
 		return 0
 	}
 	messageID := m.messages[index].ID
-	newIDs := make([]string, newCount)
-	for i := range newIDs {
-		newIDs[i] = messageID
-	}
 	m.renderedLines = replaceCachedRows(m.renderedLines, oldRows.Start, oldRows.End, make([]string, newCount))
-	m.renderedMessageIDs = replaceCachedRows(m.renderedMessageIDs, oldRows.Start, oldRows.End, newIDs)
-	m.renderedMessageBodyRanges = replaceCachedRows(m.renderedMessageBodyRanges, oldRows.Start, oldRows.End, make([]messageBodyRange, newCount))
-	m.renderedMessageLinks = replaceCachedRows(m.renderedMessageLinks, oldRows.Start, oldRows.End, make([][]messageLinkRange, newCount))
 	m.messageRowRanges[index] = messageRowRange{Start: oldRows.Start, End: oldRows.Start + newCount}
 	for i := index + 1; i < len(m.messageRowRanges); i++ {
 		m.messageRowRanges[i].Start += delta
@@ -614,9 +602,6 @@ func (m *model) rebuildMessageCache() {
 	m.rebuildMessageIndexes()
 	if m.width < 1 {
 		m.renderedLines = nil
-		m.renderedMessageIDs = nil
-		m.renderedMessageBodyRanges = nil
-		m.renderedMessageLinks = nil
 		m.messageRowsByID = nil
 		m.messageRowRanges = nil
 		m.messageBodyRangesByID = nil
@@ -629,20 +614,12 @@ func (m *model) rebuildMessageCache() {
 	m.messageBodyRangesByID = make(map[string][]messageBodyRange)
 	m.messageLinkRangesByID = make(map[string][][]messageLinkRange)
 	lines := make([]string, 0, len(m.messages))
-	messageIDs := make([]string, 0, len(m.messages))
-	bodyRanges := make([]messageBodyRange, 0, len(m.messages))
-	linkRanges := make([][]messageLinkRange, 0, len(m.messages))
 	messageRows := make(map[string]messageRowRange, len(m.messages))
 	rowRanges := make([]messageRowRange, len(m.messages))
 	for index, message := range m.messages {
 		start := len(lines)
 		lineCount := max(1, m.renderPacketLineCount(message, m.width))
 		lines = append(lines, make([]string, lineCount)...)
-		for range lineCount {
-			messageIDs = append(messageIDs, message.ID)
-			bodyRanges = append(bodyRanges, messageBodyRange{})
-			linkRanges = append(linkRanges, nil)
-		}
 		rows := messageRowRange{Start: start, End: len(lines)}
 		rowRanges[index] = rows
 		if message.ID != "" {
@@ -650,9 +627,6 @@ func (m *model) rebuildMessageCache() {
 		}
 	}
 	m.renderedLines = lines
-	m.renderedMessageIDs = messageIDs
-	m.renderedMessageBodyRanges = bodyRanges
-	m.renderedMessageLinks = linkRanges
 	m.messageRowsByID = messageRows
 	m.messageRowRanges = rowRanges
 	m.renderCacheWidth = m.width
