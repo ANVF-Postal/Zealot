@@ -213,6 +213,15 @@ func (m model) Update(
 		return m, nil
 	}
 
+	if frameMsg, ok := msg.(mouseMotionFrameMsg); ok {
+		if frameMsg.generation == m.mouseMotionFrameGeneration && m.mouseMotion != nil {
+			if x, y, known := m.mouseMotion.takeAndRelease(); known {
+				m.applyMouseMotion(x, y)
+			}
+		}
+		return m, nil
+	}
+
 	if clearMsg, ok := msg.(typingClearMsg); ok {
 		if !m.typingTimerPending {
 			return m, nil
@@ -241,6 +250,9 @@ func (m model) Update(
 		m.lastMouseX = mouse.X
 		m.lastMouseY = mouse.Y
 		m.mousePositionKnown = true
+		if m.mouseMotion != nil {
+			m.mouseMotion.record(mouse.X, mouse.Y)
+		}
 		// A click takes priority over any pending passive-hover update. In
 		// particular, don't make a header click wait for an old hover timer.
 		m.refreshMessageHover()
@@ -451,42 +463,26 @@ func (m model) Update(
 		return m, nil
 
 	case tea.MouseMotionMsg:
-		m.lastMouseX = mouse.X
-		m.lastMouseY = mouse.Y
-		m.mousePositionKnown = true
-		if m.inputSelecting {
-			localX, localY := m.inputSelectionCoordinates(mouse.X, mouse.Y)
-			m.input.ExtendSelection(localX, localY)
-			m.refreshMessageHover()
-			return m, nil
+		if m.mouseMotion == nil {
+			m.mouseMotion = &mouseMotionState{}
 		}
-		if m.splashOpen && m.splashScrollDragging {
-			_, thumbHeight, trackHeight := m.splashScrollbarThumb()
-			target := mouse.Y - 3 - m.splashScrollDragOffset
-			if target < 0 { target = 0 }
-			if target > trackHeight-thumbHeight { target = trackHeight-thumbHeight }
-			m.setSplashScrollFromThumbTop(target)
-			return m, nil
-		}
-		if m.usersOpen && m.usersScrollDragging {
-			_, thumbHeight, trackHeight := m.usersScrollbarThumb()
-			target := mouse.Y - 3 - m.usersScrollDragOffset
-			if target < 0 { target = 0 }
-			if target > trackHeight-thumbHeight { target = trackHeight-thumbHeight }
-			m.setUsersScrollFromThumbTop(target)
-			return m, nil
-		}
-		if m.scrollDragging && !m.usersOpen && !m.splashOpen {
-			target := mouse.Y - 3 - m.scrollDragOffset
-			m.setScrollFromThumbTop(target)
-			return m, nil
-		}
-		// Hover is backed by cached message rows, so update it on this input
-		// event rather than adding a timer-sized delay to the visible feedback.
-		m.refreshMessageHover()
-		return m, nil
+		// The input filter has already saved the newest coordinates. Record
+		// them here as well so direct Update calls and tests use the same path.
+		m.mouseMotion.record(mouse.X, mouse.Y)
+		m.mouseMotionFrameGeneration++
+		generation := m.mouseMotionFrameGeneration
+		return m, tea.Tick(mouseMotionFrameInterval, func(time.Time) tea.Msg {
+			return mouseMotionFrameMsg{generation: generation}
+		})
 
 	case tea.MouseReleaseMsg:
+		// Apply the newest coalesced pointer position before ending a drag or
+		// text selection, so the final release coordinate is not lost.
+		if m.mouseMotion != nil {
+			if x, y, known := m.mouseMotion.position(); known {
+				m.applyMouseMotion(x, y)
+			}
+		}
 		if m.inputSelecting {
 			m.input.EndSelection()
 			m.inputSelecting = false
@@ -718,6 +714,46 @@ func (m model) Update(
 	}
 
 	return m, inputCmd
+}
+
+const mouseMotionFrameInterval = time.Second / 60
+
+// applyMouseMotion processes the latest pointer position. The motion filter
+// calls this at most once per frame, regardless of how many terminal motion
+// events arrived during that interval.
+func (m *model) applyMouseMotion(x, y int) {
+	m.lastMouseX = x
+	m.lastMouseY = y
+	m.mousePositionKnown = true
+
+	if m.inputSelecting {
+		localX, localY := m.inputSelectionCoordinates(x, y)
+		m.input.ExtendSelection(localX, localY)
+		m.refreshMessageHover()
+		return
+	}
+	if m.splashOpen && m.splashScrollDragging {
+		_, thumbHeight, trackHeight := m.splashScrollbarThumb()
+		target := y - 3 - m.splashScrollDragOffset
+		target = min(max(target, 0), max(0, trackHeight-thumbHeight))
+		m.setSplashScrollFromThumbTop(target)
+		return
+	}
+	if m.usersOpen && m.usersScrollDragging {
+		_, thumbHeight, trackHeight := m.usersScrollbarThumb()
+		target := y - 3 - m.usersScrollDragOffset
+		target = min(max(target, 0), max(0, trackHeight-thumbHeight))
+		m.setUsersScrollFromThumbTop(target)
+		return
+	}
+	if m.scrollDragging && !m.usersOpen && !m.splashOpen {
+		_, thumbHeight, trackHeight := m.scrollbarThumb()
+		target := y - 3 - m.scrollDragOffset
+		target = min(max(target, 0), max(0, trackHeight-thumbHeight))
+		m.setScrollFromThumbTop(target)
+		return
+	}
+	m.refreshMessageHover()
 }
 
 // scrollPage applies the same viewport movement for keyboard and footer clicks.
