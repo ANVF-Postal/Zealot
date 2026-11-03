@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -264,6 +265,38 @@ func (m *model) refreshMessageHover() {
 	}
 }
 
+
+ // messageAtRow maps an absolute history row back to its packet using the
+ // lightweight per-message row index. Off-screen messages need no string rows.
+func (m model) messageAtRow(row int) (Packet, messageRowRange, bool) {
+	if row < 0 {
+		return Packet{}, messageRowRange{}, false
+	}
+	if m.renderCacheValid && len(m.messageRowRanges) == len(m.messages) {
+		index := sort.Search(len(m.messageRowRanges), func(i int) bool {
+			return m.messageRowRanges[i].End > row
+		})
+		if index < len(m.messageRowRanges) {
+			rows := m.messageRowRanges[index]
+			if row >= rows.Start && row < rows.End {
+				return m.messages[index], rows, true
+			}
+		}
+		return Packet{}, messageRowRange{}, false
+	}
+
+	start := 0
+	for _, packet := range m.messages {
+		end := start + max(1, m.renderPacketLineCount(packet, m.width))
+		rows := messageRowRange{Start: start, End: end}
+		if row >= start && row < end {
+			return packet, rows, true
+		}
+		start = end
+	}
+	return Packet{}, messageRowRange{}, false
+}
+
 // messageIDAt returns the ID only when the pointer is over actual message body
 // text. Username, timestamp, wrapping indentation and the scrollbar are inert.
 func (m model) messageIDAt(x, y int) string {
@@ -293,31 +326,11 @@ func (m model) messageIDAt(x, y int) string {
 		return ""
 	}
 
-	ids := m.renderedMessageIDs
-	rowsByID := m.messageRowsByID
-	if !m.renderCacheValid || len(ids) != len(lines) {
-		ids = make([]string, 0, len(lines))
-		rowsByID = make(map[string]messageRowRange, len(m.messages))
-		for _, packet := range m.messages {
-			messageLines := m.renderPacketLines(packet, m.width)
-			rowStart := len(ids)
-			for range messageLines {
-				ids = append(ids, packet.ID)
-			}
-			if packet.ID != "" {
-				rowsByID[packet.ID] = messageRowRange{Start: rowStart, End: len(ids)}
-			}
-		}
-	}
-	if row >= len(ids) || ids[row] == "" {
+	packet, messageRows, ok := m.messageAtRow(row)
+	if !ok || packet.ID == "" {
 		return ""
 	}
-
-	id := ids[row]
-	messageRows, ok := rowsByID[id]
-	if !ok || row < messageRows.Start || row >= messageRows.End {
-		return ""
-	}
+	id := packet.ID
 	bodyRanges := m.cachedBodyRangesForMessage(id, messageRows.End-messageRows.Start)
 	relativeRow := row - messageRows.Start
 	if relativeRow >= len(bodyRanges) {
@@ -436,30 +449,11 @@ func (m model) messageLinkAt(x, y int) string {
 		return ""
 	}
 
-	ids := m.renderedMessageIDs
-	rowsByID := m.messageRowsByID
-	if !m.renderCacheValid || len(ids) != len(lines) {
-		ids = make([]string, 0, len(lines))
-		rowsByID = make(map[string]messageRowRange, len(m.messages))
-		for _, packet := range m.messages {
-			messageLines := m.renderPacketLines(packet, m.width)
-			rowStart := len(ids)
-			for range messageLines {
-				ids = append(ids, packet.ID)
-			}
-			if packet.ID != "" {
-				rowsByID[packet.ID] = messageRowRange{Start: rowStart, End: len(ids)}
-			}
-		}
-	}
-	if row >= len(ids) || ids[row] == "" {
+	packet, messageRows, ok := m.messageAtRow(row)
+	if !ok || packet.ID == "" {
 		return ""
 	}
-	id := ids[row]
-	messageRows, ok := rowsByID[id]
-	if !ok || row < messageRows.Start || row >= messageRows.End {
-		return ""
-	}
+	id := packet.ID
 	links := m.cachedLinkRangesForMessage(id, messageRows.End-messageRows.Start)
 	relativeRow := row - messageRows.Start
 	if relativeRow >= len(links) {
