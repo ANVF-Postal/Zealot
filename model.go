@@ -47,8 +47,6 @@ type model struct {
 	renderedMessageBodyRanges []messageBodyRange
 	renderedMessageLinks [][]messageLinkRange
 	hoveredMessageID string
-	messageHoverGeneration int
-	messageHoverPending bool
 	mouseMotion *mouseMotionState
 	replyTargetID string
 	highlightedMessageID string
@@ -89,8 +87,10 @@ type model struct {
 	sendFeedback           bool
 	sendFeedbackGeneration int
 
-	typingGeneration int
-	isTyping         bool
+	typingGeneration   int
+	typingTimerPending bool
+	lastTypingAt       time.Time
+	isTyping           bool
 
 	styles uiStyles
 }
