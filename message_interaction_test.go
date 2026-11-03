@@ -178,29 +178,74 @@ func TestMessageHoverRestylesOnlyAffectedRows(t *testing.T) {
 	}
 }
 
-func TestMessageHoverMotionUpdatesImmediately(t *testing.T) {
-	first := interactionTestPacket("hover-now-1", "first message body")
-	second := interactionTestPacket("hover-now-2", "second message body")
+func TestMessageHoverMotionUsesLatestPositionPerFrame(t *testing.T) {
+	first := interactionTestPacket("hover-frame-1", "first message body")
+	second := interactionTestPacket("hover-frame-2", "second message body")
 	m := newMessageInteractionTestModel(80, first, second)
+	m.mouseMotion = &mouseMotionState{}
+	filter := mouseMotionFilter{state: m.mouseMotion}
 
 	firstBody := m.messageBodyRanges(first, m.width)[0]
 	secondBody := m.messageBodyRanges(second, m.width)[0]
-	firstUpdated, firstCmd := m.Update(tea.MouseMotionMsg{X: 1 + firstBody.Start, Y: 2})
-	if firstCmd != nil {
-		t.Fatal("passive hover unexpectedly scheduled a timer command")
+	firstMotion := tea.MouseMotionMsg{X: 1 + firstBody.Start, Y: 2}
+	if filter.filter(m, firstMotion) == nil {
+		t.Fatal("first pointer motion was not admitted")
 	}
-	m = firstUpdated.(model)
-	if m.hoveredMessageID != first.ID {
-		t.Fatalf("first hover = %q, want immediate highlight of %q", m.hoveredMessageID, first.ID)
+	updated, cmd := m.Update(firstMotion)
+	if cmd == nil {
+		t.Fatal("first pointer motion did not schedule a frame refresh")
 	}
+	m = updated.(model)
 
-	secondUpdated, secondCmd := m.Update(tea.MouseMotionMsg{X: 1 + secondBody.Start, Y: 3})
-	if secondCmd != nil {
-		t.Fatal("second passive hover unexpectedly scheduled a timer command")
+	// Sweep repeatedly between rows while the first frame is pending. Every
+	// intermediate event is dropped, but the final position must be retained.
+	for i := 0; i < 1000; i++ {
+		motion := tea.MouseMotionMsg{X: 1 + firstBody.Start, Y: 2}
+		if i == 999 {
+			motion = tea.MouseMotionMsg{X: 1 + secondBody.Start, Y: 3}
+		}
+		if got := filter.filter(m, motion); got != nil {
+			t.Fatalf("motion %d escaped while a frame refresh was pending", i)
+		}
 	}
-	m = secondUpdated.(model)
-	if m.hoveredMessageID != second.ID {
-		t.Fatalf("second hover = %q, want immediate highlight of %q", m.hoveredMessageID, second.ID)
+	generation := m.mouseMotionFrameGeneration
+	updated, next := m.Update(mouseMotionFrameMsg{generation: generation})
+	if next != nil {
+		t.Fatal("frame refresh unexpectedly scheduled another command")
+	}
+	got := updated.(model)
+	if got.hoveredMessageID != second.ID {
+		t.Fatalf("hovered message = %q, want latest pointer target %q", got.hoveredMessageID, second.ID)
+	}
+}
+
+func TestMouseMotionFilterCoalescesScrollbarDragAndPreservesActions(t *testing.T) {
+	m := newMessageInteractionTestModel(80)
+	m.mouseMotion = &mouseMotionState{}
+	m.scrollDragging = true
+	filter := mouseMotionFilter{state: m.mouseMotion}
+
+	first := tea.MouseMotionMsg{X: 79, Y: 4, Button: tea.MouseLeft}
+	if filter.filter(m, first) == nil {
+		t.Fatal("first scrollbar drag motion was filtered")
+	}
+	for i := 0; i < 1000; i++ {
+		motion := tea.MouseMotionMsg{X: 79, Y: 5 + i%10, Button: tea.MouseLeft}
+		if i == 999 {
+			motion.Y = 20
+		}
+		if filter.filter(m, motion) != nil {
+			t.Fatalf("scrollbar drag motion %d was not coalesced", i)
+		}
+	}
+	if x, y, known := m.mouseMotion.position(); !known || x != 79 || y != 20 {
+		t.Fatalf("latest drag position = (%d, %d, %t), want (79, 20, true)", x, y, known)
+	}
+	if filter.filter(m, tea.MouseClickMsg{Button: tea.MouseLeft, X: 79, Y: 20}) == nil {
+		t.Fatal("click was filtered while a motion frame was pending")
+	}
+	if filter.filter(m, tea.MouseReleaseMsg{}) == nil {
+		t.Fatal("mouse release was filtered while a motion frame was pending")
 	}
 }
 
