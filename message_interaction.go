@@ -227,6 +227,9 @@ func (m *model) restyleMessageRows(messageID string) bool {
 	if !exists {
 		return true
 	}
+	if !m.renderWindowValid || rows.Start < m.renderWindowStart || rows.End > m.renderWindowEnd {
+		return true // Off-screen messages have no styled rows to restyle.
+	}
 	target, exists := m.messageByID[messageID]
 	if !exists || rows.Start < 0 || rows.End > len(m.renderedLines) || rows.End < rows.Start {
 		return false
@@ -477,21 +480,11 @@ func (m *model) navigateToMessage(id string) tea.Cmd {
 	if id == "" {
 		return nil
 	}
-	if !m.renderCacheValid || len(m.renderedMessageIDs) != len(m.renderMessageLines()) {
-		m.rebuildMessageCache()
-	}
-
-	row := -1
-	for i, messageID := range m.renderedMessageIDs {
-		if messageID == id {
-			row = i
-			break
-		}
-	}
-	if row < 0 {
+	rows, exists := m.messageRowsByID[id]
+	if !exists {
 		return nil
 	}
-
+	row := rows.Start
 	visibleHeight := max(1, m.messageHeight()-1)
 	start := row - visibleHeight/2
 	maxStart := max(0, len(m.renderedLines)-visibleHeight)
@@ -507,7 +500,7 @@ func (m *model) navigateToMessage(id string) tea.Cmd {
 	m.highlightedMessageID = id
 	m.navigationHighlightGeneration++
 	generation := m.navigationHighlightGeneration
-	m.rebuildMessageCache()
+	m.restyleMessageRows(id)
 	return tea.Tick(900*time.Millisecond, func(time.Time) tea.Msg {
 		return messageNavigationHighlightTimeoutMsg{generation: generation}
 	})
