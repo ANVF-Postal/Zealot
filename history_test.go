@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
 )
 
 func TestReadPacketBatchesHistoryUntilEndMarker(t *testing.T) {
