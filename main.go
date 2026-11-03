@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime/pprof"
 	"strings"
 	"time"
 
@@ -24,6 +25,12 @@ func printZealotError(cfg Config, err error) {
 // -----------------------------------------------------------------------------
 
 func main() {
+	cpuProfile := flag.String(
+		"cpuprofile",
+		"",
+		"write a CPU profile to this file while the interactive chat is running",
+	)
+
 	addHistory := flag.Bool(
 		"add-history",
 		false,
@@ -134,11 +141,33 @@ func main() {
 	motionFilter := mouseMotionFilter{state: m.mouseMotion}
 	program := tea.NewProgram(m, tea.WithFilter(motionFilter.filter))
 
-	if _, err := program.Run(); err != nil {
+	var profileFile *os.File
+	if *cpuProfile != "" {
+		profileFile, err = os.Create(*cpuProfile)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "could not create CPU profile:", err)
+			os.Exit(1)
+		}
+		if err := pprof.StartCPUProfile(profileFile); err != nil {
+			_ = profileFile.Close()
+			fmt.Fprintln(os.Stderr, "could not start CPU profile:", err)
+			os.Exit(1)
+		}
+	}
+
+	_, runErr := program.Run()
+	if profileFile != nil {
+		pprof.StopCPUProfile()
+		if closeErr := profileFile.Close(); closeErr != nil {
+			fmt.Fprintln(os.Stderr, "could not close CPU profile:", closeErr)
+		}
+		fmt.Fprintln(os.Stderr, "CPU profile written to", *cpuProfile)
+	}
+	if runErr != nil {
 		fmt.Fprintln(
 			os.Stderr,
 			"Zealot:",
-			err,
+			runErr,
 		)
 
 		os.Exit(1)
