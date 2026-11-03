@@ -561,10 +561,18 @@ func TestAppendingReplyUpdatesOnlyParentRowsAndAppendsReply(t *testing.T) {
 	if !ok {
 		t.Fatal("parent should be indexed in the rendered row map")
 	}
+	_ = m.cachedBodyRangesForMessage(parent.ID, parentRowsBefore.End-parentRowsBefore.Start)
+	_ = m.cachedLinkRangesForMessage(parent.ID, parentRowsBefore.End-parentRowsBefore.Start)
 	reply := interactionTestPacket("incremental-reply", "reply body")
 	reply.ReplyTo = parent.ID
 	m.appendMessage(reply)
 
+	if _, ok := m.messageBodyRangesByID[parent.ID]; ok {
+		t.Fatal("appending a reply kept stale parent body hitboxes")
+	}
+	if _, ok := m.messageLinkRangesByID[parent.ID]; ok {
+		t.Fatal("appending a reply kept stale parent link hitboxes")
+	}
 	if !m.renderCacheValid {
 		t.Fatal("reply append should leave the render cache valid")
 	}
