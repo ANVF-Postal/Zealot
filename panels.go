@@ -738,6 +738,7 @@ func (m *model) setScrollFromThumbTopForLineCount(top, total int) {
 	} else {
 		m.scroll = 0
 	}
+	m.refreshMessageHover()
 }
 
 func (m model) scrollbarHoldCmd(generation int) tea.Cmd {
