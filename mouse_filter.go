@@ -7,8 +7,8 @@ import (
 )
 
 // mouseMotionState stores the newest terminal pointer coordinate and whether
-// a frame refresh is already queued. The filter and Bubble Tea update loop run
-// on different goroutines, so all shared state is protected by this mutex.
+// a frame refresh is already queued. The state is shared by the input filter
+// and the model update loop, so all access is protected by this mutex.
 type mouseMotionState struct {
 	mu      sync.Mutex
 	x       int
