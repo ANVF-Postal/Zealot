@@ -668,6 +668,12 @@ func TestAppendingReplyShiftsCachedRowsWhenMarkerNeedsOverflowRow(t *testing.T) 
 	if followingRows.Start != parentRows.End || replyRows.Start != followingRows.End {
 		t.Fatalf("cached ranges overlap or skipped rows: parent=%#v following=%#v reply=%#v", parentRows, followingRows, replyRows)
 	}
+	if packet, rows, ok := m.messageAtRow(parentRows.End-1); !ok || packet.ID != parent.ID || rows != parentRows {
+		t.Fatalf("overflow marker row mapped to %q at %#v, want parent %q at %#v", packet.ID, rows, parent.ID, parentRows)
+	}
+	if packet, rows, ok := m.messageAtRow(followingRows.Start); !ok || packet.ID != following.ID || rows != followingRows {
+		t.Fatalf("following message row mapped to %q at %#v, want %q at %#v", packet.ID, rows, following.ID, followingRows)
+	}
 	if !strings.Contains(m.renderedLines[parentRows.End-1], "[1]") {
 		t.Fatalf("overflow row does not display [1]: %q", m.renderedLines[parentRows.End-1])
 	}
