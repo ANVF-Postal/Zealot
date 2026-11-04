@@ -566,9 +566,10 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen 
 	// Full application
 	// -------------------------------------------------------------------------
 
-	content := m.styles.app.
-		Width(m.width).
-		Height(m.height).
-		Render(lipgloss.JoinVertical(lipgloss.Left, parts...))
+	// Each section is already rendered to its final terminal dimensions and
+	// paints its own foreground/background. Running the completed screen
+	// through another Width/Height Style.Render would make Lipgloss measure
+	// and wrap the entire ANSI-rich view again on every redraw.
+	content := lipgloss.JoinVertical(lipgloss.Left, parts...)
 	return appView(content, !usersOpen && !splashOpen && len(m.messages) > 0)
 }
