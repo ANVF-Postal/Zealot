@@ -95,3 +95,29 @@ func TestSplitLongWordPrefixKeepsGraphemeClustersIntact(t *testing.T) {
 		}
 	}
 }
+
+func TestTruncateANSIRespectsGraphemeWidths(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		width int
+		want  string
+	}{
+		{name: "combining accent", input: "e\u0301x", width: 1, want: "e\u0301"},
+		{name: "joined emoji", input: "👨‍👩‍👧‍👦X", width: 2, want: "👨‍👩‍👧‍👦"},
+		{name: "flag", input: "🇳🇱X", width: 2, want: "🇳🇱"},
+		{name: "wide character", input: "界X", width: 2, want: "界"},
+		{name: "ANSI styled wide character", input: "\x1b[31m界X\x1b[0m", width: 2, want: "界"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := truncateANSI(tc.input, tc.width)
+			if visible := stripANSISequences(got); visible != tc.want {
+				t.Fatalf("truncateANSI() visible text = %q, want %q (raw %q)", visible, tc.want, got)
+			}
+			if gotWidth := wrappingWidthOptions.String(got); gotWidth > tc.width {
+				t.Fatalf("truncateANSI() width = %d, exceeds limit %d (raw %q)", gotWidth, tc.width, got)
+			}
+		})
+	}
+}
