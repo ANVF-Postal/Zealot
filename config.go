@@ -13,31 +13,47 @@ import (
 // Configuration
 // -----------------------------------------------------------------------------
 
+type Theme struct {
+	Background             string
+	TextColor              string
+	BorderColor            string
+	AccentColor            string
+	HoverTextColor         string
+	MutedTextColor         string
+	MentionBackgroundColor string
+}
+
 type Config struct {
-	Name             string
-	UserColor        string
-	Bell             bool
-	InputHeight      int
-	AdaptiveHeight    bool
-	HeightMaxPercent  int
-	Background       string
-	TextColor        string
-	BorderColor      string
-	AccentColor      string
+	Name string
+	UserColor string
+	Bell bool
+	InputHeight int
+	AdaptiveHeight bool
+	HeightMaxPercent int
+	Theme
+}
+
+func defaultTheme() Theme {
+	return Theme{
+		Background:             "#111318",
+		TextColor:              "#E6E6E6",
+		BorderColor:            "#444B5A",
+		AccentColor:             "#7C5CFC",
+		HoverTextColor:         "#F9F871",
+		MutedTextColor:         "#707786",
+		MentionBackgroundColor: "#3C3622",
+	}
 }
 
 func defaultConfig() Config {
 	return Config{
-		Name:            "Anonymous",
-		Bell:            true,
-		InputHeight:     1,
+		Name:             "Anonymous",
+		Bell:             true,
+		InputHeight:      1,
 		AdaptiveHeight:   false,
 		HeightMaxPercent: 30,
-		UserColor:       "#7CFFCB",
-		Background:      "#111318",
-		TextColor:       "#E6E6E6",
-		BorderColor:     "#444B5A",
-		AccentColor:     "#7C5CFC",
+		UserColor:        "#7CFFCB",
+		Theme:            defaultTheme(),
 	}
 }
 
@@ -99,13 +115,19 @@ func loadConfig() (Config, error) {
 		case "user_color":
 			cfg.UserColor = value
 		case "background":
-			cfg.Background = value
+			cfg.Theme.Background = value
 		case "text_color":
-			cfg.TextColor = value
+			cfg.Theme.TextColor = value
 		case "border_color":
-			cfg.BorderColor = value
+			cfg.Theme.BorderColor = value
 		case "accent_color":
-			cfg.AccentColor = value
+			cfg.Theme.AccentColor = value
+		case "hover_text_color":
+			cfg.Theme.HoverTextColor = value
+		case "muted_text_color":
+			cfg.Theme.MutedTextColor = value
+		case "mention_background_color":
+			cfg.Theme.MentionBackgroundColor = value
 		case "bell":
 			if enabled, err := strconv.ParseBool(value); err == nil {
 				cfg.Bell = enabled
@@ -170,6 +192,9 @@ background = "#111318"
 text_color = "#E6E6E6"
 border_color = "#444B5A"
 accent_color = "#7C5CFC"
+hover_text_color = "#F9F871"
+muted_text_color = "#707786"
+mention_background_color = "#3C3622"
 `
 }
 
@@ -191,7 +216,11 @@ background = %q
 text_color = %q
 border_color = %q
 accent_color = %q
-`, cfg.Name, cfg.UserColor, cfg.Bell, cfg.InputHeight, cfg.AdaptiveHeight, cfg.HeightMaxPercent, cfg.Background, cfg.TextColor, cfg.BorderColor, cfg.AccentColor)
+hover_text_color = %q
+muted_text_color = %q
+mention_background_color = %q
+`, cfg.Name, cfg.UserColor, cfg.Bell, cfg.InputHeight, cfg.AdaptiveHeight, cfg.HeightMaxPercent, cfg.Theme.Background, cfg.Theme.TextColor, cfg.Theme.BorderColor, cfg.Theme.AccentColor,
+		cfg.Theme.HoverTextColor, cfg.Theme.MutedTextColor, cfg.Theme.MentionBackgroundColor)
 	return os.WriteFile(path, []byte(content), 0600)
 }
 
