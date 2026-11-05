@@ -716,8 +716,11 @@ func renderCompactMessage(
 	}
 	stamp := "[" + timeText + "]"
 	lines := make([]string, 0, 4)
+	runeOffset := 0
 	renderBody := func(part string) string {
-		return renderMentionBody(part, msg.Mentions, bodyStyle, mentionStyle, msg.Rainbow, msg.RainbowPhase)
+		rendered := renderMentionBodyAt(part, msg.Mentions, bodyStyle, mentionStyle, msg.Rainbow, msg.RainbowPhase, runeOffset)
+		runeOffset += utf8.RuneCountInString(part)
+		return rendered
 	}
 
 	if len(nameParts) > 1 {
