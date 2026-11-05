@@ -111,7 +111,7 @@ func (m model) messageBackground(msg Packet) color.Color {
 	if msg.Type == "message" && messageMentionsUser(msg, m.user.Name) {
 		return lipgloss.Color(m.cfg.Theme.MentionBackgroundColor)
 	}
-	return lipgloss.Color(m.cfg.Background)
+	return lipgloss.Color(m.cfg.Theme.Background)
 }
 
 func (m model) mentionCandidates() []string {
