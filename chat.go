@@ -318,6 +318,10 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 	contentWidth := chatContentWidth(width)
 	rowFill := lipgloss.NewStyle().Width(contentWidth).Background(m.messageBackground(msg))
 	separatorStyle := lipgloss.NewStyle().Background(m.messageBackground(msg))
+	replyMarkerStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.cfg.AccentColor)).
+		Background(m.messageBackground(msg)).
+		Bold(true)
 
 	// Compact messages put the timestamp on its own continuation row when
 	// the body fits beside the username. Reply markers belong at the end of
@@ -332,7 +336,7 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 
 	for n := range replies {
 		marker := fmt.Sprintf("[%d]", n+1)
-		styled := m.styles.accent.Render(marker)
+		styled := replyMarkerStyle.Render(marker)
 		trimmed := trimANSIEndPadding(lines[markerRow])
 		used := visibleChatTextWidth(trimmed)
 		if used+1+lipgloss.Width(marker) <= contentWidth {
