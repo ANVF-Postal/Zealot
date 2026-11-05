@@ -94,19 +94,27 @@ func (m model) Update(
 			}
 
 		case "identity":
+			oldName := m.user.Name
 			if packet.User.Name != "" {
 				m.user.Name = packet.User.Name
 			}
 			if packet.User.Color != "" {
 				m.user.Color = packet.User.Color
 			}
+			if oldName != m.user.Name && m.renderCacheValid {
+				m.rebuildMessageCache()
+			}
 
 		case "welcome":
 			// The server may have appended a numeric suffix to avoid a duplicate
 			// username. Use that canonical identity for outgoing messages and
 			// notification filtering.
+			oldName := m.user.Name
 			if packet.User.Name != "" {
 				m.user = packet.User
+			}
+			if oldName != m.user.Name && m.renderCacheValid {
+				m.rebuildMessageCache()
 			}
 			m.historyEnabled = packet.AddHistory
 
@@ -450,13 +458,23 @@ func (m model) Update(
 				return m, nil
 			}
 		}
-		if mouse.Button == tea.MouseLeft && !m.usersOpen && !m.splashOpen {
-			if targetID := m.messageLinkAt(mouse.X, mouse.Y); targetID != "" {
-				return m, m.navigateToMessage(targetID)
+		if mouse.Button == tea.MouseLeft {
+			if m.usersOpen {
+				if username := m.userNameAt(mouse.X, mouse.Y); username != "" {
+					return m, m.insertMention(username)
+				}
 			}
-			if id := m.messageIDAt(mouse.X, mouse.Y); id != "" {
-				m.beginReply(id)
-				return m, nil
+			if !m.usersOpen && !m.splashOpen {
+				if username := m.messageUsernameAt(mouse.X, mouse.Y); username != "" {
+					return m, m.insertMention(username)
+				}
+				if targetID := m.messageLinkAt(mouse.X, mouse.Y); targetID != "" {
+					return m, m.navigateToMessage(targetID)
+				}
+				if id := m.messageIDAt(mouse.X, mouse.Y); id != "" {
+					m.beginReply(id)
+					return m, nil
+				}
 			}
 		}
 		// Mouse clicks outside the composer are fully handled above. Do not
