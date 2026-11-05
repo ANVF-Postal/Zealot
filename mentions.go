@@ -154,17 +154,28 @@ func renderMentionBody(
 	rainbow bool,
 	rainbowPhase float64,
 ) string {
+	return renderMentionBodyAt(text, usernames, bodyStyle, mentionStyle, rainbow, rainbowPhase, 0)
+}
+
+func renderMentionBodyAt(
+	text string,
+	usernames []string,
+	bodyStyle lipgloss.Style,
+	mentionStyle lipgloss.Style,
+	rainbow bool,
+	rainbowPhase float64,
+	runeOffset int,
+) string {
 	spans := mentionSpans(text, usernames)
 	if len(spans) == 0 {
 		if rainbow {
-			return rainbowColor(text, rainbowPhase, 0)
+			return rainbowColor(text, rainbowPhase, runeOffset)
 		}
 		return bodyStyle.Render(text)
 	}
 
 	var out strings.Builder
 	position := 0
-	runeOffset := 0
 	for _, span := range spans {
 		if span.Start > position {
 			plain := text[position:span.Start]
