@@ -1,6 +1,7 @@
 package main
 
 import (
+	"image/color"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -108,7 +109,7 @@ func messageMentionsUser(msg Packet, username string) bool {
 	return false
 }
 
-func (m model) messageBackground(msg Packet) lipgloss.Color {
+func (m model) messageBackground(msg Packet) color.Color {
 	if msg.Type == "message" && messageMentionsUser(msg, m.user.Name) {
 		return lipgloss.Color(mentionHighlightBackground)
 	}
@@ -140,7 +141,7 @@ func (m *model) refreshMentionUsernames() {
 	m.mentionUsernames = names
 }
 
-func (m model) mentionStyle(background lipgloss.Color) lipgloss.Style {
+func (m model) mentionStyle(background color.Color) lipgloss.Style {
 	return lipgloss.NewStyle().
 		Foreground(lipgloss.Color(m.cfg.AccentColor)).
 		Background(background).
