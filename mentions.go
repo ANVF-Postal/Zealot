@@ -275,7 +275,7 @@ func (m *model) insertMention(username string) tea.Cmd {
 	if column > 0 && !unicode.IsSpace(runes[column-1]) {
 		insertion = " " + insertion
 	}
-	if column < len(runes) && !unicode.IsSpace(runes[column]) && mentionWordRune(runes[column]) {
+	if column >= len(runes) || (!unicode.IsSpace(runes[column]) && mentionWordRune(runes[column])) {
 		insertion += " "
 	}
 	m.input.InsertString(insertion)
