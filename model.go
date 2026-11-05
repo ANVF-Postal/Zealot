@@ -134,9 +134,9 @@ func newModel(
 	}
 	input.SetHeight(cfg.InputHeight)
 
-	bg := lipgloss.Color(cfg.Background)
+	bg := lipgloss.Color(cfg.Theme.Background)
 	textStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(cfg.TextColor)).
+		Foreground(lipgloss.Color(cfg.Theme.TextColor)).
 		Background(bg)
 	inputStyles := input.Styles()
 	inputStyles.Focused.Base = textStyle
@@ -150,14 +150,14 @@ func newModel(
 
 	// Match the placeholder to the keyboard-shortcut hint at the bottom.
 	placeholderStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#707786")).
+		Foreground(lipgloss.Color(cfg.Theme.MutedTextColor)).
 		Background(bg).
 		Faint(false).
 		Bold(false).
 		Italic(false)
 	inputStyles.Focused.Placeholder = placeholderStyle
 	inputStyles.Blurred.Placeholder = placeholderStyle
-	inputStyles.Cursor.Color = lipgloss.Color(cfg.AccentColor)
+	inputStyles.Cursor.Color = lipgloss.Color(cfg.Theme.AccentColor)
 	inputStyles.Cursor.Blink = false
 	input.SetStyles(inputStyles)
 
@@ -179,7 +179,7 @@ func newModel(
 		input:        input,
 		connected:    true,
 		status:       "Connected",
-		styles:       makeStyles(cfg),
+		styles:       makeStyles(cfg.Theme),
 	}
 }
 
