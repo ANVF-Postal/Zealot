@@ -65,8 +65,8 @@ func (m model) renderHeader() string {
 		line += strings.Repeat(" ", remaining)
 	}
 	return lipgloss.NewStyle().
-		Foreground(lipgloss.Color(m.cfg.AccentColor)).
-		Background(lipgloss.Color(m.cfg.Background)).
+		Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).
+		Background(lipgloss.Color(m.cfg.Theme.Background)).
 		Render(line)
 }
 
@@ -112,10 +112,10 @@ func (m model) View() tea.View {
 		userEnd := min(userStart+visibleUsers, totalUserRows)
 		visible := m.userRowsRange(userStart, userEnd)
 
-		bg := lipgloss.Color(m.cfg.Background)
+		bg := lipgloss.Color(m.cfg.Theme.Background)
 		rowFill := lipgloss.NewStyle().Background(bg)
 		scrollbarStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color(m.cfg.BorderColor)).
+			Foreground(lipgloss.Color(m.cfg.Theme.BorderColor)).
 			Background(bg)
 		contentWidth := chatInnerWidth(m.width)
 		textWidth := max(1, contentWidth-1)
@@ -190,7 +190,7 @@ func (m model) View() tea.View {
 	visible := append([]string(nil), lines[start:end]...)
 	chatBlank := lipgloss.NewStyle().
 		Width(chatInnerWidth(m.width)).
-		Background(lipgloss.Color(m.cfg.Background)).
+		Background(lipgloss.Color(m.cfg.Theme.Background)).
 		Render("")
 
 	for len(visible) < chatHeight {
@@ -203,8 +203,8 @@ func (m model) View() tea.View {
 	visibleHeight := max(1, m.messageHeight()-1)
 	maxScroll := max(0, len(lines)-visibleHeight)
 	scrollbarStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(m.cfg.BorderColor)).
-		Background(lipgloss.Color(m.cfg.Background))
+		Foreground(lipgloss.Color(m.cfg.Theme.BorderColor)).
+		Background(lipgloss.Color(m.cfg.Theme.Background))
 	scrollbarRows := make([]string, chatHeight+1)
 	for i := range scrollbarRows {
 		switch {
@@ -262,10 +262,10 @@ func (m model) renderSplashPanel() string {
 	end := min(start+visibleHeight, len(lines))
 	visible := append([]string(nil), lines[start:end]...)
 
-	bg := lipgloss.Color(m.cfg.Background)
+	bg := lipgloss.Color(m.cfg.Theme.Background)
 	rowFill := lipgloss.NewStyle().Background(bg)
 	scrollbarStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(m.cfg.BorderColor)).
+		Foreground(lipgloss.Color(m.cfg.Theme.BorderColor)).
 		Background(bg)
 	contentWidth := chatInnerWidth(m.width)
 	textWidth := max(1, contentWidth-1)
@@ -500,14 +500,14 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen 
 	if len(inputView) == 0 {
 		inputView = []string{""}
 	}
-	mentionStyle := m.mentionStyle(lipgloss.Color(m.cfg.Background))
+	mentionStyle := m.mentionStyle(lipgloss.Color(m.cfg.Theme.Background), false)
 	mentionCandidates := m.mentionCandidates()
 	for i := range inputView {
 		inputView[i] = styleANSIVisibleMentions(inputView[i], mentionCandidates, mentionStyle)
 	}
 	prompt := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(m.cfg.AccentColor)).
-		Background(lipgloss.Color(m.cfg.Background)).
+		Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).
+		Background(lipgloss.Color(m.cfg.Theme.Background)).
 		Bold(true).
 		Render("> ")
 	firstInputRow := inputView[0]
@@ -527,7 +527,7 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen 
 	if inputInnerWidth < 1 {
 		inputInnerWidth = 1
 	}
-	inputBackground := lipgloss.NewStyle().Background(lipgloss.Color(m.cfg.Background))
+	inputBackground := lipgloss.NewStyle().Background(lipgloss.Color(m.cfg.Theme.Background))
 	if strings.TrimSpace(m.input.Value()) == "" {
 		// Bubbles' empty-placeholder view uses EndOfBuffer cells for rows below
 		// the placeholder. Those cells can retain a terminal-default background
