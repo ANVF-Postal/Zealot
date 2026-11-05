@@ -13,6 +13,8 @@ import (
 // Message rendering
 // -----------------------------------------------------------------------------
 
+const messageHoverTextColor = "#F9F871"
+
 func (m model) renderMessageLines() []string {
 	if m.renderCacheValid && m.renderCacheWidth == m.width {
 		return m.renderedLines
@@ -450,7 +452,7 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 	bodyStyle := normalBodyStyle
 	hovered := msg.Type == "message" && msg.ID != "" && (msg.ID == m.hoveredMessageID || msg.ID == m.highlightedMessageID)
 	if hovered {
-		hoverColor := lipgloss.Color("#F2D66B")
+		hoverColor := lipgloss.Color(messageHoverTextColor)
 		bodyStyle = bodyStyle.Foreground(hoverColor)
 	}
 
