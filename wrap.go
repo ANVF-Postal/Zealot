@@ -78,12 +78,16 @@ func truncateANSI(s string, width int) string {
 	if width < 1 {
 		width = 1
 	}
+	// Most rows have already been wrapped to fit. Avoid allocating a builder
+	// and walking every grapheme when this final safety check has nothing to do.
+	if wrappingWidthOptions.String(s) <= width {
+		return s
+	}
 
 	var out strings.Builder
 	used := 0
-	// Measure complete grapheme clusters. Measuring one rune at a time is
-	// both more expensive and incorrect for combined characters such as
-	// accents, flags, and emoji sequences.
+	// Only the overlong case needs grapheme-by-grapheme clipping, so combined
+	// characters such as accents, flags, and emoji sequences remain intact.
 	graphemes := wrappingWidthOptions.StringGraphemes(s)
 	for graphemes.Next() {
 		cluster := graphemes.Value()
