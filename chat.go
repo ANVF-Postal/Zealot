@@ -509,7 +509,6 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 		Background(bg).
 		Bold(true)
 
-	timeStyle := m.styles.time
 
 	replyBadge := m.renderReplyBadgeForWidth(msg, width)
 	if msg.XKeyscore > 0 {
