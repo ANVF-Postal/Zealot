@@ -448,8 +448,6 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 	rowFill := lipgloss.NewStyle().Width(contentWidth).Background(bg)
 	normalBodyStyle := lipgloss.NewStyle().Foreground(text).Background(bg)
 	bodyStyle := normalBodyStyle
-	mentionStyle := m.mentionStyle(bg)
-	timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#707786")).Background(bg)
 	hovered := msg.Type == "message" && msg.ID != "" && (msg.ID == m.hoveredMessageID || msg.ID == m.highlightedMessageID)
 	if hovered {
 		hoverColor := lipgloss.Color("#F2D66B")
@@ -507,6 +505,8 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 		return lines
 	}
 
+	mentionStyle := m.mentionStyle(bg)
+	timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#707786")).Background(bg)
 	timeText := msg.Time.Local().Format("15:04")
 	nameStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(msg.User.Color)).
