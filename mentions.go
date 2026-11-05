@@ -22,6 +22,9 @@ type mentionSpan struct {
 // requires token boundaries so an email address or a longer unknown name does
 // not accidentally notify somebody.
 func mentionSpans(text string, usernames []string) []mentionSpan {
+	if len(usernames) == 0 || !strings.Contains(text, "@") {
+		return nil
+	}
 	var spans []mentionSpan
 	for offset := 0; offset < len(text); {
 		if text[offset] != '@' {
