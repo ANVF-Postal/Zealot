@@ -675,10 +675,15 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 	}
 
 	lines := make([]string, 0, len(wrapped))
-	lines = append(lines, renderChatRow(rowFill, prefix+renderMentionBody(wrapped[0], msg.Mentions, bodyStyle, mentionStyle, msg.Rainbow && !hovered, msg.RainbowPhase), contentWidth))
+	runeOffset := 0
+	firstBody := renderMentionBodyAt(wrapped[0], msg.Mentions, bodyStyle, mentionStyle, msg.Rainbow && !hovered, msg.RainbowPhase, runeOffset)
+	lines = append(lines, renderChatRow(rowFill, prefix+firstBody, contentWidth))
+	runeOffset += utf8.RuneCountInString(wrapped[0])
 	indent := strings.Repeat(" ", prefixWidth)
 	for _, line := range wrapped[1:] {
-		lines = append(lines, renderChatRow(rowFill, normalBodyStyle.Render(indent)+renderMentionBody(line, msg.Mentions, bodyStyle, mentionStyle, msg.Rainbow && !hovered, msg.RainbowPhase), contentWidth))
+		body := renderMentionBodyAt(line, msg.Mentions, bodyStyle, mentionStyle, msg.Rainbow && !hovered, msg.RainbowPhase, runeOffset)
+		lines = append(lines, renderChatRow(rowFill, normalBodyStyle.Render(indent)+body, contentWidth))
+		runeOffset += utf8.RuneCountInString(line)
 	}
 	return lines
 }
