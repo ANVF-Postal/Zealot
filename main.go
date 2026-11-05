@@ -15,7 +15,7 @@ import (
 // printZealotError uses the same configured accent as the ZEALOT header.
 func printZealotError(cfg Config, err error) {
 	prefix := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(cfg.AccentColor)).
+		Foreground(lipgloss.Color(cfg.Theme.AccentColor)).
 		Render("Zealot:")
 	fmt.Fprintln(os.Stderr, prefix, err)
 }
