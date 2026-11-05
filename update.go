@@ -86,6 +86,7 @@ func (m model) Update(
 				return strings.ToLower(m.onlineUsers[i].Name) < strings.ToLower(m.onlineUsers[j].Name)
 			})
 			m.clampUsersScroll()
+			m.refreshMentionUsernames()
 
 		case "message", "system", "me", "letter":
 			m.appendMessage(packet)
@@ -101,6 +102,9 @@ func (m model) Update(
 			if packet.User.Color != "" {
 				m.user.Color = packet.User.Color
 			}
+			if oldName != m.user.Name {
+				m.refreshMentionUsernames()
+			}
 			if oldName != m.user.Name && m.renderCacheValid {
 				m.rebuildMessageCache()
 			}
@@ -112,6 +116,9 @@ func (m model) Update(
 			oldName := m.user.Name
 			if packet.User.Name != "" {
 				m.user = packet.User
+			}
+			if oldName != m.user.Name {
+				m.refreshMentionUsernames()
 			}
 			if oldName != m.user.Name && m.renderCacheValid {
 				m.rebuildMessageCache()
