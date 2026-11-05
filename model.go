@@ -20,6 +20,7 @@ type model struct {
 	user           User
 	onlineCount    int
 	onlineUsers  []User
+	mentionUsernames []string
 	usersOpen    bool
 	usersScroll  int
 	usersFrame   int
@@ -170,6 +171,7 @@ func newModel(
 		room:         room,
 		roomExplicit: roomExplicit,
 		user:         user,
+		mentionUsernames: []string{user.Name},
 		client:       client,
 		mouseMotion:  &mouseMotionState{},
 		typing:       make(map[string]User),
