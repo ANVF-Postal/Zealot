@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -19,8 +20,15 @@ import (
 // Server
 // -----------------------------------------------------------------------------
 
+var messageSequence atomic.Uint64
+
+func nextMessageID() string {
+	return fmt.Sprintf("%x-%x", time.Now().UnixNano(), messageSequence.Add(1))
+}
+
 type serverClient struct {
 	enc       *json.Encoder
+	writer    *bufio.Writer
 	mu        sync.Mutex
 	id        string
 	room      string
@@ -100,7 +108,9 @@ func (c *serverClient) send(packet Packet) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	_ = c.enc.Encode(packet)
+	if err := c.enc.Encode(packet); err == nil && c.writer != nil {
+		_ = c.writer.Flush()
+	}
 }
 
 func (s *server) systemMessage(
@@ -108,6 +118,7 @@ func (s *server) systemMessage(
 	text string,
 ) {
 	packet := Packet{
+		ID:   nextMessageID(),
 		Type: "system",
 		Room: roomName,
 		Text: text,
@@ -128,7 +139,8 @@ func (s *server) handle(conn net.Conn) {
 		bufio.NewReader(conn),
 	)
 
-	encoder := json.NewEncoder(conn)
+	writer := bufio.NewWriterSize(conn, 64*1024)
+	encoder := json.NewEncoder(writer)
 
 	var hello Packet
 
@@ -153,7 +165,8 @@ func (s *server) handle(conn net.Conn) {
 	}
 
 	client := &serverClient{
-		enc: encoder,
+		enc:    encoder,
+		writer: writer,
 		id: fmt.Sprintf(
 			"%d-%p",
 			time.Now().UnixNano(),
@@ -179,6 +192,7 @@ func (s *server) handle(conn net.Conn) {
 			Type: "history_mismatch",
 			Text: fmt.Sprintf("This room already exists with history %s. Remove the --add-history flag and relaunch to join it.", existingPolicy),
 		})
+		_ = writer.Flush()
 		s.mu.Unlock()
 		return
 	}
@@ -236,6 +250,11 @@ func (s *server) handle(conn net.Conn) {
 			Text: strconv.Itoa(onlineCount),
 		})
 	}
+	if writeErr == nil {
+		// History is a replay burst. Flush it as a buffered stream rather than
+		// issuing one socket write for every JSON packet.
+		writeErr = client.writer.Flush()
+	}
 
 	client.mu.Unlock()
 	if writeErr != nil {
@@ -290,6 +309,7 @@ func (s *server) handle(conn net.Conn) {
 				text = string(runes[:100000])
 			}
 			s.broadcast(roomName, Packet{
+				ID:   nextMessageID(),
 				Type: "letter",
 				Room: roomName,
 				User: user,
@@ -314,6 +334,8 @@ func (s *server) handle(conn net.Conn) {
 			}
 
 			message := Packet{
+				ID:          nextMessageID(),
+				ReplyTo:     packet.ReplyTo,
 				Type:        "message",
 				Room:        roomName,
 				User:        user,
@@ -396,7 +418,7 @@ func (s *server) handle(conn net.Conn) {
 			if len([]rune(text)) > maxMessage {
 				text = string([]rune(text)[:maxMessage])
 			}
-			action := Packet{Type: "me", Room: roomName, User: user, Text: text, Time: time.Now().UTC()}
+			action := Packet{ID: nextMessageID(), ReplyTo: packet.ReplyTo, Type: "me", Room: roomName, User: user, Text: text, Time: time.Now().UTC()}
 			s.mu.Lock()
 			room := s.rooms[roomName]
 			if room != nil && room.historyEnabled {

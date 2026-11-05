@@ -23,11 +23,26 @@ func (m model) inputSelectionCoordinates(x, y int) (int, int) {
 	localX := x - left
 	if localY == 0 {
 		localX -= 2
+		if m.replyTargetID != "" {
+			localX -= len([]rune(replyComposerPrefix))
+		}
 	}
 	return localX, localY
 }
 
 func (m model) inputSelectionContains(x, y int) bool {
 	left, top, right, bottom := m.inputSelectionArea()
-	return x >= left && x < right && y >= top && y < bottom
+	if x < left || x >= right || y < top || y >= bottom {
+		return false
+	}
+	if y == top {
+		prefixWidth := 2 // the composer prompt
+		if m.replyTargetID != "" {
+			prefixWidth += len([]rune(replyComposerPrefix))
+		}
+		if x < left+prefixWidth {
+			return false
+		}
+	}
+	return true
 }

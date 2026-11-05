@@ -56,6 +56,17 @@ func (m model) Update(
 	// Network messages
 	// -------------------------------------------------------------------------
 
+	if batch, ok := msg.(historyBatchReceivedMsg); ok {
+		m.appendMessages(batch.Packets)
+		if batch.Complete {
+			readyCmd := tea.Tick(750*time.Millisecond, func(time.Time) tea.Msg {
+				return notificationsReadyMsg{}
+			})
+			return m, tea.Batch(readPacket(m.client), readyCmd)
+		}
+		return m, readPacket(m.client)
+	}
+
 	if received, ok := msg.(messageReceivedMsg); ok {
 		packet := Packet(received)
 
@@ -133,8 +144,15 @@ func (m model) Update(
 		next := readPacket(m.client)
 		var commands []tea.Cmd
 		commands = append(commands, next)
+		if packet.Type == "users" {
+			if animationCmd := m.startUsersAnimation(); animationCmd != nil {
+				commands = append(commands, animationCmd)
+			}
+		}
 		if packet.Type == "message" && packet.User.Name != m.user.Name {
-			commands = append(commands, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg { return usersAnimationMsg{} }))
+			if animationCmd := m.startUsersAnimation(); animationCmd != nil {
+				commands = append(commands, animationCmd)
+			}
 			if m.notificationsReady && m.cfg.Bell {
 				commands = append(commands, terminalBellCmd())
 			}
@@ -143,25 +161,25 @@ func (m model) Update(
 	}
 
 	if _, ok := msg.(usersAnimationMsg); ok {
+		m.usersAnimationRunning = false
 		m.usersFrame++
-		active := m.usersOpen
 		for name, remaining := range m.userActivity {
 			if remaining <= 1 {
 				delete(m.userActivity, name)
 			} else {
 				m.userActivity[name] = remaining - 1
-				active = true
 			}
 		}
-		if active {
-			return m, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg {
-				return usersAnimationMsg{}
-			})
+		if animationCmd := m.startUsersAnimation(); animationCmd != nil {
+			return m, animationCmd
 		}
 		return m, nil
 	}
 
 	if _, ok := msg.(connectionClosedMsg); ok {
+		if m.quitting {
+			return m, tea.Quit
+		}
 		m.connected = false
 		m.status = "Disconnected"
 
@@ -187,12 +205,40 @@ func (m model) Update(
 		return m, nil
 	}
 
+	if timeoutMsg, ok := msg.(messageNavigationHighlightTimeoutMsg); ok {
+		if timeoutMsg.generation == m.navigationHighlightGeneration {
+			previousID := m.highlightedMessageID
+			m.highlightedMessageID = ""
+			m.restyleMessageRows(previousID)
+		}
+		return m, nil
+	}
+
+	if frameMsg, ok := msg.(mouseMotionFrameMsg); ok {
+		if frameMsg.generation == m.mouseMotionFrameGeneration && m.mouseMotion != nil {
+			if x, y, known := m.mouseMotion.takeAndRelease(); known {
+				m.applyMouseMotion(x, y)
+			}
+		}
+		return m, nil
+	}
+
 	if clearMsg, ok := msg.(typingClearMsg); ok {
-		if clearMsg.generation == m.typingGeneration {
+		if !m.typingTimerPending {
+			return m, nil
+		}
+		remaining := time.Until(m.lastTypingAt.Add(typingClearDelay))
+		if clearMsg.generation != m.typingGeneration && remaining > 0 {
+			generation := m.typingGeneration
+			return m, tea.Tick(remaining, func(time.Time) tea.Msg {
+				return typingClearMsg{generation: generation}
+			})
+		}
+		m.typingTimerPending = false
+		if m.isTyping {
 			m.isTyping = false
 			m.sendTyping(false)
 		}
-
 		return m, nil
 	}
 
@@ -202,6 +248,16 @@ func (m model) Update(
 
 	switch mouse := msg.(type) {
 	case tea.MouseClickMsg:
+		m.lastMouseX = mouse.X
+		m.lastMouseY = mouse.Y
+		m.mousePositionKnown = true
+		if m.mouseMotion != nil {
+			m.mouseMotion.record(mouse.X, mouse.Y)
+		}
+		// A click takes priority over any pending passive-hover update. In
+		// particular, don't make a header click wait for an old hover timer.
+		m.refreshMessageHover()
+
 		// Begin a textarea selection before handling other clickable UI. The
 		// coordinate helper accounts for the composer frame and its first-row
 		// prompt, which is rendered outside the Bubbles textarea.
@@ -239,7 +295,9 @@ func (m model) Update(
 					m.quitConfirm = false
 					m.quitConfirmGeneration++
 					m.sendTyping(false)
-					_ = m.client.conn.Close()
+					m.quitting = true
+					// main closes the socket after Program.Run returns. Closing it
+					// here can race the packet reader and briefly render Disconnected.
 					return m, tea.Quit
 				}
 				m.quitConfirm = true
@@ -292,8 +350,17 @@ func (m model) Update(
 			m.scrollDragging = false
 			m.scrollbarHoldDirection = 0
 			m.scrollbarHoldGeneration++
-			_ = m.client.send(Packet{Type: "who", Room: m.room})
-			return m, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg { return usersAnimationMsg{} })
+			// Do not let a slow socket write hold up the UI response to the click.
+			sendWhoCmd := func() tea.Msg {
+				if m.client != nil {
+					_ = m.client.send(Packet{Type: "who", Room: m.room})
+				}
+				return nil
+			}
+			if animationCmd := m.startUsersAnimation(); animationCmd != nil {
+				return m, tea.Batch(sendWhoCmd, animationCmd)
+			}
+			return m, sendWhoCmd
 		}
 		if m.usersOpen && mouse.Button == tea.MouseLeft && mouse.X == m.chatScrollbarX() && m.maxUsersScroll() > 0 {
 			visible := m.usersPanelHeight()
@@ -383,39 +450,40 @@ func (m model) Update(
 				return m, nil
 			}
 		}
+		if mouse.Button == tea.MouseLeft && !m.usersOpen && !m.splashOpen {
+			if targetID := m.messageLinkAt(mouse.X, mouse.Y); targetID != "" {
+				return m, m.navigateToMessage(targetID)
+			}
+			if id := m.messageIDAt(mouse.X, mouse.Y); id != "" {
+				m.beginReply(id)
+				return m, nil
+			}
+		}
+		// Mouse clicks outside the composer are fully handled above. Do not
+		// feed panel/header clicks into the textarea or adaptive layout code.
+		return m, nil
 
 	case tea.MouseMotionMsg:
-		if m.inputSelecting {
-			localX, localY := m.inputSelectionCoordinates(mouse.X, mouse.Y)
-			m.input.ExtendSelection(localX, localY)
-			return m, nil
+		if m.mouseMotion == nil {
+			// The production filter owns the shared pointer state. This fallback
+			// keeps direct model tests safe when they bypass program filtering.
+			m.mouseMotion = &mouseMotionState{}
+			m.mouseMotion.record(mouse.X, mouse.Y)
 		}
-		if m.splashOpen && m.splashScrollDragging {
-			_, thumbHeight, trackHeight := m.splashScrollbarThumb()
-			target := mouse.Y - 3 - m.splashScrollDragOffset
-			if target < 0 { target = 0 }
-			if target > trackHeight-thumbHeight { target = trackHeight-thumbHeight }
-			m.setSplashScrollFromThumbTop(target)
-			return m, nil
-		}
-		if m.usersOpen && m.usersScrollDragging {
-			_, thumbHeight, trackHeight := m.usersScrollbarThumb()
-			target := mouse.Y - 3 - m.usersScrollDragOffset
-			if target < 0 { target = 0 }
-			if target > trackHeight-thumbHeight { target = trackHeight-thumbHeight }
-			m.setUsersScrollFromThumbTop(target)
-			return m, nil
-		}
-		if m.scrollDragging && !m.usersOpen && !m.splashOpen {
-			_, thumbHeight, trackHeight := m.scrollbarThumb()
-			target := mouse.Y - 3 - m.scrollDragOffset
-			if target < 0 { target = 0 }
-			if target > trackHeight-thumbHeight { target = trackHeight-thumbHeight }
-			m.setScrollFromThumbTop(target)
-			return m, nil
-		}
+		m.mouseMotionFrameGeneration++
+		generation := m.mouseMotionFrameGeneration
+		return m, tea.Tick(mouseMotionFrameInterval, func(time.Time) tea.Msg {
+			return mouseMotionFrameMsg{generation: generation}
+		})
 
 	case tea.MouseReleaseMsg:
+		// Apply the newest coalesced pointer position before ending a drag or
+		// text selection, so the final release coordinate is not lost.
+		if m.mouseMotion != nil {
+			if x, y, known := m.mouseMotion.position(); known {
+				m.applyMouseMotion(x, y)
+			}
+		}
 		if m.inputSelecting {
 			m.input.EndSelection()
 			m.inputSelecting = false
@@ -539,8 +607,9 @@ func (m model) Update(
 
 		case "ctrl+c", "ctrl+q":
 			m.sendTyping(false)
-			_ = m.client.conn.Close()
-
+			m.quitting = true
+			// main closes the socket after Program.Run returns; avoid racing the
+			// packet reader and rendering a transient Disconnected state.
 			return m, tea.Quit
 
 		case "pgup":
@@ -557,6 +626,8 @@ func (m model) Update(
 				return m, nil
 			}
 			m.scroll = m.maxScroll()
+			m.refreshRenderedWindow()
+			m.refreshMessageHover()
 			return m, nil
 
 		case "ctrl+end":
@@ -565,7 +636,15 @@ func (m model) Update(
 				return m, nil
 			}
 			m.scroll = 0
+			m.refreshRenderedWindow()
+			m.refreshMessageHover()
 			return m, nil
+
+		case "backspace":
+			if m.replyTargetID != "" && !m.input.HasSelection() && m.input.Line() == 0 && m.input.Column() == 0 {
+				m.cancelReply()
+				return m, nil
+			}
 
 		case "shift+enter", "ctrl+j":
 			m.input.InsertString("\n")
@@ -587,11 +666,19 @@ func (m model) Update(
 	// -------------------------------------------------------------------------
 
 	var inputCmd tea.Cmd
+	previousInputHeight := m.input.Height()
 
 	if !handledNewline {
 		m.input, inputCmd = m.input.Update(msg)
 	}
-	if m.cfg.AdaptiveHeight {
+	if keyMsg, ok := msg.(tea.KeyPressMsg); ok && m.replyTargetID != "" && m.input.Value() == "" {
+		if keyMsg.String() == "backspace" || keyMsg.String() == "delete" {
+			m.cancelReply()
+		}
+	}
+	if m.cfg.AdaptiveHeight && m.input.Height() != previousInputHeight {
+		// Scroll limits depend on the available pane height, so recompute them
+		// only when the adaptive textarea actually changes height.
 		m.clampScroll()
 		m.clampUsersScroll()
 		m.clampSplashScroll()
@@ -604,10 +691,6 @@ func (m model) Update(
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		if m.connected && isTextInputKey(keyMsg) {
 
-			m.typingGeneration++
-
-			generation := m.typingGeneration
-
 			// Start blinking only when there is actual text.
 			blinkCmd := m.startCursorBlink()
 
@@ -618,14 +701,7 @@ func (m model) Update(
 
 			// Consider the user to have stopped typing after
 			// 1.2 seconds without another editing key.
-			typingCmd := tea.Tick(
-				1200*time.Millisecond,
-				func(time.Time) tea.Msg {
-					return typingClearMsg{
-						generation: generation,
-					}
-				},
-			)
+			typingCmd := m.scheduleTypingClear()
 
 			return m, tea.Batch(
 				inputCmd,
@@ -641,6 +717,44 @@ func (m model) Update(
 	}
 
 	return m, inputCmd
+}
+
+const mouseMotionFrameInterval = time.Second / 60
+
+// applyMouseMotion processes the latest pointer position. The motion filter
+// calls this at most once per frame, regardless of how many terminal motion
+// events arrived during that interval.
+func (m *model) applyMouseMotion(x, y int) {
+	m.lastMouseX = x
+	m.lastMouseY = y
+	m.mousePositionKnown = true
+
+	if m.inputSelecting {
+		localX, localY := m.inputSelectionCoordinates(x, y)
+		m.input.ExtendSelection(localX, localY)
+		m.refreshMessageHover()
+		return
+	}
+	if m.splashOpen && m.splashScrollDragging {
+		_, thumbHeight, trackHeight := m.splashScrollbarThumb()
+		target := y - 3 - m.splashScrollDragOffset
+		target = min(max(target, 0), max(0, trackHeight-thumbHeight))
+		m.setSplashScrollFromThumbTop(target)
+		return
+	}
+	if m.usersOpen && m.usersScrollDragging {
+		_, thumbHeight, trackHeight := m.usersScrollbarThumb()
+		target := y - 3 - m.usersScrollDragOffset
+		target = min(max(target, 0), max(0, trackHeight-thumbHeight))
+		m.setUsersScrollFromThumbTop(target)
+		return
+	}
+	if m.scrollDragging && !m.usersOpen && !m.splashOpen {
+		target := y - 3 - m.scrollDragOffset
+		m.setScrollFromThumbTopForLineCount(target, len(m.renderMessageLines()))
+		return
+	}
+	m.refreshMessageHover()
 }
 
 // scrollPage applies the same viewport movement for keyboard and footer clicks.
@@ -692,6 +806,24 @@ func isTextInputKey(
 	}
 
 	return false
+}
+
+const typingClearDelay = 1200 * time.Millisecond
+
+// scheduleTypingClear keeps only one outstanding timer for a continuous
+// typing burst. Later keystrokes move the deadline; the first timer wakes once
+// and, if necessary, arms a single replacement for the remaining quiet time.
+func (m *model) scheduleTypingClear() tea.Cmd {
+	m.typingGeneration++
+	m.lastTypingAt = time.Now()
+	if m.typingTimerPending {
+		return nil
+	}
+	m.typingTimerPending = true
+	generation := m.typingGeneration
+	return tea.Tick(typingClearDelay, func(time.Time) tea.Msg {
+		return typingClearMsg{generation: generation}
+	})
 }
 
 func (m model) sendTyping(

@@ -74,16 +74,22 @@ func (m model) renderHeader() string {
 // Main UI
 // -----------------------------------------------------------------------------
 
-func appView(content string) tea.View {
+func appView(content string, hoverEnabled bool) tea.View {
 	v := tea.NewView(content)
 	v.AltScreen = true
+	// Passive pointer motion is needed only for message-body hover in the
+	// main chat. Panels have no hover targets, so keep click, wheel, and drag
+	// support without subscribing to every mouse movement.
 	v.MouseMode = tea.MouseModeCellMotion
+	if hoverEnabled {
+		v.MouseMode = tea.MouseModeAllMotion
+	}
 	return v
 }
 
 func (m model) View() tea.View {
 	if m.width == 0 || m.height == 0 {
-		return appView("Starting Zealot…")
+		return appView("Starting Zealot…", false)
 	}
 
 	// -------------------------------------------------------------------------
@@ -93,31 +99,18 @@ func (m model) View() tea.View {
 	header := m.renderHeader()
 
 	// -------------------------------------------------------------------------
-	// Chat
+	// Alternate panels
 	// -------------------------------------------------------------------------
-
-	lines := m.renderMessageLines()
-
-	// ALWAYS reserve one line for the typing indicator.
-	//
-	// When nobody is typing, this line is blank.
-	// When somebody starts typing, the indicator appears on exactly that
-	// same line.
-	chatHeight := m.messageHeight() - 1
-
-	if chatHeight < 1 {
-		chatHeight = 1
-	}
 
 	if m.usersOpen {
 		// The existing chat pane becomes the roster. The heading uses a clean
 		// full-width background row; the scrollbar occupies the far-right
 		// interior cell on user rows only.
-		users := m.userRows()
+		totalUserRows := m.userRowCount()
 		visibleUsers := m.usersPanelHeight()
-		userStart := min(m.usersScroll, len(users))
-		userEnd := min(userStart+visibleUsers, len(users))
-		visible := append([]string(nil), users[userStart:userEnd]...)
+		userStart := min(m.usersScroll, totalUserRows)
+		userEnd := min(userStart+visibleUsers, totalUserRows)
+		visible := m.userRowsRange(userStart, userEnd)
 
 		bg := lipgloss.Color(m.cfg.Background)
 		rowFill := lipgloss.NewStyle().Background(bg)
@@ -135,14 +128,14 @@ func (m model) View() tea.View {
 		for len(visible) < visibleUsers {
 			visible = append(visible, "")
 		}
-		railTop, thumbHeight, trackHeight := m.usersScrollbarThumb()
+		railTop, thumbHeight, trackHeight := m.usersScrollbarThumbForRowCount(totalUserRows)
 		for i, line := range visible {
 			text := padANSIToWidth(line, textWidth, rowFill)
 			glyph := "│"
 			switch {
 			case i == visibleUsers-1:
 				glyph = "v"
-			case len(users) > visibleUsers && i < trackHeight &&
+			case totalUserRows > visibleUsers && i < trackHeight &&
 				i >= railTop && i < railTop+thumbHeight:
 				glyph = "█"
 			}
@@ -168,6 +161,14 @@ func (m model) View() tea.View {
 	if m.splashOpen {
 		chatBox := m.renderSplashPanel()
 		return m.renderViewWithChat(header, chatBox, false, true)
+	}
+
+	// The chat history is not needed by either alternate panel. Avoid
+	// formatting every stored message while the splash/users view is active.
+	lines := m.renderMessageLines()
+	chatHeight := m.messageHeight() - 1
+	if chatHeight < 1 {
+		chatHeight = 1
 	}
 
 	start := len(lines) -
@@ -198,8 +199,9 @@ func (m model) View() tea.View {
 
 	// Reserve the final interior column for a permanent scrollbar rail.
 	// The thumb only appears once the message history exceeds the viewport.
-	_, thumbHeight, trackHeight := m.scrollbarThumb()
-	thumbTop, _, _ := m.scrollbarThumb()
+	thumbTop, thumbHeight, trackHeight := m.scrollbarThumbForLineCount(len(lines))
+	visibleHeight := max(1, m.messageHeight()-1)
+	maxScroll := max(0, len(lines)-visibleHeight)
 	scrollbarStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(m.cfg.BorderColor)).
 		Background(lipgloss.Color(m.cfg.Background))
@@ -213,7 +215,7 @@ func (m model) View() tea.View {
 		default:
 			trackPosition := i-1
 			glyph := "│"
-			if m.maxScroll() > 0 && trackPosition >= thumbTop && trackPosition < thumbTop+thumbHeight {
+			if maxScroll > 0 && trackPosition >= thumbTop && trackPosition < thumbTop+thumbHeight {
 				glyph = "█"
 			}
 			if trackPosition >= trackHeight {
@@ -271,7 +273,8 @@ func (m model) renderSplashPanel() string {
 	for len(visible) < visibleHeight {
 		visible = append(visible, "")
 	}
-	top, thumbHeight, trackHeight := m.splashScrollbarThumb()
+	maxScroll := max(0, len(lines)-visibleHeight)
+	top, thumbHeight, trackHeight := m.splashScrollbarThumbForRowCount(len(lines))
 	rows := make([]string, 0, visibleHeight)
 	for i, line := range visible {
 		glyph := "│"
@@ -282,7 +285,7 @@ func (m model) renderSplashPanel() string {
 			glyph = "v"
 		default:
 			trackPosition := i - 1
-			if m.maxSplashScroll() > 0 && trackPosition >= top && trackPosition < top+thumbHeight {
+			if maxScroll > 0 && trackPosition >= top && trackPosition < top+thumbHeight {
 				glyph = "█"
 			}
 			if trackPosition >= trackHeight {
@@ -502,7 +505,12 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen 
 		Background(lipgloss.Color(m.cfg.Background)).
 		Bold(true).
 		Render("> ")
-	inputView[0] = prompt + inputView[0]
+	firstInputRow := inputView[0]
+	inputView[0] = prompt
+	if m.replyTargetID != "" {
+		inputView[0] += m.styles.accent.Render(replyComposerPrefix)
+	}
+	inputView[0] += firstInputRow
 
 	// The textarea emits shorter/unstyled end-of-buffer rows when empty. Fill
 	// every row's remaining columns with the configured background so those
@@ -558,9 +566,10 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen 
 	// Full application
 	// -------------------------------------------------------------------------
 
-	content := m.styles.app.
-		Width(m.width).
-		Height(m.height).
-		Render(lipgloss.JoinVertical(lipgloss.Left, parts...))
-	return appView(content)
+	// Each section is already rendered to its final terminal dimensions and
+	// paints its own foreground/background. Running the completed screen
+	// through another Width/Height Style.Render would make Lipgloss measure
+	// and wrap the entire ANSI-rich view again on every redraw.
+	content := lipgloss.JoinVertical(lipgloss.Left, parts...)
+	return appView(content, !usersOpen && !splashOpen && len(m.messages) > 0)
 }

@@ -23,6 +23,7 @@ type model struct {
 	usersOpen    bool
 	usersScroll  int
 	usersFrame   int
+	usersAnimationRunning bool
 
 	splashOpen                       bool
 	splashScroll                     int
@@ -39,10 +40,33 @@ type model struct {
 	client *wireClient
 
 	messages []Packet
+	messageByID map[string]Packet
+	replyIDsByMessageID map[string][]string
+	messageRowsByID map[string]messageRowRange
+	// messageRowRanges stores the absolute row range of each message in history
+	// order. The full history needs these lightweight counts for scrolling,
+	// but styled rows are kept only around the current viewport.
+	messageRowRanges []messageRowRange
+	renderWindowStart int
+	renderWindowEnd int
+	renderWindowValid bool
+	// Interaction geometry is calculated on demand for messages the pointer
+	// reaches, instead of laying out hitboxes for the entire history on resize.
+	messageBodyRangesByID map[string][]messageBodyRange
+	messageLinkRangesByID map[string][][]messageLinkRange
+	hoveredMessageID string
+	mouseMotion *mouseMotionState
+	mouseMotionFrameGeneration int
+	replyTargetID string
+	highlightedMessageID string
+	navigationHighlightGeneration int
+	lastMouseX int
+	lastMouseY int
+	mousePositionKnown bool
 
-	// Rendered rows are cached for the current terminal width. New messages
-	// append only their own rows; a width change rebuilds the cache once.
-	renderedLines    []string
+	// renderedLines is indexed by absolute history row, but styled strings
+	// are populated only for the visible window and its small prefetch buffer.
+	renderedLines []string
 	renderCacheWidth int
 	renderCacheValid bool
 
@@ -63,6 +87,7 @@ type model struct {
 	scrollbarHoldGeneration int
 
 	connected          bool
+	quitting            bool
 	status             string
 	notificationsReady bool
 
@@ -71,8 +96,10 @@ type model struct {
 	sendFeedback           bool
 	sendFeedbackGeneration int
 
-	typingGeneration int
-	isTyping         bool
+	typingGeneration   int
+	typingTimerPending bool
+	lastTypingAt       time.Time
+	isTyping           bool
 
 	styles uiStyles
 }
@@ -144,6 +171,7 @@ func newModel(
 		roomExplicit: roomExplicit,
 		user:         user,
 		client:       client,
+		mouseMotion:  &mouseMotionState{},
 		typing:       make(map[string]User),
 		userActivity: make(map[string]int),
 		input:        input,
@@ -166,6 +194,8 @@ func (m model) Init() tea.Cmd {
 	)
 }
 
+const historyBatchSize = 128
+
 func readPacket(
 	client *wireClient,
 ) tea.Cmd {
@@ -174,12 +204,30 @@ func readPacket(
 			client.hasInitial = false
 			return messageReceivedMsg(client.initialPacket)
 		}
-		var packet Packet
 
+		if client.historyReplay {
+			packets := make([]Packet, 0, historyBatchSize)
+			for len(packets) < historyBatchSize {
+				var packet Packet
+				if err := client.decoder.Decode(&packet); err != nil {
+					if len(packets) == 0 {
+						return connectionClosedMsg{}
+					}
+					return historyBatchReceivedMsg{Packets: packets}
+				}
+				if packet.Type == "history_end" {
+					client.historyReplay = false
+					return historyBatchReceivedMsg{Packets: packets, Complete: true}
+				}
+				packets = append(packets, packet)
+			}
+			return historyBatchReceivedMsg{Packets: packets}
+		}
+
+		var packet Packet
 		if err := client.decoder.Decode(&packet); err != nil {
 			return connectionClosedMsg{}
 		}
-
 		return messageReceivedMsg(packet)
 	}
 }

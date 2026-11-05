@@ -5,7 +5,12 @@ import (
 	"unicode/utf8"
 
 	"charm.land/lipgloss/v2"
+	"github.com/clipperhouse/displaywidth"
 )
+
+// Use the same grapheme-aware width implementation as Lipgloss, while
+// treating ANSI control sequences as zero-width.
+var wrappingWidthOptions = displaywidth.Options{ControlSequences: true}
 
 func padANSIToWidth(line string, width int, fill lipgloss.Style) string {
 	if width < 1 {
@@ -73,29 +78,26 @@ func truncateANSI(s string, width int) string {
 	if width < 1 {
 		width = 1
 	}
+	// Most rows have already been wrapped to fit. Avoid allocating a builder
+	// and walking every grapheme when this final safety check has nothing to do.
+	if wrappingWidthOptions.String(s) <= width {
+		return s
+	}
+
 	var out strings.Builder
 	used := 0
-	for i := 0; i < len(s); {
-		if s[i] == 0x1b {
-			end := ansiSequenceEnd(s, i)
-			out.WriteString(s[i:end])
-			i = end
-			continue
-		}
-
-		_, size := utf8.DecodeRuneInString(s[i:])
-		if size < 1 {
-			break
-		}
-		piece := s[i : i+size]
-		runeWidth := lipgloss.Width(piece)
-		if used+runeWidth > width {
+	// Only the overlong case needs grapheme-by-grapheme clipping, so combined
+	// characters such as accents, flags, and emoji sequences remain intact.
+	graphemes := wrappingWidthOptions.StringGraphemes(s)
+	for graphemes.Next() {
+		cluster := graphemes.Value()
+		clusterWidth := graphemes.Width()
+		if used+clusterWidth > width {
 			out.WriteString("\x1b[0m")
 			break
 		}
-		out.WriteString(piece)
-		used += runeWidth
-		i += size
+		out.WriteString(cluster)
+		used += clusterWidth
 	}
 	return out.String()
 }
@@ -228,6 +230,7 @@ func wrapTextVariable(text string, firstWidth, secondWidth, fullWidth int) []str
 
 		for _, token := range words {
 			remaining := token
+			remainingWidth := wrappingWidthOptions.String(token)
 			for remaining != "" {
 				capWidth := lineWidth(len(result))
 				if capWidth < 1 {
@@ -255,24 +258,21 @@ func wrapTextVariable(text string, firstWidth, secondWidth, fullWidth int) []str
 					continue
 				}
 
-				if lipgloss.Width(remaining) <= capWidth {
+				if remainingWidth <= capWidth {
 					current = remaining
 					remaining = ""
 					break
 				}
 
-				part, rest := splitLongWordPrefix(remaining, capWidth, isURLLike(token))
+				part, rest, consumedWidth := splitLongWordPrefix(remaining, capWidth, isURLLike(token))
 				if part == "" || rest == remaining {
-					// Progress even for unusual zero-width/control-only tokens.
-					_, size := utf8.DecodeRuneInString(remaining)
-					if size < 1 {
-						remaining = ""
-						break
-					}
-					part, rest = remaining[:size], remaining[size:]
+					// Defensive fallback: consume the remaining token rather than
+					// risk an infinite loop on malformed terminal-control input.
+					part, rest, consumedWidth = remaining, "", remainingWidth
 				}
 				result = append(result, part)
 				remaining = rest
+				remainingWidth -= consumedWidth
 			}
 		}
 		if current != "" {
@@ -289,78 +289,200 @@ func wrapTextVariable(text string, firstWidth, secondWidth, fullWidth int) []str
 	return result
 }
 
-func splitLongWordPrefix(word string, width int, urlLike bool) (string, string) {
-	if width < 1 || word == "" {
-		return "", word
-	}
-	used := 0
-	lastFit := 0
-	lastPunctuation := 0
 
-	for i := 0; i < len(word); {
-		if word[i] == 0x1b {
-			i = ansiSequenceEnd(word, i)
-			lastFit = i
+ // wrapTextLineCountVariable mirrors wrapTextVariable without constructing
+ // wrapped output strings. Resize uses it to keep an exact history height
+ // index while formatting only the messages near the viewport.
+func wrapTextLineCountVariable(text string, firstWidth, secondWidth, fullWidth int) int {
+	if firstWidth < 0 {
+		firstWidth = 0
+	}
+	if secondWidth < 1 {
+		secondWidth = 1
+	}
+	if fullWidth < 1 {
+		fullWidth = 1
+	}
+	lineWidth := func(lineIndex int) int {
+		switch lineIndex {
+		case 0:
+			return firstWidth
+		case 1:
+			return secondWidth
+		default:
+			return fullWidth
+		}
+	}
+
+	lineCount := 0
+	currentWidth := 0
+	currentHasText := false
+	for _, paragraph := range strings.Split(text, "\n") {
+		words := strings.Fields(paragraph)
+		if len(words) == 0 {
+			if currentHasText {
+				lineCount++
+				currentWidth = 0
+				currentHasText = false
+			}
+			lineCount++
 			continue
 		}
-		r, size := utf8.DecodeRuneInString(word[i:])
-		if size < 1 {
+
+		for _, token := range words {
+			remaining := token
+			remainingWidth := wrappingWidthOptions.String(token)
+			for remaining != "" {
+				capacity := lineWidth(lineCount)
+				if capacity < 1 {
+					if currentHasText {
+						lineCount++
+						currentWidth = 0
+						currentHasText = false
+						continue
+					}
+					lineCount++
+					continue
+				}
+
+				if currentHasText {
+					if currentWidth+1+remainingWidth <= capacity {
+						currentWidth += 1 + remainingWidth
+						remaining = ""
+						break
+					}
+					lineCount++
+					currentWidth = 0
+					currentHasText = false
+					continue
+				}
+
+				if remainingWidth <= capacity {
+					currentWidth = remainingWidth
+					currentHasText = true
+					remaining = ""
+					break
+				}
+
+				part, rest, consumedWidth := splitLongWordPrefix(remaining, capacity, isURLLike(token))
+				if part == "" || rest == remaining {
+					// Defensive fallback: consume the remaining token rather than
+					// risk an infinite loop on malformed terminal-control input.
+					part, rest, consumedWidth = remaining, "", remainingWidth
+				}
+				lineCount++
+				remaining = rest
+				remainingWidth -= consumedWidth
+			}
+		}
+		if currentHasText {
+			lineCount++
+			currentWidth = 0
+			currentHasText = false
+		}
+	}
+	if lineCount == 0 {
+		return 1
+	}
+	return lineCount
+}
+
+func wrapTextLineCount(text string, width int) int {
+	if width < 1 {
+		width = 1
+	}
+	return wrapTextLineCountVariable(text, width, width, width)
+}
+
+func splitLongWordPrefix(word string, width int, urlLike bool) (string, string, int) {
+	if width < 1 || word == "" {
+		return "", word, 0
+	}
+
+	used := 0
+	end := 0
+	lastFit := 0
+	lastFitWidth := 0
+	lastFitWithoutHyphen := 0
+	lastFitWithoutHyphenWidth := 0
+	lastPunctuation := 0
+	lastPunctuationWidth := 0
+
+	// Iterate grapheme clusters rather than individual runes. This avoids
+	// splitting combining sequences, flags, or emoji joined with ZWJ, and
+	// avoids calling the full width engine once per rune.
+	graphemes := wrappingWidthOptions.StringGraphemes(word)
+	for graphemes.Next() {
+		cluster := graphemes.Value()
+		clusterWidth := graphemes.Width()
+		end += len(cluster)
+		used += clusterWidth
+		if used > width {
 			break
 		}
-		pieceWidth := lipgloss.Width(string(r))
-		if used+pieceWidth > width {
-			break
+		lastFit = end
+		lastFitWidth = used
+		if used <= width-1 {
+			lastFitWithoutHyphen = end
+			lastFitWithoutHyphenWidth = used
 		}
-		used += pieceWidth
-		i += size
-		lastFit = i
-		if strings.ContainsRune("./\\-_?:&=#%+@,;~!$'()[]{}", r) {
-			lastPunctuation = i
+		if graphemeHasBreakPunctuation(cluster) {
+			lastPunctuation = end
+			lastPunctuationWidth = used
 		}
 	}
 
 	if lastPunctuation > 0 && lastPunctuation < len(word) {
-		return word[:lastPunctuation], word[lastPunctuation:]
+		return word[:lastPunctuation], word[lastPunctuation:], lastPunctuationWidth
 	}
 
 	// For URLs/domains, don't insert synthetic hyphens: that would alter the
 	// visible address when someone copies it from the terminal.
 	cut := lastFit
+	consumedWidth := lastFitWidth
 	if !urlLike && width > 1 {
-		cut = 0
-		used = 0
-		for i := 0; i < len(word); {
-			if word[i] == 0x1b {
-				i = ansiSequenceEnd(word, i)
-				cut = i
-				continue
-			}
-			r, size := utf8.DecodeRuneInString(word[i:])
-			if size < 1 {
-				break
-			}
-			pieceWidth := lipgloss.Width(string(r))
-			if used+pieceWidth > width-1 {
-				break
-			}
-			used += pieceWidth
-			i += size
-			cut = i
-		}
+		cut = lastFitWithoutHyphen
+		consumedWidth = lastFitWithoutHyphenWidth
 	}
 	if cut <= 0 {
-		_, size := utf8.DecodeRuneInString(word)
-		if size < 1 {
-			return "", word
+		// Always make progress, but never cut through the first grapheme cluster
+		// even when it is wider than the available row.
+		first := wrappingWidthOptions.StringGraphemes(word)
+		if !first.Next() {
+			return "", word, 0
 		}
-		cut = size
+		cluster := first.Value()
+		cut = len(cluster)
+		consumedWidth = first.Width()
 	}
+
 	part := word[:cut]
 	rest := word[cut:]
-	if !urlLike && width > 1 && part != "" {
+	if !urlLike && width > 1 && part != "" && consumedWidth+1 <= width {
 		part += "-"
 	}
-	return part, rest
+	return part, rest, consumedWidth
+}
+
+// graphemeHasBreakPunctuation checks visible characters only; punctuation in
+// an ANSI escape sequence must not become a URL break point.
+func graphemeHasBreakPunctuation(cluster string) bool {
+	const punctuation = "./\\-_?:&=#%+@,;~!$'()[]{}"
+	for i := 0; i < len(cluster); {
+		if cluster[i] == 0x1b {
+			i = ansiSequenceEnd(cluster, i)
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(cluster[i:])
+		if size < 1 {
+			break
+		}
+		if strings.ContainsRune(punctuation, r) {
+			return true
+		}
+		i += size
+	}
+	return false
 }
 
 func isURLLike(word string) bool {

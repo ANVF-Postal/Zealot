@@ -22,6 +22,7 @@ type wireClient struct {
 	decoder       *json.Decoder
 	initialPacket Packet
 	hasInitial    bool
+	historyReplay bool
 	mu            sync.Mutex
 }
 
@@ -69,6 +70,13 @@ func connectToServer(
 			_ = devNull.Close()
 			return nil, startErr
 		}
+
+		// The daemon is intentionally long-lived, so don't block startup by
+		// waiting here. Reap it asynchronously if it exits while this client
+		// process is still alive.
+		go func() {
+			_ = cmd.Wait()
+		}()
 
 		_ = devNull.Close()
 
@@ -139,6 +147,7 @@ func connectToServer(
 	}
 	client.initialPacket = response
 	client.hasInitial = true
+	client.historyReplay = response.AddHistory
 
 	return client, nil
 }
