@@ -674,15 +674,37 @@ func (m *model) refreshRenderedWindow() {
 	}
 	actualStart := m.messageRowRanges[first].Start
 	actualEnd := m.messageRowRanges[last-1].End
-	if m.renderWindowValid && actualStart >= m.renderWindowStart && actualEnd <= m.renderWindowEnd {
+	oldWindowValid := m.renderWindowValid && m.renderWindowEnd > m.renderWindowStart
+	oldStart, oldEnd := m.renderWindowStart, m.renderWindowEnd
+	if oldWindowValid && actualStart >= oldStart && actualEnd <= oldEnd {
 		return
 	}
 
-	if m.renderWindowValid && m.renderWindowEnd > m.renderWindowStart {
-		clear(m.renderedLines[m.renderWindowStart:m.renderWindowEnd])
+	// Keep already-styled messages that remain in both windows. Small scroll
+	// steps usually move the window by only one or two messages; clearing and
+	// redrawing the full visible buffer would needlessly rerender all of them.
+	overlapStart, overlapEnd := 0, 0
+	if oldWindowValid {
+		overlapStart = max(actualStart, oldStart)
+		overlapEnd = min(actualEnd, oldEnd)
+		if overlapStart >= overlapEnd {
+			clear(m.renderedLines[oldStart:oldEnd])
+			overlapStart, overlapEnd = 0, 0
+		} else {
+			if oldStart < overlapStart {
+				clear(m.renderedLines[oldStart:overlapStart])
+			}
+			if overlapEnd < oldEnd {
+				clear(m.renderedLines[overlapEnd:oldEnd])
+			}
+		}
 	}
+
 	for index := first; index < last; index++ {
 		rows := m.messageRowRanges[index]
+		if oldWindowValid && rows.Start >= overlapStart && rows.End <= overlapEnd {
+			continue
+		}
 		rendered := m.renderPacketLines(m.messages[index], m.width)
 		expected := rows.End - rows.Start
 		if len(rendered) != expected {
