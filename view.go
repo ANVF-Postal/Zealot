@@ -500,6 +500,11 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen 
 	if len(inputView) == 0 {
 		inputView = []string{""}
 	}
+	mentionStyle := m.mentionStyle(lipgloss.Color(m.cfg.Background))
+	mentionCandidates := m.mentionCandidates()
+	for i := range inputView {
+		inputView[i] = styleANSIVisibleMentions(inputView[i], mentionCandidates, mentionStyle)
+	}
 	prompt := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(m.cfg.AccentColor)).
 		Background(lipgloss.Color(m.cfg.Background)).
