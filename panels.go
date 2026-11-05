@@ -228,6 +228,46 @@ func (m model) userRowsRange(start, end int) []string {
 	return rows
 }
 
+// userNameAt maps a click in the online roster back to the username rendered
+// on that row. Wrapped usernames remain clickable across all of their rows.
+func (m model) userNameAt(x, y int) string {
+	if !m.usersOpen || y < 3 || x < 0 || x >= m.chatScrollbarX() {
+		return ""
+	}
+	left := 0
+	if !narrowBordersHidden(m.width) {
+		left = 1
+	}
+	localX := x - left
+	if localX < 4 {
+		return ""
+	}
+	width := m.width - 12
+	if width < 8 {
+		width = 8
+	}
+	nameWidth := max(1, width-5)
+	targetRow := m.usersScroll + y - 3
+	row := 0
+	for _, user := range m.onlineUsers {
+		parts := wrapText(user.Name, nameWidth)
+		if len(parts) == 0 {
+			parts = []string{user.Name}
+		}
+		for _, part := range parts {
+			partWidth := lipgloss.Width(part)
+			if row == targetRow && localX >= 4 && localX < 4+partWidth {
+				return user.Name
+			}
+			row++
+		}
+		if row > targetRow {
+			break
+		}
+	}
+	return ""
+}
+
 // usersAnimationActive prevents a permanently scheduled redraw loop when the
 // roster is open but nobody is typing and there is no recent activity marker.
 func (m model) usersAnimationActive() bool {
