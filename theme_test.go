@@ -89,3 +89,29 @@ mention_background_color = "#353020"
 		t.Fatalf("mention background = %q, want #353020", cfg.Theme.MentionBackgroundColor)
 	}
 }
+
+func TestSaveConfigRoundTripsThemeColors(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := defaultConfig()
+	cfg.Theme.HoverTextColor = "#F0F000"
+	cfg.Theme.MutedTextColor = "#777777"
+	cfg.Theme.MentionBackgroundColor = "#353020"
+
+	if err := saveConfig(cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	loaded, err := loadConfig()
+	if err != nil {
+		t.Fatalf("reload config: %v", err)
+	}
+
+	if loaded.Theme.HoverTextColor != cfg.Theme.HoverTextColor {
+		t.Fatalf("saved hover text = %q, want %q", loaded.Theme.HoverTextColor, cfg.Theme.HoverTextColor)
+	}
+	if loaded.Theme.MutedTextColor != cfg.Theme.MutedTextColor {
+		t.Fatalf("saved muted text = %q, want %q", loaded.Theme.MutedTextColor, cfg.Theme.MutedTextColor)
+	}
+	if loaded.Theme.MentionBackgroundColor != cfg.Theme.MentionBackgroundColor {
+		t.Fatalf("saved mention background = %q, want %q", loaded.Theme.MentionBackgroundColor, cfg.Theme.MentionBackgroundColor)
+	}
+}
