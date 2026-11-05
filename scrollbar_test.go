@@ -28,8 +28,12 @@ func TestChatScrollbarOneCellThumbRoundTripsEveryTrackPosition(t *testing.T) {
 	}
 
 	previousScroll := m.maxScroll()
+	m.scrollDragging = true
+	m.scrollDragOffset = 0
 	for targetTop := 0; targetTop <= maxTop; targetTop++ {
-		m.setScrollFromThumbTopForLineCount(targetTop, total)
+		// This is the same absolute row-to-thumb conversion used during a real
+		// drag, including the one-cell thumb case.
+		m.applyMouseMotion(m.chatScrollbarX(), 3+targetTop)
 		gotTop, gotHeight, _ := m.scrollbarThumbForLineCount(total)
 		if gotTop != targetTop {
 			t.Fatalf("thumb position after dragging to %d = %d (height %d), want exact position %d; scroll=%d",
@@ -60,7 +64,13 @@ func TestChatScrollbarTrackClickPlacesOneCellThumbAtClickedRow(t *testing.T) {
 	}
 
 	for trackPosition := 0; trackPosition < trackHeight; trackPosition++ {
-		m.setScrollFromTrack(trackPosition)
+		m.scrollDragging = false
+		updated, _ := m.Update(tea.MouseClickMsg{
+			Button: tea.MouseLeft,
+			X:      m.chatScrollbarX(),
+			Y:      3 + trackPosition,
+		})
+		m = updated.(model)
 		gotTop, gotHeight, _ := m.scrollbarThumbForLineCount(total)
 		if gotTop != trackPosition {
 			t.Fatalf("clicking track row %d moved chat to scroll=%d but thumb rendered at %d (height %d)",
