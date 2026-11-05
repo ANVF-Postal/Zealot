@@ -44,12 +44,12 @@ func TestMentionRenderingPreservesVisibleText(t *testing.T) {
 func TestComposerMentionStylingPreservesVisibleText(t *testing.T) {
 	cfg := defaultConfig()
 	source := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(cfg.TextColor)).
-		Background(lipgloss.Color(cfg.Background)).
+		Foreground(lipgloss.Color(cfg.Theme.TextColor)).
+		Background(lipgloss.Color(cfg.Theme.Background)).
 		Render("say @Alice hello")
 	rendered := styleANSIVisibleMentions(source, []string{"Alice"}, lipgloss.NewStyle().
-		Foreground(lipgloss.Color(cfg.AccentColor)).
-		Background(lipgloss.Color(cfg.Background)).
+		Foreground(lipgloss.Color(cfg.Theme.AccentColor)).
+		Background(lipgloss.Color(cfg.Theme.Background)).
 		Bold(true))
 	if got := stripANSISequences(rendered); got != "say @Alice hello" {
 		t.Fatalf("composer visible text = %q, want %q", got, "say @Alice hello")
@@ -59,15 +59,41 @@ func TestComposerMentionStylingPreservesVisibleText(t *testing.T) {
 func TestMessageBackgroundHighlightsOnlyMentionRecipients(t *testing.T) {
 	m := newMessageInteractionTestModel(80)
 	m.user.Name = "Bob"
+	m.cfg.Theme.MentionBackgroundColor = "#AABBCC"
 	packet := interactionTestPacket("mention", "hello")
 	packet.Mentions = []string{"bob"}
 
-	if got := m.messageBackground(packet); got != lipgloss.Color(m.cfg.Theme.MentionBackgroundColor) {
-		t.Fatalf("recipient background = %v, want %v", got, lipgloss.Color(m.cfg.Theme.MentionBackgroundColor))
+	if got := m.messageBackground(packet); got != lipgloss.Color("#AABBCC") {
+		t.Fatalf("recipient background = %v, want %v", got, lipgloss.Color("#AABBCC"))
 	}
 	packet.Mentions = []string{"Alice"}
-	if got := m.messageBackground(packet); got != lipgloss.Color(m.cfg.Background) {
-		t.Fatalf("non-recipient background = %v, want configured background %v", got, lipgloss.Color(m.cfg.Background))
+	if got := m.messageBackground(packet); got != lipgloss.Color(m.cfg.Theme.Background) {
+		t.Fatalf("non-recipient background = %v, want configured background %v", got, lipgloss.Color(m.cfg.Theme.Background))
+	}
+}
+
+func TestMentionStyleUsesThemeHoverColor(t *testing.T) {
+	m := newMessageInteractionTestModel(80)
+	background := lipgloss.Color(m.cfg.Theme.Background)
+
+	hovered := m.mentionStyle(background, true).Render("@Alice")
+	wantHovered := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.cfg.Theme.HoverTextColor)).
+		Background(background).
+		Bold(true).
+		Render("@Alice")
+	if hovered != wantHovered {
+		t.Fatalf("hovered mention style does not use theme hover color")
+	}
+
+	normal := m.mentionStyle(background, false).Render("@Alice")
+	wantNormal := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).
+		Background(background).
+		Bold(true).
+		Render("@Alice")
+	if normal != wantNormal {
+		t.Fatalf("normal mention style does not use theme accent color")
 	}
 }
 
