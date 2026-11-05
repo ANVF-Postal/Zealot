@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := build
 
 # The latest release tag supplies the version base. Until the first tag exists,
-# Zealot's next development line starts at v0.1.1.
+# Zealot's next development line starts at v0.2.0.
 VERSION_BASE := $(shell git describe --tags --abbrev=0 2>/dev/null || echo v0.2.0)
 EXACT_TAG := $(shell git describe --tags --exact-match HEAD 2>/dev/null)
 BRANCH := $(shell git branch --show-current 2>/dev/null)
