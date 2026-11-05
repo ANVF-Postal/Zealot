@@ -349,6 +349,13 @@ func (s *server) handle(conn net.Conn) {
 			s.mu.Lock()
 
 			room := s.rooms[roomName]
+			if room != nil {
+				roomUsernames := make([]string, 0, len(room.clients))
+				for _, connected := range room.clients {
+					roomUsernames = append(roomUsernames, connected.user.Name)
+				}
+				message.Mentions = extractMentionNames(text, roomUsernames)
+			}
 			if room != nil && room.historyEnabled {
 				room.messages = append(room.messages, message)
 			}
