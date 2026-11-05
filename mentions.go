@@ -1,0 +1,293 @@
+package main
+
+import (
+	"sort"
+	"strings"
+	"unicode"
+	"unicode/utf8"
+
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+)
+
+const mentionHighlightBackground = "#3C3622"
+
+type mentionSpan struct {
+	Start int
+	End   int
+	Name  string
+}
+
+// mentionSpans finds complete @username references from the supplied room
+// roster. Matching is case-insensitive, prefers the longest username, and
+// requires token boundaries so an email address or a longer unknown name does
+// not accidentally notify somebody.
+func mentionSpans(text string, usernames []string) []mentionSpan {
+	candidates := make([]string, 0, len(usernames))
+	seen := make(map[string]struct{}, len(usernames))
+	for _, username := range usernames {
+		username = strings.TrimSpace(username)
+		key := strings.ToLower(username)
+		if username == "" {
+			continue
+		}
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		candidates = append(candidates, username)
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return len(candidates[i]) > len(candidates[j])
+	})
+
+	var spans []mentionSpan
+	for offset := 0; offset < len(text); {
+		if text[offset] != '@' {
+			_, size := utf8.DecodeRuneInString(text[offset:])
+			if size < 1 {
+				break
+			}
+			offset += size
+			continue
+		}
+
+		if offset > 0 {
+			previous, _ := utf8.DecodeLastRuneInString(text[:offset])
+			if mentionWordRune(previous) {
+				offset++
+				continue
+			}
+		}
+
+		matched := false
+		for _, username := range candidates {
+			end := offset + 1 + len(username)
+			if end > len(text) || !strings.EqualFold(text[offset+1:end], username) {
+				continue
+			}
+			if end < len(text) {
+				next, _ := utf8.DecodeRuneInString(text[end:])
+				if mentionWordRune(next) {
+					continue
+				}
+			}
+			spans = append(spans, mentionSpan{Start: offset, End: end, Name: username})
+			offset = end
+			matched = true
+			break
+		}
+		if !matched {
+			offset++
+		}
+	}
+	return spans
+}
+
+func mentionWordRune(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsNumber(r) || r == '_' || r == '-'
+}
+
+// extractMentionNames returns canonical room usernames in first-appearance
+// order, with duplicates removed case-insensitively.
+func extractMentionNames(text string, usernames []string) []string {
+	spans := mentionSpans(text, usernames)
+	if len(spans) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(spans))
+	seen := make(map[string]struct{}, len(spans))
+	for _, span := range spans {
+		key := strings.ToLower(span.Name)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		names = append(names, span.Name)
+	}
+	return names
+}
+
+func messageMentionsUser(msg Packet, username string) bool {
+	for _, mentioned := range msg.Mentions {
+		if strings.EqualFold(mentioned, username) {
+			return true
+		}
+	}
+	return false
+}
+
+func (m model) messageBackground(msg Packet) lipgloss.Color {
+	if msg.Type == "message" && messageMentionsUser(msg, m.user.Name) {
+		return lipgloss.Color(mentionHighlightBackground)
+	}
+	return lipgloss.Color(m.cfg.Background)
+}
+
+func (m model) mentionCandidates() []string {
+	names := make([]string, 0, len(m.onlineUsers)+1)
+	if m.user.Name != "" {
+		names = append(names, m.user.Name)
+	}
+	for _, user := range m.onlineUsers {
+		names = append(names, user.Name)
+	}
+	return names
+}
+
+func (m model) mentionStyle(background lipgloss.Color) lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.cfg.AccentColor)).
+		Background(background).
+		Bold(true)
+}
+
+// renderMentionBody colors valid recipient names with the Zealot accent while
+// preserving normal or rainbow styling for the rest of the message body.
+func renderMentionBody(
+	text string,
+	usernames []string,
+	bodyStyle lipgloss.Style,
+	mentionStyle lipgloss.Style,
+	rainbow bool,
+	rainbowPhase float64,
+) string {
+	spans := mentionSpans(text, usernames)
+	if len(spans) == 0 {
+		if rainbow {
+			return rainbowColor(text, rainbowPhase, 0)
+		}
+		return bodyStyle.Render(text)
+	}
+
+	var out strings.Builder
+	position := 0
+	runeOffset := 0
+	for _, span := range spans {
+		if span.Start > position {
+			plain := text[position:span.Start]
+			if rainbow {
+				out.WriteString(rainbowColor(plain, rainbowPhase, runeOffset))
+			} else {
+				out.WriteString(bodyStyle.Render(plain))
+			}
+			runeOffset += utf8.RuneCountInString(plain)
+		}
+		out.WriteString(mentionStyle.Render(text[span.Start:span.End]))
+		runeOffset += utf8.RuneCountInString(text[span.Start:span.End])
+		position = span.End
+	}
+	if position < len(text) {
+		plain := text[position:]
+		if rainbow {
+			out.WriteString(rainbowColor(plain, rainbowPhase, runeOffset))
+		} else {
+			out.WriteString(bodyStyle.Render(plain))
+		}
+	}
+	return out.String()
+}
+
+// styleANSIVisibleMentions applies mention styling to one already-rendered
+// textarea row without disturbing its existing ANSI control sequences.
+func styleANSIVisibleMentions(line string, usernames []string, style lipgloss.Style) string {
+	var visible strings.Builder
+	sourceStarts := make(map[int]int)
+	sourceEnds := make(map[int]int)
+	for pos := 0; pos < len(line); {
+		if line[pos] == 0x1b {
+			pos = ansiSequenceEnd(line, pos)
+			continue
+		}
+		_, size := utf8.DecodeRuneInString(line[pos:])
+		if size < 1 {
+			break
+		}
+		start := visible.Len()
+		sourceStarts[start] = pos
+		visible.WriteString(line[pos : pos+size])
+		sourceEnds[visible.Len()] = pos + size
+		pos += size
+	}
+
+	spans := mentionSpans(visible.String(), usernames)
+	if len(spans) == 0 {
+		return line
+	}
+
+	var out strings.Builder
+	sourcePosition := 0
+	for _, span := range spans {
+		sourceStart, startOK := sourceStarts[span.Start]
+		sourceEnd, endOK := sourceEnds[span.End]
+		if !startOK || !endOK || sourceStart < sourcePosition || sourceEnd < sourceStart {
+			continue
+		}
+		out.WriteString(line[sourcePosition:sourceStart])
+		out.WriteString(styleANSIChunk(line[sourceStart:sourceEnd], style))
+		sourcePosition = sourceEnd
+	}
+	out.WriteString(line[sourcePosition:])
+	return out.String()
+}
+
+func styleANSIChunk(chunk string, style lipgloss.Style) string {
+	var out strings.Builder
+	chunkStart := 0
+	for pos := 0; pos < len(chunk); {
+		if chunk[pos] != 0x1b {
+			_, size := utf8.DecodeRuneInString(chunk[pos:])
+			if size < 1 {
+				break
+			}
+			pos += size
+			continue
+		}
+		if pos > chunkStart {
+			out.WriteString(style.Render(chunk[chunkStart:pos]))
+		}
+		end := ansiSequenceEnd(chunk, pos)
+		out.WriteString(chunk[pos:end])
+		pos = end
+		chunkStart = pos
+	}
+	if chunkStart < len(chunk) {
+		out.WriteString(style.Render(chunk[chunkStart:]))
+	}
+	return out.String()
+}
+
+// insertMention places the selected username at the textarea cursor and keeps
+// adjacent text separated into a complete mention token.
+func (m *model) insertMention(username string) tea.Cmd {
+	if strings.TrimSpace(username) == "" {
+		return nil
+	}
+	if m.input.HasSelection() {
+		m.input.DeleteSelection()
+	}
+
+	lines := strings.Split(m.input.Value(), "\n")
+	row := min(max(m.input.Line(), 0), len(lines)-1)
+	column := min(max(m.input.Column(), 0), len([]rune(lines[row])))
+	runes := []rune(lines[row])
+	insertion := "@" + username
+	if column > 0 && !unicode.IsSpace(runes[column-1]) {
+		insertion = " " + insertion
+	}
+	if column < len(runes) && !unicode.IsSpace(runes[column]) && mentionWordRune(runes[column]) {
+		insertion += " "
+	}
+	m.input.InsertString(insertion)
+
+	blinkCmd := m.startCursorBlink()
+	if !m.connected {
+		return blinkCmd
+	}
+	if !m.isTyping {
+		m.isTyping = true
+		m.sendTyping(true)
+	}
+	typingCmd := m.scheduleTypingClear()
+	return tea.Batch(blinkCmd, typingCmd)
+}
