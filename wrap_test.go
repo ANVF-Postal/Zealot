@@ -121,3 +121,10 @@ func TestTruncateANSIRespectsGraphemeWidths(t *testing.T) {
 		})
 	}
 }
+
+func TestTruncateANSIPreservesAlreadyFittingLines(t *testing.T) {
+	input := "\x1b[31me\u0301 👨‍👩‍👧‍👦 🇳🇱\x1b[0m"
+	if got := truncateANSI(input, wrappingWidthOptions.String(input)); got != input {
+		t.Fatalf("truncateANSI() changed a fitting ANSI/grapheme string: got %q, want %q", got, input)
+	}
+}
