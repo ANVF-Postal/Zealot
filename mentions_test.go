@@ -62,8 +62,8 @@ func TestMessageBackgroundHighlightsOnlyMentionRecipients(t *testing.T) {
 	packet := interactionTestPacket("mention", "hello")
 	packet.Mentions = []string{"bob"}
 
-	if got := m.messageBackground(packet); got != lipgloss.Color(mentionHighlightBackground) {
-		t.Fatalf("recipient background = %v, want %v", got, lipgloss.Color(mentionHighlightBackground))
+	if got := m.messageBackground(packet); got != lipgloss.Color(m.cfg.Theme.MentionBackgroundColor) {
+		t.Fatalf("recipient background = %v, want %v", got, lipgloss.Color(m.cfg.Theme.MentionBackgroundColor))
 	}
 	packet.Mentions = []string{"Alice"}
 	if got := m.messageBackground(packet); got != lipgloss.Color(m.cfg.Background) {
