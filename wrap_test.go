@@ -57,6 +57,9 @@ func TestWrapTextLineCountMatchesRenderedRows(t *testing.T) {
 		{"first line\n\nthird line", 12, 8, 12},
 		{"a\tb c", 1, 2, 3},
 		{strings.Repeat("界", 17) + " tail", 5, 8, 10},
+		{"e\u0301e\u0301e\u0301 tail", 2, 2, 2},
+		{"👨‍👩‍👧‍👦👨‍👩‍👧‍👦 tail", 2, 2, 2},
+		{"🇳🇱🇳🇱🇳🇱 tail", 2, 2, 2},
 	}
 	for _, tc := range cases {
 		got := wrapTextLineCountVariable(tc.text, tc.first, tc.second, tc.full)
@@ -64,6 +67,31 @@ func TestWrapTextLineCountMatchesRenderedRows(t *testing.T) {
 		if got != want {
 			t.Errorf("line count for %q at widths %d/%d/%d = %d, want %d",
 				tc.text, tc.first, tc.second, tc.full, got, want)
+		}
+	}
+}
+
+
+func TestSplitLongWordPrefixKeepsGraphemeClustersIntact(t *testing.T) {
+	cases := []struct {
+		word  string
+		width int
+	}{
+		{"e\u0301e\u0301", 1},
+		{"👨‍👩‍👧‍👦X", 2},
+		{"🇳🇱🇺🇸", 2},
+	}
+	for _, tc := range cases {
+		part, rest, _ := splitLongWordPrefix(tc.word, tc.width, false)
+		if part == "" {
+			t.Errorf("splitLongWordPrefix(%q, %d) returned an empty prefix", tc.word, tc.width)
+			continue
+		}
+		if rest != "" && strings.HasPrefix(rest, "\u0301") {
+			t.Errorf("splitLongWordPrefix(%q, %d) split off a combining mark: part=%q rest=%q", tc.word, tc.width, part, rest)
+		}
+		if strings.Contains(part, "\u200d") && !strings.Contains(part, "👨‍👩‍👧‍👦") {
+			t.Errorf("splitLongWordPrefix(%q, %d) split a joined emoji: part=%q rest=%q", tc.word, tc.width, part, rest)
 		}
 	}
 }
