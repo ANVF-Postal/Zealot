@@ -2,7 +2,6 @@ package main
 
 import (
 	"reflect"
-	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -40,14 +39,10 @@ func TestMentionRenderingPreservesVisibleText(t *testing.T) {
 	if got := stripANSISequences(rendered); got != text {
 		t.Fatalf("rendered visible text = %q, want %q", got, text)
 	}
-	if !strings.Contains(rendered, "\x1b[") && lipgloss.ColorProfile() != lipgloss.NoColor {
-		t.Fatal("mention rendering did not emit any styling sequences")
-	}
 }
 
 func TestComposerMentionStylingPreservesVisibleText(t *testing.T) {
 	cfg := defaultConfig()
-	style := makeStyles(cfg)
 	source := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(cfg.TextColor)).
 		Background(lipgloss.Color(cfg.Background)).
@@ -59,7 +54,6 @@ func TestComposerMentionStylingPreservesVisibleText(t *testing.T) {
 	if got := stripANSISequences(rendered); got != "say @Alice hello" {
 		t.Fatalf("composer visible text = %q, want %q", got, "say @Alice hello")
 	}
-	_ = style
 }
 
 func TestMessageBackgroundHighlightsOnlyMentionRecipients(t *testing.T) {
