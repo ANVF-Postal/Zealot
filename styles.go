@@ -18,11 +18,12 @@ type uiStyles struct {
 	system   lipgloss.Style
 }
 
-func makeStyles(cfg Config) uiStyles {
-	bg := lipgloss.Color(cfg.Background)
-	text := lipgloss.Color(cfg.TextColor)
-	border := lipgloss.Color(cfg.BorderColor)
-	accent := lipgloss.Color(cfg.AccentColor)
+func makeStyles(theme Theme) uiStyles {
+	bg := lipgloss.Color(theme.Background)
+	text := lipgloss.Color(theme.TextColor)
+	border := lipgloss.Color(theme.BorderColor)
+	accent := lipgloss.Color(theme.AccentColor)
+	muted := lipgloss.Color(theme.MutedTextColor)
 
 	return uiStyles{
 		app: lipgloss.NewStyle().
@@ -31,7 +32,7 @@ func makeStyles(cfg Config) uiStyles {
 
 		time: lipgloss.NewStyle().
 			Background(bg).
-			Foreground(lipgloss.Color("#707786")),
+			Foreground(muted),
 
 		inputBox: lipgloss.NewStyle().
 			Background(bg).
@@ -44,7 +45,7 @@ func makeStyles(cfg Config) uiStyles {
 
 		status: lipgloss.NewStyle().
 			Background(bg).
-			Foreground(lipgloss.Color("#707786")),
+			Foreground(muted),
 
 		border: lipgloss.NewStyle().
 			Background(bg).
@@ -60,7 +61,7 @@ func makeStyles(cfg Config) uiStyles {
 
 		system: lipgloss.NewStyle().
 			Background(bg).
-			Foreground(lipgloss.Color("#707786")).
+			Foreground(muted).
 			Italic(true),
 	}
 }
