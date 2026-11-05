@@ -13,6 +13,9 @@ import (
 // Configuration
 // -----------------------------------------------------------------------------
 
+// Theme contains the colors used by Zealot's ordinary interface. Special
+// effects such as rainbow rendering and XKeyscore artwork intentionally keep
+// their own palettes.
 type Theme struct {
 	Background             string
 	TextColor              string
@@ -24,11 +27,11 @@ type Theme struct {
 }
 
 type Config struct {
-	Name string
-	UserColor string
-	Bell bool
-	InputHeight int
-	AdaptiveHeight bool
+	Name             string
+	UserColor        string
+	Bell             bool
+	InputHeight      int
+	AdaptiveHeight   bool
 	HeightMaxPercent int
 	Theme
 }
@@ -38,7 +41,7 @@ func defaultTheme() Theme {
 		Background:             "#111318",
 		TextColor:              "#E6E6E6",
 		BorderColor:            "#444B5A",
-		AccentColor:             "#7C5CFC",
+		AccentColor:            "#7C5CFC",
 		HoverTextColor:         "#F9F871",
 		MutedTextColor:         "#707786",
 		MentionBackgroundColor: "#3C3622",
@@ -188,6 +191,7 @@ adaptive_height = false
 # Maximum share of terminal height used by the composer (1-100).
 height_max_percent = 30
 
+# Main theme palette.
 background = "#111318"
 text_color = "#E6E6E6"
 border_color = "#444B5A"
@@ -212,6 +216,7 @@ bell = %t
 input_height = %d
 adaptive_height = %t
 height_max_percent = %d
+# Main theme palette.
 background = %q
 text_color = %q
 border_color = %q
