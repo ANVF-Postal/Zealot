@@ -470,19 +470,7 @@ func splitLongWordPrefix(word string, width int, urlLike bool) (string, string, 
 // graphemeHasBreakPunctuation checks visible characters only; punctuation in
 // an ANSI escape sequence must not become a URL break point.
 func graphemeHasBreakPunctuation(cluster string) bool {
-	const punctuation = "./\\-_?:&=#%+@,;~!
-
-func isURLLike(word string) bool {
-	lower := strings.ToLower(word)
-	return strings.HasPrefix(lower, "http://") ||
-		strings.HasPrefix(lower, "https://") ||
-		strings.HasPrefix(lower, "ftp://") ||
-		strings.HasPrefix(lower, "www.") ||
-		strings.Contains(word, ".") ||
-		strings.Contains(word, "/") ||
-		strings.ContainsAny(word, "?&=#")
-}
-()[]{}"
+	const punctuation = "./\\-_?:&=#%+@,;~!$'()[]{}"
 	for i := 0; i < len(cluster); {
 		if cluster[i] == 0x1b {
 			i = ansiSequenceEnd(cluster, i)
