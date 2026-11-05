@@ -51,7 +51,7 @@ func (m model) messageBodyRangesForLineCount(msg Packet, width, lineCount int) [
 		return ranges
 	}
 
-	bg := lipgloss.Color(m.cfg.Background)
+	bg := m.messageBackground(msg)
 	bodyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.TextColor)).Background(bg)
 	nameStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(msg.User.Color)).
@@ -348,6 +348,70 @@ func (m model) messageIDAt(x, y int) string {
 }
 
 
+// messageUsernameAt returns the username only when a click lands on the name
+// portion of a message header. Both wide and compact layouts use the same
+// wrapping calculations as their renderers.
+func (m model) messageUsernameAt(x, y int) string {
+	if m.usersOpen || m.splashOpen || m.width < 1 {
+		return ""
+	}
+	left := 0
+	if !narrowBordersHidden(m.width) {
+		left = 1
+	}
+	if x < left || x >= m.chatScrollbarX() {
+		return ""
+	}
+	chatHeight := max(1, m.messageHeight()-1)
+	if y < 2 || y >= 2+chatHeight {
+		return ""
+	}
+	lines := m.renderMessageLines()
+	start := len(lines) - chatHeight - m.scroll
+	if start < 0 {
+		start = 0
+	}
+	row := start + y - 2
+	packet, messageRows, ok := m.messageAtRow(row)
+	if !ok || packet.Type != "message" {
+		return ""
+	}
+	relativeRow := row - messageRows.Start
+	localX := x - left
+	contentWidth := chatContentWidth(m.width)
+	timeWidth := lipgloss.Width("[" + packet.Time.Local().Format("15:04") + "]")
+	if m.width > 48 {
+		badge := m.renderReplyBadgeForWidth(packet, m.width)
+		prefixExtra := 2 // colon and body gap for ordinary messages
+		if packet.XKeyscore > 0 {
+			prefixExtra = 1 // XKeyscore headers end directly after the colon
+		}
+		prefixWidth := timeWidth + 1 + lipgloss.Width(packet.User.Name) + lipgloss.Width(badge) + prefixExtra
+		if prefixWidth < contentWidth {
+			nameStart := timeWidth + 1
+			nameEnd := nameStart + lipgloss.Width(packet.User.Name)
+			if relativeRow == 0 && localX >= nameStart && localX < nameEnd {
+				return packet.User.Name
+			}
+			return ""
+		}
+	}
+
+	badge := m.renderReplyBadgeForWidth(packet, 48)
+	nameWidth := contentWidth - 2 - lipgloss.Width(badge)
+	if nameWidth < 1 {
+		nameWidth = 1
+	}
+	nameParts := wrapText(packet.User.Name, nameWidth)
+	if len(nameParts) == 0 {
+		nameParts = []string{""}
+	}
+	if relativeRow >= 0 && relativeRow < len(nameParts) && localX >= 0 && localX < lipgloss.Width(nameParts[relativeRow]) {
+		return packet.User.Name
+	}
+	return ""
+}
+
 func (m model) messageLinkRanges(msg Packet, width int) [][]messageLinkRange {
 	lines := m.renderPacketLines(msg, width)
 	return m.messageLinkRangesForLineCount(msg, width, len(lines))
@@ -365,7 +429,7 @@ func (m model) messageLinkRangesForLineCount(msg Packet, width, lineCount int) [
 		badge := m.renderReplyBadgeForWidth(msg, width)
 		compact := width <= 48
 		if width > 48 {
-			bg := lipgloss.Color(m.cfg.Background)
+			bg := m.messageBackground(msg)
 			nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.User.Color)).Background(bg).Bold(true)
 			bodyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.TextColor)).Background(bg)
 			timestamp := m.styles.time.Render("[" + msg.Time.Local().Format("15:04") + "]")
