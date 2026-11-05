@@ -132,3 +132,32 @@ func TestUsersScrollbarOneCellThumbRoundTripsEveryTrackPosition(t *testing.T) {
 		}
 	}
 }
+
+func TestChatScrollbarDragOutsideTrackClampsThumbAndContentTogether(t *testing.T) {
+	m := newMessageInteractionTestModel(80, makeScrollbarTestMessages(2000)...)
+	total := len(m.renderMessageLines())
+	_, thumbHeight, trackHeight := m.scrollbarThumbForLineCount(total)
+	if thumbHeight != 1 {
+		t.Fatalf("thumb height = %d, want one cell", thumbHeight)
+	}
+	maxTop := trackHeight - thumbHeight
+	m.scrollDragging = true
+	m.scrollDragOffset = 0
+
+	// Moving below the track while dragging should clamp both the chat and
+	// the thumb to the same bottom endpoint.
+	m.applyMouseMotion(m.chatScrollbarX(), 3+trackHeight+2)
+	gotTop, _, _ := m.scrollbarThumbForLineCount(total)
+	if gotTop != maxTop || m.scroll != 0 {
+		t.Fatalf("drag below track produced scroll=%d thumb top=%d, want scroll=0 thumb top=%d",
+			m.scroll, gotTop, maxTop)
+	}
+
+	// The opposite overshoot must clamp to the oldest-history endpoint.
+	m.applyMouseMotion(m.chatScrollbarX(), 0)
+	gotTop, _, _ = m.scrollbarThumbForLineCount(total)
+	if gotTop != 0 || m.scroll != m.maxScroll() {
+		t.Fatalf("drag above track produced scroll=%d thumb top=%d, want scroll=%d thumb top=0",
+			m.scroll, gotTop, m.maxScroll())
+	}
+}
