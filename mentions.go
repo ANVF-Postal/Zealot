@@ -1,7 +1,6 @@
 package main
 
 import (
-	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -23,24 +22,6 @@ type mentionSpan struct {
 // requires token boundaries so an email address or a longer unknown name does
 // not accidentally notify somebody.
 func mentionSpans(text string, usernames []string) []mentionSpan {
-	candidates := make([]string, 0, len(usernames))
-	seen := make(map[string]struct{}, len(usernames))
-	for _, username := range usernames {
-		username = strings.TrimSpace(username)
-		key := strings.ToLower(username)
-		if username == "" {
-			continue
-		}
-		if _, exists := seen[key]; exists {
-			continue
-		}
-		seen[key] = struct{}{}
-		candidates = append(candidates, username)
-	}
-	sort.SliceStable(candidates, func(i, j int) bool {
-		return len(candidates[i]) > len(candidates[j])
-	})
-
 	var spans []mentionSpan
 	for offset := 0; offset < len(text); {
 		if text[offset] != '@' {
@@ -60,8 +41,12 @@ func mentionSpans(text string, usernames []string) []mentionSpan {
 			}
 		}
 
-		matched := false
-		for _, username := range candidates {
+		bestName := ""
+		bestEnd := offset
+		for _, username := range usernames {
+			if username == "" {
+				continue
+			}
 			end := offset + 1 + len(username)
 			if end > len(text) || !strings.EqualFold(text[offset+1:end], username) {
 				continue
@@ -72,12 +57,15 @@ func mentionSpans(text string, usernames []string) []mentionSpan {
 					continue
 				}
 			}
-			spans = append(spans, mentionSpan{Start: offset, End: end, Name: username})
-			offset = end
-			matched = true
-			break
+			if len(username) > len(bestName) {
+				bestName = username
+				bestEnd = end
+			}
 		}
-		if !matched {
+		if bestName != "" {
+			spans = append(spans, mentionSpan{Start: offset, End: bestEnd, Name: bestName})
+			offset = bestEnd
+		} else {
 			offset++
 		}
 	}
@@ -125,6 +113,9 @@ func (m model) messageBackground(msg Packet) lipgloss.Color {
 }
 
 func (m model) mentionCandidates() []string {
+	if m.mentionUsernames != nil {
+		return m.mentionUsernames
+	}
 	names := make([]string, 0, len(m.onlineUsers)+1)
 	if m.user.Name != "" {
 		names = append(names, m.user.Name)
@@ -133,6 +124,17 @@ func (m model) mentionCandidates() []string {
 		names = append(names, user.Name)
 	}
 	return names
+}
+
+func (m *model) refreshMentionUsernames() {
+	names := make([]string, 0, len(m.onlineUsers)+1)
+	if m.user.Name != "" {
+		names = append(names, m.user.Name)
+	}
+	for _, user := range m.onlineUsers {
+		names = append(names, user.Name)
+	}
+	m.mentionUsernames = names
 }
 
 func (m model) mentionStyle(background lipgloss.Color) lipgloss.Style {
@@ -191,6 +193,9 @@ func renderMentionBody(
 // styleANSIVisibleMentions applies mention styling to one already-rendered
 // textarea row without disturbing its existing ANSI control sequences.
 func styleANSIVisibleMentions(line string, usernames []string, style lipgloss.Style) string {
+	if !strings.Contains(line, "@") {
+		return line
+	}
 	var visible strings.Builder
 	sourceStarts := make(map[int]int)
 	sourceEnds := make(map[int]int)
