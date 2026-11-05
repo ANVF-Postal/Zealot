@@ -10,6 +10,19 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+// scaleScrollbarPosition maps one integer scrollbar range to another using
+// nearest-integer rounding. Using truncation in both directions caused the
+// one-cell thumb to render one track row away from the position the pointer
+// selected, making the chat jump while the thumb appeared not to move.
+func scaleScrollbarPosition(position, sourceMax, destinationMax int) int {
+	if sourceMax <= 0 || destinationMax <= 0 {
+		return 0
+	}
+	position = min(max(position, 0), sourceMax)
+	numerator := int64(position) * int64(destinationMax)
+	return int((numerator + int64(sourceMax)/2) / int64(sourceMax))
+}
+
 func (m model) splashRows() []string {
 	const logoWidth = 74
 	logo := []string{
@@ -81,7 +94,7 @@ func (m model) splashScrollbarThumbForRowCount(total int) (top, thumbHeight, tra
 	if thumbHeight > trackHeight { thumbHeight = trackHeight }
 	maxTop := trackHeight - thumbHeight
 	if maxScroll := total - visible; maxScroll > 0 {
-		top = m.splashScroll * maxTop / maxScroll
+		top = scaleScrollbarPosition(m.splashScroll, maxScroll, maxTop)
 	}
 	return
 }
@@ -92,7 +105,7 @@ func (m *model) setSplashScrollFromThumbTop(top int) {
 	if top < 0 { top = 0 }
 	if top > maxTop { top = maxTop }
 	if maxTop > 0 {
-		m.splashScroll = top * m.maxSplashScroll() / maxTop
+		m.splashScroll = scaleScrollbarPosition(top, maxTop, m.maxSplashScroll())
 	} else {
 		m.splashScroll = 0
 	}
@@ -267,7 +280,7 @@ func (m model) usersScrollbarThumbForRowCount(total int) (top, thumbHeight, trac
 	maxTop := trackHeight - thumbHeight
 	maxScroll := max(0, total-visible)
 	if maxScroll > 0 {
-		top = m.usersScroll * maxTop / maxScroll
+		top = scaleScrollbarPosition(m.usersScroll, maxScroll, maxTop)
 	}
 	return
 }
@@ -278,7 +291,7 @@ func (m *model) setUsersScrollFromThumbTop(top int) {
 	if top < 0 { top = 0 }
 	if top > maxTop { top = maxTop }
 	if maxTop > 0 {
-		m.usersScroll = top * m.maxUsersScroll() / maxTop
+		m.usersScroll = scaleScrollbarPosition(top, maxTop, m.maxUsersScroll())
 	} else {
 		m.usersScroll = 0
 	}
@@ -783,7 +796,8 @@ func (m model) scrollbarThumbForLineCount(total int) (top, thumbHeight, trackHei
 	maxTop := trackHeight - thumbHeight
 	maxScroll := total - visible
 	if maxScroll > 0 {
-		top = (maxScroll - m.scroll) * maxTop / maxScroll
+		scrollFromTop := maxScroll - min(max(m.scroll, 0), maxScroll)
+		top = scaleScrollbarPosition(scrollFromTop, maxScroll, maxTop)
 	}
 	return
 }
@@ -814,7 +828,7 @@ func (m *model) setScrollFromThumbTopForLineCount(top, total int) {
 	visible := max(1, m.messageHeight()-1)
 	maxScroll := max(0, total-visible)
 	if maxTop > 0 {
-		m.scroll = maxScroll - top*maxScroll/maxTop
+		m.scroll = maxScroll - scaleScrollbarPosition(top, maxTop, maxScroll)
 	} else {
 		m.scroll = 0
 	}
