@@ -78,29 +78,22 @@ func truncateANSI(s string, width int) string {
 	if width < 1 {
 		width = 1
 	}
+
 	var out strings.Builder
 	used := 0
-	for i := 0; i < len(s); {
-		if s[i] == 0x1b {
-			end := ansiSequenceEnd(s, i)
-			out.WriteString(s[i:end])
-			i = end
-			continue
-		}
-
-		_, size := utf8.DecodeRuneInString(s[i:])
-		if size < 1 {
-			break
-		}
-		piece := s[i : i+size]
-		runeWidth := lipgloss.Width(piece)
-		if used+runeWidth > width {
+	// Measure complete grapheme clusters. Measuring one rune at a time is
+	// both more expensive and incorrect for combined characters such as
+	// accents, flags, and emoji sequences.
+	graphemes := wrappingWidthOptions.StringGraphemes(s)
+	for graphemes.Next() {
+		cluster := graphemes.Value()
+		clusterWidth := graphemes.Width()
+		if used+clusterWidth > width {
 			out.WriteString("\x1b[0m")
 			break
 		}
-		out.WriteString(piece)
-		used += runeWidth
-		i += size
+		out.WriteString(cluster)
+		used += clusterWidth
 	}
 	return out.String()
 }
