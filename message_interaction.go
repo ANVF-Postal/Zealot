@@ -51,7 +51,7 @@ func (m model) messageBodyRangesForLineCount(msg Packet, width, lineCount int) [
 		return ranges
 	}
 
-	bg := lipgloss.Color(m.cfg.Background)
+	bg := m.messageBackground(msg)
 	bodyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.TextColor)).Background(bg)
 	nameStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(msg.User.Color)).
@@ -429,7 +429,7 @@ func (m model) messageLinkRangesForLineCount(msg Packet, width, lineCount int) [
 		badge := m.renderReplyBadgeForWidth(msg, width)
 		compact := width <= 48
 		if width > 48 {
-			bg := lipgloss.Color(m.cfg.Background)
+			bg := m.messageBackground(msg)
 			nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.User.Color)).Background(bg).Bold(true)
 			bodyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.TextColor)).Background(bg)
 			timestamp := m.styles.time.Render("[" + msg.Time.Local().Format("15:04") + "]")
