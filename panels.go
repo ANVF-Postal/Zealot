@@ -191,7 +191,7 @@ func (m model) userRowsRange(start, end int) []string {
 		if rowEnd > start && rowIndex < end {
 			style := lipgloss.NewStyle().
 				Foreground(lipgloss.Color(user.Color)).
-				Background(lipgloss.Color(m.cfg.Background)).
+				Background(lipgloss.Color(m.cfg.Theme.Background)).
 				Bold(true)
 			marker := ""
 			switch {
@@ -201,8 +201,8 @@ func (m model) userRowsRange(start, end int) []string {
 				frames := []string{"·  ", "·· ", "···", " ··", "  ·"}
 				marker = " " + frames[m.usersFrame%len(frames)]
 				style = lipgloss.NewStyle().
-					Foreground(lipgloss.Color(m.cfg.AccentColor)).
-					Background(lipgloss.Color(m.cfg.Background)).
+					Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).
+					Background(lipgloss.Color(m.cfg.Theme.Background)).
 					Bold(true)
 			}
 			for i, part := range parts {
