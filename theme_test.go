@@ -325,6 +325,7 @@ func TestApplyThemePresetPersistsPaletteAndPreservesUserConfig(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.Name = "Tester"
 	cfg.UserColor = "#123456"
+	writeConfigForTest(t, "# Keep this config comment\\nname = \"Tester\" # identity note\\nuser_color = \"#123456\" # color note\\n# Keep this palette comment\\nbackground = \"#111318\" # background note\\ncustom_setting = \"untouched\"\\n")
 	preset := ThemePreset{
 		ID: "midnight",
 		Name: "Midnight",
@@ -355,6 +356,15 @@ func TestApplyThemePresetPersistsPaletteAndPreservesUserConfig(t *testing.T) {
 	}
 	if loaded.Name != "Tester" || loaded.UserColor != "#123456" {
 		t.Fatalf("applying a theme changed user identity settings: %+v", loaded)
+	}
+	data, err := os.ReadFile(configPath())
+	if err != nil {
+		t.Fatalf("read config after applying theme: %v", err)
+	}
+	for _, comment := range []string{"# Keep this config comment", "# identity note", "# color note", "# Keep this palette comment", "# background note", "custom_setting = \"untouched\""} {
+		if !strings.Contains(string(data), comment) {
+			t.Errorf("applying a theme removed %q from config", comment)
+		}
 	}
 }
 
@@ -414,5 +424,35 @@ func TestSaveConfigPreservesCommentsFormattingAndCustomSettings(t *testing.T) {
 	}
 	if loaded.Theme.AccentColor != "#123ABC" {
 		t.Fatalf("reload accent color = %q, want #123ABC", loaded.Theme.AccentColor)
+	}
+}
+
+func TestIdentityConfigSavesOnlyChangeRequestedValue(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	const original = "# User's formatting\\nname   = \"Old\" # name comment\\nuser_color = 12 # bare ANSI color\\nadaptive_height = true # do not touch\\nbackground = \"#111318\" # theme note\\ncustom_setting = \"keep\"\\n"
+	writeConfigForTest(t, original)
+
+	if err := saveConfigName("New"); err != nil {
+		t.Fatalf("save config name: %v", err)
+	}
+	data, err := os.ReadFile(configPath())
+	if err != nil {
+		t.Fatalf("read config after name save: %v", err)
+	}
+	wantAfterRename := "# User's formatting\\nname   = \"New\" # name comment\\nuser_color = 12 # bare ANSI color\\nadaptive_height = true # do not touch\\nbackground = \"#111318\" # theme note\\ncustom_setting = \"keep\"\\n"
+	if string(data) != wantAfterRename {
+		t.Fatalf("rename changed unrelated config content:\\n--- got ---\\n%s\\n--- want ---\\n%s", data, wantAfterRename)
+	}
+
+	if err := saveConfigUserColor("#ABCDEF"); err != nil {
+		t.Fatalf("save config color: %v", err)
+	}
+	data, err = os.ReadFile(configPath())
+	if err != nil {
+		t.Fatalf("read config after color save: %v", err)
+	}
+	wantAfterColor := "# User's formatting\\nname   = \"New\" # name comment\\nuser_color = \"#ABCDEF\" # bare ANSI color\\nadaptive_height = true # do not touch\\nbackground = \"#111318\" # theme note\\ncustom_setting = \"keep\"\\n"
+	if string(data) != wantAfterColor {
+		t.Fatalf("color command changed unrelated config content:\\n--- got ---\\n%s\\n--- want ---\\n%s", data, wantAfterColor)
 	}
 }

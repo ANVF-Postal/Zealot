@@ -222,23 +222,29 @@ selection_background_color = "#3D5275"
 // configFileValues returns every setting managed by Config in stable file order.
 // Legacy aliases are updated in place when present, rather than adding duplicate
 // modern keys to an otherwise user-maintained config file.
-func configFileValues(cfg Config) []configFileEntry {
+func themeConfigFileValues(theme Theme) []configFileEntry {
 	return []configFileEntry{
+		{key: "background", value: strconv.Quote(theme.Background)},
+		{key: "text_color", value: strconv.Quote(theme.TextColor)},
+		{key: "border_color", value: strconv.Quote(theme.BorderColor)},
+		{key: "accent_color", value: strconv.Quote(theme.AccentColor)},
+		{key: "hover_text_color", value: strconv.Quote(theme.HoverTextColor)},
+		{key: "muted_text_color", value: strconv.Quote(theme.MutedTextColor)},
+		{key: "mention_background_color", value: strconv.Quote(theme.MentionBackgroundColor)},
+		{key: "selection_background_color", value: strconv.Quote(theme.SelectionBackgroundColor)},
+	}
+}
+
+func configFileValues(cfg Config) []configFileEntry {
+	entries := []configFileEntry{
 		{key: "name", value: strconv.Quote(cfg.Name)},
 		{key: "user_color", value: strconv.Quote(cfg.UserColor)},
 		{key: "bell", value: strconv.FormatBool(cfg.Bell)},
 		{key: "input_height", value: strconv.Itoa(cfg.InputHeight)},
 		{key: "adaptive_height", value: strconv.FormatBool(cfg.AdaptiveHeight)},
 		{key: "height_max_percent", value: strconv.Itoa(cfg.HeightMaxPercent)},
-		{key: "background", value: strconv.Quote(cfg.Theme.Background)},
-		{key: "text_color", value: strconv.Quote(cfg.Theme.TextColor)},
-		{key: "border_color", value: strconv.Quote(cfg.Theme.BorderColor)},
-		{key: "accent_color", value: strconv.Quote(cfg.Theme.AccentColor)},
-		{key: "hover_text_color", value: strconv.Quote(cfg.Theme.HoverTextColor)},
-		{key: "muted_text_color", value: strconv.Quote(cfg.Theme.MutedTextColor)},
-		{key: "mention_background_color", value: strconv.Quote(cfg.Theme.MentionBackgroundColor)},
-		{key: "selection_background_color", value: strconv.Quote(cfg.Theme.SelectionBackgroundColor)},
 	}
+	return append(entries, themeConfigFileValues(cfg.Theme)...)
 }
 
 type configFileEntry struct {
@@ -308,8 +314,7 @@ func replaceConfigValue(line string, equals int, value string) string {
 // updateConfigContents refreshes the known settings while retaining the
 // user's layout and all comments/unknown keys. It also fills in settings absent
 // from older configs, using the same defaults already present in Config.
-func updateConfigContents(contents string, cfg Config) string {
-	entries := configFileValues(cfg)
+func updateConfigValues(contents string, entries []configFileEntry) string {
 	values := make(map[string]string, len(entries))
 	for _, entry := range entries {
 		values[entry.key] = entry.value
@@ -373,7 +378,7 @@ func updateConfigContents(contents string, cfg Config) string {
 // saveConfig updates managed values in place instead of rebuilding the file.
 // This keeps comments, custom settings, and formatting intact when commands
 // such as /rename and /color persist a change.
-func saveConfig(cfg Config) error {
+func saveConfigValues(entries []configFileEntry) error {
 	path := configPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
@@ -386,8 +391,27 @@ func saveConfig(cfg Config) error {
 		}
 		contents = []byte(defaultConfigFile())
 	}
-	updated := updateConfigContents(string(contents), cfg)
+	updated := updateConfigValues(string(contents), entries)
 	return os.WriteFile(path, []byte(updated), 0600)
+}
+
+// saveConfig retains the full-config helper for config migration and tests.
+// Runtime actions should use the narrower helpers below to avoid touching
+// unrelated values at all.
+func saveConfig(cfg Config) error {
+	return saveConfigValues(configFileValues(cfg))
+}
+
+func saveConfigName(name string) error {
+	return saveConfigValues([]configFileEntry{{key: "name", value: strconv.Quote(name)}})
+}
+
+func saveConfigUserColor(color string) error {
+	return saveConfigValues([]configFileEntry{{key: "user_color", value: strconv.Quote(color)}})
+}
+
+func saveThemeConfig(theme Theme) error {
+	return saveConfigValues(themeConfigFileValues(theme))
 }
 
 func validUserColor(value string) bool {

@@ -173,7 +173,7 @@ func applyThemePreset(cfg *Config, preset ThemePreset) error {
 
 	updated := *cfg
 	updated.Theme = preset.Colors
-	if err := saveConfig(updated); err != nil {
+	if err := saveThemeConfig(updated.Theme); err != nil {
 		return fmt.Errorf("save active theme: %w", err)
 	}
 	cfg.Theme = preset.Colors
