@@ -253,6 +253,151 @@ func saveThemePack(filename string, pack ThemePack) error {
 	return nil
 }
 
+// themeFilenameStem turns a display name into a predictable, portable TOML filename.
+func themeFilenameStem(name string) string {
+	var slug strings.Builder
+	lastDash := false
+	for _, r := range strings.ToLower(strings.TrimSpace(name)) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			slug.WriteRune(r)
+			lastDash = false
+		default:
+			if !lastDash && slug.Len() > 0 {
+				slug.WriteByte('-')
+				lastDash = true
+			}
+		}
+	}
+	value := strings.Trim(slug.String(), "-")
+	if value == "" {
+		value = "custom"
+	}
+	return "theme-" + value
+}
+
+func nextThemeFilename(name string) (string, error) {
+	stem := themeFilenameStem(name)
+	for suffix := 1; suffix < 10000; suffix++ {
+		candidate := stem + ".toml"
+		if suffix > 1 {
+			candidate = fmt.Sprintf("%s-%d.toml", stem, suffix)
+		}
+		_, err := os.Stat(filepath.Join(themesDir(), candidate))
+		if errors.Is(err, os.ErrNotExist) {
+			return candidate, nil
+		}
+		if err != nil {
+			return "", fmt.Errorf("check theme filename %q: %w", candidate, err)
+		}
+	}
+	return "", fmt.Errorf("could not find an available filename for theme %q", name)
+}
+
+// createThemePresetFile stores one editable theme in its own TOML file.
+// Each clone/new theme is independent of the shipped default pack.
+func createThemePresetFile(preset ThemePreset) (themeListEntry, error) {
+	if strings.TrimSpace(preset.Name) == "" {
+		return themeListEntry{}, fmt.Errorf("theme name cannot be empty")
+	}
+	if err := validateThemeColors(preset.Colors); err != nil {
+		return themeListEntry{}, err
+	}
+	if err := os.MkdirAll(themesDir(), 0700); err != nil {
+		return themeListEntry{}, fmt.Errorf("create themes directory: %w", err)
+	}
+	filename, err := nextThemeFilename(preset.Name)
+	if err != nil {
+		return themeListEntry{}, err
+	}
+	id := strings.TrimSuffix(strings.TrimPrefix(filename, "theme-"), ".toml")
+	preset.ID = id
+	pack := ThemePack{
+		SchemaVersion: themePackSchemaVersion,
+		PackName:      "Custom themes",
+		Themes:        []ThemePreset{preset},
+	}
+	if err := saveThemePack(filename, pack); err != nil {
+		return themeListEntry{}, err
+	}
+	return themeListEntry{Preset: preset, PackName: pack.PackName, FileName: filename}, nil
+}
+
+// saveThemePresetFile updates only an editable preset. A one-theme file follows
+// the display name when renamed; multi-theme packs keep their shared filename.
+func saveThemePresetFile(entry themeListEntry, preset ThemePreset) (themeListEntry, error) {
+	if entry.FileName == "" || strings.EqualFold(entry.FileName, defaultThemePackFilename) {
+		return themeListEntry{}, fmt.Errorf("Zealot's built-in themes are read-only; clone one to edit it")
+	}
+	if err := validateThemeColors(preset.Colors); err != nil {
+		return themeListEntry{}, err
+	}
+	if strings.TrimSpace(preset.Name) == "" {
+		return themeListEntry{}, fmt.Errorf("theme name cannot be empty")
+	}
+
+	oldPath := filepath.Join(themesDir(), entry.FileName)
+	var pack ThemePack
+	if _, err := toml.DecodeFile(oldPath, &pack); err != nil {
+		return themeListEntry{}, fmt.Errorf("read theme pack %q: %w", entry.FileName, err)
+	}
+	if err := validateThemePack(pack); err != nil {
+		return themeListEntry{}, fmt.Errorf("validate theme pack %q: %w", entry.FileName, err)
+	}
+	found := false
+	for i := range pack.Themes {
+		if strings.EqualFold(pack.Themes[i].ID, entry.Preset.ID) {
+			pack.Themes[i] = preset
+			found = true
+			break
+		}
+	}
+	if !found {
+		return themeListEntry{}, fmt.Errorf("theme %q no longer exists in %q", entry.Preset.ID, entry.FileName)
+	}
+
+	newFilename := entry.FileName
+	if len(pack.Themes) == 1 {
+		newFilename = themeFilenameStem(preset.Name) + ".toml"
+	}
+	newPath := filepath.Join(themesDir(), newFilename)
+	if newFilename != entry.FileName {
+		if _, err := os.Stat(newPath); err == nil {
+			return themeListEntry{}, fmt.Errorf("a theme file named %q already exists; choose another name", newFilename)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return themeListEntry{}, fmt.Errorf("check destination theme file: %w", err)
+		}
+	}
+
+	content, err := encodeThemePack(pack)
+	if err != nil {
+		return themeListEntry{}, err
+	}
+	if newFilename == entry.FileName {
+		if err := os.WriteFile(oldPath, content, 0600); err != nil {
+			return themeListEntry{}, fmt.Errorf("save theme file %q: %w", entry.FileName, err)
+		}
+	} else {
+		file, err := os.OpenFile(newPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err != nil {
+			return themeListEntry{}, fmt.Errorf("create renamed theme file %q: %w", newFilename, err)
+		}
+		if _, err := file.Write(content); err != nil {
+			_ = file.Close()
+			_ = os.Remove(newPath)
+			return themeListEntry{}, fmt.Errorf("write renamed theme file %q: %w", newFilename, err)
+		}
+		if err := file.Close(); err != nil {
+			_ = os.Remove(newPath)
+			return themeListEntry{}, fmt.Errorf("close renamed theme file %q: %w", newFilename, err)
+		}
+		if err := os.Remove(oldPath); err != nil {
+			return themeListEntry{}, fmt.Errorf("theme saved as %q, but could not remove the previous file: %w", newFilename, err)
+		}
+	}
+	return themeListEntry{Preset: preset, PackName: pack.PackName, FileName: newFilename}, nil
+}
+
 func encodeThemePack(pack ThemePack) ([]byte, error) {
 	pack.FileName = ""
 	var content bytes.Buffer
