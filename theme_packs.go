@@ -28,9 +28,10 @@ type ThemePack struct {
 
 // ThemePreset is one named palette inside a theme pack.
 type ThemePreset struct {
-	ID     string `toml:"id"`
-	Name   string `toml:"name"`
-	Colors Theme  `toml:"colors"`
+	ID          string `toml:"id"`
+	Name        string `toml:"name"`
+	Description string `toml:"description,omitempty"`
+	Colors      Theme  `toml:"colors"`
 }
 
 func defaultThemePack() ThemePack {
@@ -39,13 +40,15 @@ func defaultThemePack() ThemePack {
 		PackName:      "Zealot defaults",
 		Themes: []ThemePreset{
 			{
-				ID:     "zealot",
-				Name:   "Zealot",
-				Colors: defaultTheme(),
+				ID:          "zealot",
+				Name:        "Zealot",
+				Description: "A balanced dark terminal palette with clear contrast and a restrained violet accent.",
+				Colors:      defaultTheme(),
 			},
 			{
-				ID:   "autumn",
-				Name: "Autumn",
+				ID:          "autumn",
+				Name:        "Autumn",
+				Description: "A warm late-autumn palette with deep orange-brown surfaces and bright orange, amber, and rust accents.",
 				Colors: Theme{
 					Background:               "#2D170A",
 					TextColor:                "#F7E8D8",
@@ -320,7 +323,7 @@ func createThemePresetFile(preset ThemePreset) (themeListEntry, error) {
 	if err := saveThemePack(filename, pack); err != nil {
 		return themeListEntry{}, err
 	}
-	return themeListEntry{Preset: preset, PackName: pack.PackName, FileName: filename}, nil
+	return themeListEntry{Preset: preset, PackName: pack.PackName, ThemeCount: len(pack.Themes), FileName: filename}, nil
 }
 
 // saveThemePresetFile updates only an editable preset. A one-theme file follows
@@ -396,7 +399,7 @@ func saveThemePresetFile(entry themeListEntry, preset ThemePreset) (themeListEnt
 			return themeListEntry{}, fmt.Errorf("could not finish renaming theme file %q: %w", entry.FileName, err)
 		}
 	}
-	return themeListEntry{Preset: preset, PackName: pack.PackName, FileName: newFilename}, nil
+	return themeListEntry{Preset: preset, PackName: pack.PackName, ThemeCount: len(pack.Themes), FileName: newFilename}, nil
 }
 
 func encodeThemePack(pack ThemePack) ([]byte, error) {
