@@ -102,7 +102,7 @@ func TestThemeEditorRenameAndColorChangesSaveToRenamedFile(t *testing.T) {
 	leftWidth, rightWidth := m.themeBrowserColumnWidths()
 	rightStart := m.themeBrowserContentStartX() + leftWidth + 1
 	updated, _ := m.Update(tea.MouseClickMsg{
-		X: rightStart + 1, Y: 2, Button: tea.MouseLeft,
+		X: rightStart, Y: 2, Button: tea.MouseLeft,
 	})
 	m = updated.(model)
 	if m.themeEditField != "name" {
