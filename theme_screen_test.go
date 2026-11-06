@@ -318,10 +318,13 @@ func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
 	m.themesOpen = true
 	line, targets := m.renderStatusBar(false, false)
 	plain := stripANSISequences(line)
-	for _, want := range []string{"PgUp", "PgDn", "F2:", "Ctrl+Enter: apply", "[APPLY]", "Esc: back", "[Send]", "Quit"} {
+	for _, want := range []string{"PgUp", "PgDn", "Ctrl+Enter/F2: Apply", "Esc: back", "[Send]", "Quit"} {
 		if !strings.Contains(plain, want) {
 			t.Errorf("theme footer is missing %q: %s", want, plain)
 		}
+	}
+	if strings.Contains(plain, "[APPLY]") {
+		t.Fatalf("theme footer still renders the old boxed Apply label: %s", plain)
 	}
 	if !targets.hasSend {
 		t.Fatal("theme browser footer does not expose the send action")
@@ -342,6 +345,55 @@ func themeBrowserSelectAutumn(t *testing.T, m *model) Theme {
 	}
 	t.Fatal("Autumn preset not found in theme browser")
 	return Theme{}
+}
+
+func TestThemeBrowserActionsShareOneHorizontalRow(t *testing.T) {
+	m := newThemeEditorTestModel(t)
+	_, rightWidth := m.themeBrowserColumnWidths()
+	rows := m.themeDetailsRows(rightWidth)
+	row := stripANSISequences(rows[themeActionButtonRow()])
+	cloneStart, cloneEnd, cloneOK := themeActionButtonBounds(rightWidth, themeCloneButtonLabel, false)
+	applyStart, applyEnd, applyOK := themeActionButtonBounds(rightWidth, themeApplyButtonLabel, false)
+	if !cloneOK || !applyOK || cloneEnd > applyStart {
+		t.Fatalf("clean actions are not laid out horizontally: clone=(%d,%d,%v) apply=(%d,%d,%v)", cloneStart, cloneEnd, cloneOK, applyStart, applyEnd, applyOK)
+	}
+	if !strings.Contains(row, themeCloneButtonLabel) || !strings.Contains(row, themeApplyButtonLabel) {
+		t.Fatalf("horizontal action row is missing labels: %q", row)
+	}
+
+	m.themeDirty = true
+	rows = m.themeDetailsRows(rightWidth)
+	row = stripANSISequences(rows[themeActionButtonRow()])
+	cloneStart, cloneEnd, cloneOK = themeActionButtonBounds(rightWidth, themeCloneButtonLabel, true)
+	saveStart, saveEnd, saveOK := themeActionButtonBounds(rightWidth, themeSaveButtonLabel, true)
+	applyStart, applyEnd, applyOK = themeActionButtonBounds(rightWidth, themeApplyButtonLabel, true)
+	if !cloneOK || !saveOK || !applyOK || cloneEnd > saveStart || saveEnd > applyStart {
+		t.Fatalf("dirty actions are not laid out in order on one row: clone=(%d,%d,%v) save=(%d,%d,%v) apply=(%d,%d,%v)", cloneStart, cloneEnd, cloneOK, saveStart, saveEnd, saveOK, applyStart, applyEnd, applyOK)
+	}
+	for _, label := range []string{themeCloneButtonLabel, themeSaveButtonLabel, themeApplyButtonLabel} {
+		if !strings.Contains(row, label) {
+			t.Errorf("dirty horizontal action row is missing %s: %q", label, row)
+		}
+	}
+}
+
+func TestThemeBrowserCtrlEnterShortcutAppliesSelectedTheme(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	m := newModel(cfg, "lobby", false, nil)
+	m.width, m.height = 100, 30
+	m.openThemeBrowser()
+	want := themeBrowserSelectAutumn(t, &m)
+
+	// Bubble Tea's KeyMod uses bit 2 for Ctrl (Shift and Alt occupy bits 0-1).
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: 4})
+	next := updated.(model)
+	if next.cfg.Theme != want {
+		t.Fatalf("Ctrl+Enter did not apply selected theme: got %+v, want %+v", next.cfg.Theme, want)
+	}
 }
 
 func TestThemeBrowserF2ShortcutAppliesSelectedTheme(t *testing.T) {
@@ -375,9 +427,13 @@ func TestThemeBrowserApplyButtonClickAppliesSelectedTheme(t *testing.T) {
 	leftWidth, rightWidth := m.themeBrowserColumnWidths()
 	details := stripANSISequences(strings.Join(m.themeDetailsRows(rightWidth), "\n"))
 	if !strings.Contains(details, "[APPLY]") {
-		t.Fatal("right pane does not render its apply button")
+		t.Fatal("right pane does not render its apply action")
 	}
-	x := m.themeBrowserContentStartX() + leftWidth + 1 + rightWidth/2
+	start, end, ok := themeActionButtonBounds(rightWidth, themeApplyButtonLabel, false)
+	if !ok {
+		t.Fatal("right pane did not lay out the Apply action")
+	}
+	x := m.themeBrowserContentStartX() + leftWidth + 1 + (start+end)/2
 	y := 2 + themeApplyButtonRow()
 	if !m.themeApplyButtonContains(x, y) {
 		t.Fatalf("calculated apply button center (%d,%d) is not inside its hitbox", x, y)
