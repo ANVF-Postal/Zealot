@@ -37,11 +37,27 @@ func defaultThemePack() ThemePack {
 	return ThemePack{
 		SchemaVersion: themePackSchemaVersion,
 		PackName:      "Zealot defaults",
-		Themes: []ThemePreset{{
-			ID:     "zealot",
-			Name:   "Zealot",
-			Colors: defaultTheme(),
-		}},
+		Themes: []ThemePreset{
+			{
+				ID:     "zealot",
+				Name:   "Zealot",
+				Colors: defaultTheme(),
+			},
+			{
+				ID:   "autumn",
+				Name: "Autumn",
+				Colors: Theme{
+					Background:               "#2D170A",
+					TextColor:                "#F7E8D8",
+					BorderColor:              "#7A442A",
+					AccentColor:              "#FF8C2A",
+					HoverTextColor:           "#FFD166",
+					MutedTextColor:           "#C18B62",
+					MentionBackgroundColor:   "#622F1C",
+					SelectionBackgroundColor: "#92451F",
+				},
+			},
+		},
 	}
 }
 
@@ -66,7 +82,7 @@ func ensureThemeLibrary() error {
 	}
 	file, err := os.OpenFile(defaultThemePackPath(), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if errors.Is(err, os.ErrExist) {
-		return nil
+		return ensureMissingDefaultThemes(defaultThemePackPath())
 	}
 	if err != nil {
 		return fmt.Errorf("create default theme pack: %w", err)
@@ -79,6 +95,78 @@ func ensureThemeLibrary() error {
 	if err := file.Close(); err != nil {
 		_ = os.Remove(defaultThemePackPath())
 		return fmt.Errorf("close default theme pack: %w", err)
+	}
+	return nil
+}
+
+// ensureMissingDefaultThemes adds newly shipped built-ins to an existing
+// default pack without replacing its contents or any user-customized presets.
+func ensureMissingDefaultThemes(path string) error {
+	existing, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read existing default theme pack: %w", err)
+	}
+
+	var pack ThemePack
+	if _, err := toml.Decode(string(existing), &pack); err != nil {
+		return fmt.Errorf("decode existing default theme pack: %w", err)
+	}
+	// A pre-existing file without a schema version is not a pack Zealot
+	// can safely migrate. Preserve it exactly and leave config loading usable.
+	// Versioned packs, including unsupported future versions, are validated
+	// normally so we never append data using an unknown schema.
+	if pack.SchemaVersion == 0 {
+		return nil
+	}
+	if err := validateThemePack(pack); err != nil {
+		return fmt.Errorf("validate existing default theme pack: %w", err)
+	}
+
+	known := make(map[string]struct{}, len(pack.Themes))
+	for _, preset := range pack.Themes {
+		known[strings.ToLower(strings.TrimSpace(preset.ID))] = struct{}{}
+	}
+
+	var missing []ThemePreset
+	for _, preset := range defaultThemePack().Themes {
+		key := strings.ToLower(strings.TrimSpace(preset.ID))
+		if _, exists := known[key]; exists {
+			continue
+		}
+		missing = append(missing, preset)
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+
+	// Encode only the missing array-table entries so existing comments,
+	// formatting, and customized built-in palettes remain untouched.
+	var additions bytes.Buffer
+	appendDocument := struct {
+		Themes []ThemePreset `toml:"themes"`
+	}{Themes: missing}
+	if err := toml.NewEncoder(&additions).Encode(appendDocument); err != nil {
+		return fmt.Errorf("encode missing default themes: %w", err)
+	}
+
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		return fmt.Errorf("open existing default theme pack: %w", err)
+	}
+	separator := []byte("\n")
+	if len(existing) > 0 && existing[len(existing)-1] != '\n' {
+		separator = []byte("\n\n")
+	}
+	if _, err := file.Write(separator); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("separate new default themes: %w", err)
+	}
+	if _, err := file.Write(additions.Bytes()); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("append missing default themes: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close updated default theme pack: %w", err)
 	}
 	return nil
 }
