@@ -305,7 +305,7 @@ func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
 	m.themesOpen = true
 	line, targets := m.renderStatusBar(false, false)
 	plain := stripANSISequences(line)
-	for _, want := range []string{"PgUp", "PgDn", "F2:", "[APPLY]", "Esc: back", "[Send]", "Quit"} {
+	for _, want := range []string{"PgUp", "PgDn", "F2:", "Ctrl+Enter: apply", "[APPLY]", "Esc: back", "[Send]", "Quit"} {
 		if !strings.Contains(plain, want) {
 			t.Errorf("theme footer is missing %q: %s", want, plain)
 		}
