@@ -481,6 +481,7 @@ func (m *model) applySelectedTheme() {
 		return
 	}
 	m.themeError = ""
+	m.themeEditError = ""
 	m.styles = makeStyles(m.cfg.Theme)
 
 	bg := lipgloss.Color(m.cfg.Theme.Background)
