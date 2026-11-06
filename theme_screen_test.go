@@ -269,6 +269,19 @@ func TestThemeBrowserListHitboxMapsVisibleRows(t *testing.T) {
 
 
 
+func TestThemeBrowserDividerHitboxIsOnlyTheDividerCell(t *testing.T) {
+	m := newMessageInteractionTestModel(100)
+	m.width, m.height = 100, 30
+	m.themesOpen = true
+	x := m.themeBrowserDividerX()
+	if !m.themeBrowserDividerContains(x, 3) {
+		t.Fatal("divider cell did not register its drag hitbox")
+	}
+	if m.themeBrowserDividerContains(x-1, 3) || m.themeBrowserDividerContains(x+1, 3) {
+		t.Fatal("divider drag hitbox extends into the adjacent panes")
+	}
+}
+
 func TestThemeBrowserDividerCanBeResized(t *testing.T) {
 	m := newMessageInteractionTestModel(100)
 	m.width, m.height = 100, 30
