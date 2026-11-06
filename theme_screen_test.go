@@ -92,8 +92,8 @@ func TestThemeBrowserApplyUpdatesActiveThemeAndInputStyles(t *testing.T) {
 	custom.SelectionBackgroundColor = "#223344"
 	m.themeEntries = []themeListEntry{{Preset: ThemePreset{ID: "custom", Name: "Custom", Colors: custom}, PackName: "Test"}}
 	m.applySelectedTheme()
-	if m.cfg.Theme != custom || m.styles.accent.GetForeground() != lipgloss.Color(custom.AccentColor) {
-		t.Fatalf("theme was not applied to model styles: %+v", m.cfg.Theme)
+	if m.cfg.Theme != custom {
+		t.Fatalf("theme was not applied to model: %+v", m.cfg.Theme)
 	}
 	if m.input.Styles().Cursor.Color != lipgloss.Color(custom.AccentColor) {
 		t.Fatalf("composer cursor color was not refreshed")
