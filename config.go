@@ -17,13 +17,14 @@ import (
 // effects such as rainbow rendering and XKeyscore artwork intentionally keep
 // their own palettes.
 type Theme struct {
-	Background             string
-	TextColor              string
-	BorderColor            string
-	AccentColor            string
-	HoverTextColor         string
-	MutedTextColor         string
-	MentionBackgroundColor string
+	Background               string `toml:"background"`
+	TextColor                string `toml:"text_color"`
+	BorderColor              string `toml:"border_color"`
+	AccentColor              string `toml:"accent_color"`
+	HoverTextColor           string `toml:"hover_text_color"`
+	MutedTextColor           string `toml:"muted_text_color"`
+	MentionBackgroundColor   string `toml:"mention_background_color"`
+	SelectionBackgroundColor string `toml:"selection_background_color"`
 }
 
 type Config struct {
@@ -44,7 +45,8 @@ func defaultTheme() Theme {
 		AccentColor:            "#7C5CFC",
 		HoverTextColor:         "#F9F871",
 		MutedTextColor:         "#707786",
-		MentionBackgroundColor: "#3C3622",
+		MentionBackgroundColor:   "#3C3622",
+		SelectionBackgroundColor: "#3D5275",
 	}
 }
 
@@ -89,6 +91,9 @@ func loadConfig() (Config, error) {
 			return cfg, err
 		}
 
+		if err := ensureThemeLibrary(); err != nil {
+			return cfg, err
+		}
 		return cfg, nil
 	}
 
@@ -131,6 +136,8 @@ func loadConfig() (Config, error) {
 			cfg.Theme.MutedTextColor = value
 		case "mention_background_color":
 			cfg.Theme.MentionBackgroundColor = value
+		case "selection_background_color":
+			cfg.Theme.SelectionBackgroundColor = value
 		case "bell":
 			if enabled, err := strconv.ParseBool(value); err == nil {
 				cfg.Bell = enabled
@@ -167,6 +174,9 @@ func loadConfig() (Config, error) {
 		cfg.Name = "Anonymous"
 	}
 
+	if err := ensureThemeLibrary(); err != nil {
+		return cfg, err
+	}
 	return cfg, nil
 }
 
@@ -199,6 +209,7 @@ accent_color = "#7C5CFC"
 hover_text_color = "#F9F871"
 muted_text_color = "#707786"
 mention_background_color = "#3C3622"
+selection_background_color = "#3D5275"
 `
 }
 
@@ -224,8 +235,9 @@ accent_color = %q
 hover_text_color = %q
 muted_text_color = %q
 mention_background_color = %q
+selection_background_color = %q
 `, cfg.Name, cfg.UserColor, cfg.Bell, cfg.InputHeight, cfg.AdaptiveHeight, cfg.HeightMaxPercent, cfg.Theme.Background, cfg.Theme.TextColor, cfg.Theme.BorderColor, cfg.Theme.AccentColor,
-		cfg.Theme.HoverTextColor, cfg.Theme.MutedTextColor, cfg.Theme.MentionBackgroundColor)
+		cfg.Theme.HoverTextColor, cfg.Theme.MutedTextColor, cfg.Theme.MentionBackgroundColor, cfg.Theme.SelectionBackgroundColor)
 	return os.WriteFile(path, []byte(content), 0600)
 }
 

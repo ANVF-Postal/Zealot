@@ -148,6 +148,12 @@ func newModel(
 	inputStyles.Focused.Text = textStyle
 	inputStyles.Blurred.Text = textStyle
 
+	// Text selection is part of the active theme, not Bubbles' default palette.
+	selectionStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color(cfg.Theme.SelectionBackgroundColor))
+	inputStyles.Focused.Selection = selectionStyle
+	inputStyles.Blurred.Selection = selectionStyle
+
 	// Match the placeholder to the keyboard-shortcut hint at the bottom.
 	placeholderStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(cfg.Theme.MutedTextColor)).
