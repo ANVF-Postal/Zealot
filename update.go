@@ -15,6 +15,20 @@ import (
 // UI update
 // -----------------------------------------------------------------------------
 
+func isThemeApplyShortcut(key tea.KeyPressMsg) bool {
+	if key.Code == tea.KeyF2 || (key.Code == tea.KeyEnter && key.Mod&4 != 0) {
+		return true
+	}
+	return key.Keystroke() == "f2" || key.Keystroke() == "ctrl+enter"
+}
+
+func isThemeSaveShortcut(key tea.KeyPressMsg) bool {
+	if (key.Code == 's' || key.Code == 'S') && key.Mod&4 != 0 {
+		return true
+	}
+	return key.Keystroke() == "ctrl+s"
+}
+
 func (m model) Update(
 	msg tea.Msg,
 ) (tea.Model, tea.Cmd) {
@@ -440,6 +454,12 @@ func (m model) Update(
 				}
 				return m, nil
 			}
+			if m.themeDescriptionContains(mouse.X, mouse.Y) {
+				if entry, ok := m.selectedThemeEntry(); ok && themeEntryEditable(entry) {
+					m.beginThemeFieldEdit("description")
+				}
+				return m, nil
+			}
 			if field, ok := m.themeColorFieldAt(mouse.X, mouse.Y); ok {
 				if entry, exists := m.selectedThemeEntry(); exists && themeEntryEditable(entry) {
 					m.beginThemeFieldEdit(field)
@@ -688,6 +708,16 @@ func (m model) Update(
 
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		if m.themesOpen {
+			if m.themeEditField == "" && isThemeApplyShortcut(keyMsg) {
+				m.applySelectedTheme()
+				return m, nil
+			}
+			if isThemeSaveShortcut(keyMsg) {
+				if m.themeEditField == "" {
+					m.saveSelectedThemeEdits()
+				}
+				return m, nil
+			}
 			switch keyMsg.Keystroke() {
 			case "enter":
 				if m.themeEditField != "" {
