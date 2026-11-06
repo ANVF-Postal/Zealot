@@ -359,9 +359,15 @@ func (m model) themeNameContains(x, y int) bool {
 	if !m.themesOpen || m.themeError != "" || len(m.themeEntries) == 0 || y != 2 {
 		return false
 	}
+	entry := m.themeEntries[min(max(0, m.themeSelected), len(m.themeEntries)-1)]
+	if !themeEntryEditable(entry) {
+		return false
+	}
 	leftWidth, rightWidth := m.themeBrowserColumnWidths()
 	rightStartX := m.themeBrowserContentStartX() + leftWidth + 1
-	return x >= rightStartX && x < rightStartX+rightWidth
+	titleWidth := lipgloss.Width(entry.Preset.Name + "  ✎")
+	titleWidth = min(titleWidth, rightWidth)
+	return x >= rightStartX && x < rightStartX+titleWidth
 }
 
 func (m model) themeColorFieldAt(x, y int) (string, bool) {
