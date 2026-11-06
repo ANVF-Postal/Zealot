@@ -466,7 +466,7 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		targets.pgDnStart = pageStart + lipgloss.Width("PgUp/")
 		targets.pgDnEnd = targets.pgDnStart + lipgloss.Width("PgDn")
 	}
-	if m.themesOpen && len(m.themeEntries) > 0 && m.themeError == "" {
+	if m.themesOpen && m.themeError == "" {
 		if applyStartByte := strings.Index(prefixVisible, "[APPLY]"); applyStartByte >= 0 {
 			applyStart := lipgloss.Width(prefixVisible[:applyStartByte])
 			applyStyle := lipgloss.NewStyle().

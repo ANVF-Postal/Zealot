@@ -282,11 +282,6 @@ func (m model) Update(
 			return m, nil
 		}
 
-		if mouse.Button == tea.MouseLeft && m.themeApplyButtonContains(mouse.X, mouse.Y) {
-			m.applySelectedTheme()
-			return m, nil
-		}
-
 		// Begin a textarea selection anywhere the composer is visible, including
 		// while the splash, theme browser, or users panel is open.
 		if mouse.Button == tea.MouseLeft && m.inputSelectionContains(mouse.X, mouse.Y) {
@@ -300,10 +295,6 @@ func (m model) Update(
 		// calculated by the same layout helper used to render the row.
 		if m.statusBarVisible() && mouse.Button == tea.MouseLeft && mouse.Y == m.height-1 {
 			_, targets := m.renderStatusBar(m.usersOpen, m.splashOpen && !m.themesOpen)
-			if targets.hasApply && mouse.X >= targets.applyStart && mouse.X < targets.applyEnd {
-				m.applySelectedTheme()
-				return m, nil
-			}
 			if targets.hasSend && mouse.X >= targets.sendStart && mouse.X < targets.sendEnd {
 				m.sendCurrentMessage()
 				m.sendFeedback = true
@@ -682,7 +673,7 @@ func (m model) Update(
 					m.clampThemeSelection()
 					return m, nil
 				}
-			case "f2", "ctrl+enter":
+			case "ctrl+enter":
 				m.applySelectedTheme()
 				return m, nil
 			case "ctrl+c", "ctrl+q":
