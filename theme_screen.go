@@ -259,7 +259,8 @@ func themeApplyButtonRow() int {
 // themeApplyButtonContains maps the centered right-pane button to terminal
 // coordinates. The chat content begins on row two below the header and frame.
 func (m model) themeApplyButtonContains(x, y int) bool {
-	if !m.themesOpen || m.themeError != "" || len(m.themeEntries) == 0 {
+	if !m.themesOpen || m.themeError != "" || len(m.themeEntries) == 0 ||
+		themeApplyButtonRow() >= max(1, m.messageHeight()) {
 		return false
 	}
 	leftWidth, rightWidth := m.themeBrowserColumnWidths()

@@ -360,6 +360,10 @@ func TestThemeBrowserApplyButtonClickAppliesSelectedTheme(t *testing.T) {
 	m.openThemeBrowser()
 	want := themeBrowserSelectAutumn(t, &m)
 	leftWidth, rightWidth := m.themeBrowserColumnWidths()
+	details := stripANSISequences(strings.Join(m.themeDetailsRows(rightWidth), "\n"))
+	if !strings.Contains(details, "[APPLY]") {
+		t.Fatal("right pane does not render its apply button")
+	}
 	x := m.themeBrowserContentStartX() + leftWidth + 1 + rightWidth/2
 	y := 2 + themeApplyButtonRow()
 	if !m.themeApplyButtonContains(x, y) {
