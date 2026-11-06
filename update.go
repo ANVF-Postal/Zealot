@@ -688,7 +688,7 @@ func (m model) Update(
 
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		if m.themesOpen {
-			switch keyMsg.String() {
+			switch keyMsg.Keystroke() {
 			case "enter":
 				if m.themeEditField != "" {
 					m.finishThemeFieldEdit()
