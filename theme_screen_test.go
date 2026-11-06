@@ -136,3 +136,41 @@ func TestThemeBrowserListHitboxMapsVisibleRows(t *testing.T) {
 	}
 }
 
+
+func TestBrowsingThemeOnlyPreviewsUntilExplicitApply(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	original := cfg.Theme
+	custom := defaultTheme()
+	custom.Background = "#010203"
+	pack := ThemePack{
+		SchemaVersion: themePackSchemaVersion,
+		PackName: "Community",
+		Themes: []ThemePreset{{ID: "custom", Name: "Custom", Colors: custom}},
+	}
+	if err := saveThemePack("community.toml", pack); err != nil {
+		t.Fatalf("save community pack: %v", err)
+	}
+
+	m := newModel(cfg, "lobby", false, nil)
+	m.width, m.height = 100, 30
+	m.openThemeBrowser()
+	m.moveThemeSelection(1)
+	if m.cfg.Theme != original {
+		t.Fatalf("browsing a preset changed the active palette")
+	}
+	rows := strings.Join(m.themeDetailsRows(60), "\n")
+	if !strings.Contains(stripANSISequences(rows), "Preview only") {
+		t.Fatalf("non-active selection is not identified as a preview: %s", stripANSISequences(rows))
+	}
+	data, err := os.ReadFile(configPath())
+	if err != nil {
+		t.Fatalf("read active config: %v", err)
+	}
+	if strings.Contains(string(data), "background = \"#010203\"") {
+		t.Fatalf("browsing a preset persisted it before explicit apply")
+	}
+}
