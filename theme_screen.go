@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // themeListEntry flattens a preset from a pack for the two-pane browser.
@@ -29,6 +29,8 @@ func flattenThemePacks(packs []ThemePack) []themeListEntry {
 func (m *model) openThemeBrowser() {
 	packs, err := loadThemePacks()
 	m.themesOpen = true
+	m.splashOpen = true
+	m.usersOpen = false
 	m.themeError = ""
 	m.themeEntries = nil
 	m.themeSelected = 0
