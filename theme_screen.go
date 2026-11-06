@@ -10,9 +10,10 @@ import (
 
 // themeListEntry flattens a preset from a pack for the two-pane browser.
 type themeListEntry struct {
-	Preset   ThemePreset
-	PackName string
-	FileName string
+	Preset     ThemePreset
+	PackName   string
+	ThemeCount int
+	FileName   string
 }
 
 func flattenThemePacks(packs []ThemePack) []themeListEntry {
@@ -20,7 +21,7 @@ func flattenThemePacks(packs []ThemePack) []themeListEntry {
 	for _, pack := range packs {
 		for _, preset := range pack.Themes {
 			entries = append(entries, themeListEntry{
-				Preset: preset, PackName: pack.PackName, FileName: pack.FileName,
+				Preset: preset, PackName: pack.PackName, ThemeCount: len(pack.Themes), FileName: pack.FileName,
 			})
 		}
 	}
@@ -274,18 +275,49 @@ const (
 	themePaletteColorCount = 8
 )
 
-func themeActionButtonRow() int {
+func (m model) themeDescriptionHeaderRow() int {
 	return themePaletteFirstRow + themePaletteColorCount + 1
 }
 
-// Keep the named row helpers for hitbox and test readability. All actions now
-// share one horizontal row immediately below the palette.
+func (m model) themeDescriptionTextStartRow() int {
+	return m.themeDescriptionHeaderRow() + 1
+}
+
+func wrapThemeDescription(description string, width int) []string {
+	description = strings.TrimSpace(description)
+	if description == "" {
+		description = "No description yet · click to add"
+	}
+	width = max(1, width)
+	return strings.Split(lipgloss.NewStyle().Width(width).Render(description), "\n")
+}
+
+func (m model) themeDescriptionLines(width int) []string {
+	entry, ok := m.selectedThemeEntry()
+	if !ok {
+		return []string{"No description yet · click to add"}
+	}
+	return wrapThemeDescription(entry.Preset.Description, width)
+}
+
+func (m model) themeActionButtonRowForWidth(width int) int {
+	return m.themeDescriptionTextStartRow() + len(m.themeDescriptionLines(width)) + 1
+}
+
+// Keep the no-argument helper for one-line description layout tests.
+// Runtime hitboxes use themeActionButtonRowForWidth so wrapped descriptions
+// never overlap the action buttons.
+func themeActionButtonRow() int {
+	return themePaletteFirstRow + themePaletteColorCount + 4
+}
+
 func themeCloneButtonRow() int { return themeActionButtonRow() }
 func themeSaveButtonRow() int  { return themeActionButtonRow() }
 func themeApplyButtonRow() int { return themeActionButtonRow() }
 
 func (m model) themeApplyButtonRowIndex() int {
-	return themeActionButtonRow()
+	_, rightWidth := m.themeBrowserColumnWidths()
+	return m.themeActionButtonRowForWidth(rightWidth)
 }
 
 type themeActionBounds struct {
@@ -319,7 +351,7 @@ func themeActionButtonLayout(width int, dirty bool) []themeActionBounds {
 		return nil
 	}
 
-	cursor := max(0, (width-total)/2)
+	cursor := 0
 	buttons := make([]themeActionBounds, 0, len(labels))
 	for i, label := range labels {
 		end := cursor + lipgloss.Width(label)
@@ -346,8 +378,7 @@ func themeActionButtonsRow(width int, dirty bool, background, accent string) str
 	fill := lipgloss.NewStyle().Background(bg)
 	text := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(accent)).
-		Background(bg).
-		Bold(true)
+		Background(bg)
 
 	buttons := themeActionButtonLayout(width, dirty)
 	var row strings.Builder
@@ -369,10 +400,11 @@ func (m model) themeActionButtonContains(label string, x, y int) bool {
 	if !m.themesOpen || m.themeError != "" || len(m.themeEntries) == 0 {
 		return false
 	}
-	if y != 2+themeActionButtonRow() || themeActionButtonRow() >= max(1, m.messageHeight()) {
+	leftWidth, rightWidth := m.themeBrowserColumnWidths()
+	actionRow := m.themeActionButtonRowForWidth(rightWidth)
+	if y != 2+actionRow || actionRow >= max(1, m.messageHeight()) {
 		return false
 	}
-	leftWidth, rightWidth := m.themeBrowserColumnWidths()
 	rightStartX := m.themeBrowserContentStartX() + leftWidth + 1
 	start, end, ok := themeActionButtonBounds(rightWidth, label, m.themeDirty)
 	if !ok {
@@ -416,6 +448,20 @@ func (m model) themeNameContains(x, y int) bool {
 	titleWidth := lipgloss.Width(entry.Preset.Name + "  ✎")
 	titleWidth = min(titleWidth, rightWidth)
 	return x >= rightStartX && x < rightStartX+titleWidth
+}
+
+func (m model) themeDescriptionContains(x, y int) bool {
+	if !m.themesOpen || m.themeError != "" || len(m.themeEntries) == 0 {
+		return false
+	}
+	leftWidth, rightWidth := m.themeBrowserColumnWidths()
+	rightStartX := m.themeBrowserContentStartX() + leftWidth + 1
+	if x < rightStartX || x >= rightStartX+rightWidth {
+		return false
+	}
+	row := y - 2
+	return row >= m.themeDescriptionHeaderRow() &&
+		row < m.themeDescriptionTextStartRow()+len(m.themeDescriptionLines(rightWidth))
 }
 
 func (m model) themeColorFieldAt(x, y int) (string, bool) {
@@ -477,9 +523,13 @@ func (m model) themeDetailsRows(width int) []string {
 	if m.themeEditError != "" {
 		state = truncateANSI(m.themeEditError, width)
 	}
+	packRow := ""
+	if entry.ThemeCount > 1 {
+		packRow = m.styles.system.Render("Pack: " + entry.PackName)
+	}
 	rows := []string{
 		m.styles.accent.Render(title),
-		m.styles.system.Render("Pack: " + entry.PackName),
+		packRow,
 		m.styles.system.Render(state),
 		"",
 		m.styles.accent.Render("COLOR PALETTE · click a row to edit"),
@@ -504,6 +554,11 @@ func (m model) themeDetailsRows(width int) []string {
 		}
 		paletteText := paletteStyle.Render(fmt.Sprintf(" %-20s %s", color.label, color.value))
 		rows = append(rows, swatch+paletteText)
+	}
+	rows = append(rows, "")
+	rows = append(rows, m.styles.accent.Render("DESCRIPTION · click to edit"))
+	for _, line := range wrapThemeDescription(preset.Description, width) {
+		rows = append(rows, m.styles.system.Render(line))
 	}
 	rows = append(rows, "")
 	rows = append(rows, themeActionButtonsRow(width, m.themeDirty, m.cfg.Theme.Background, m.cfg.Theme.AccentColor))
