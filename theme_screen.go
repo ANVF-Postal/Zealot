@@ -274,63 +274,111 @@ const (
 	themePaletteColorCount = 8
 )
 
-func themeCloneButtonRow() int {
+func themeActionButtonRow() int {
 	return themePaletteFirstRow + themePaletteColorCount + 1
 }
 
-func themeSaveButtonRow() int {
-	return themeCloneButtonRow() + 1
-}
-
-// themeApplyButtonRow is the stable row for the clean (not-yet-edited) editor.
-// Dirty editors insert a Save row immediately before Apply.
-func themeApplyButtonRow() int {
-	return themeCloneButtonRow() + 1
-}
+// Keep the named row helpers for hitbox and test readability. All actions now
+// share one horizontal row immediately below the palette.
+func themeCloneButtonRow() int { return themeActionButtonRow() }
+func themeSaveButtonRow() int  { return themeActionButtonRow() }
+func themeApplyButtonRow() int { return themeActionButtonRow() }
 
 func (m model) themeApplyButtonRowIndex() int {
-	if m.themeDirty {
-		return themeSaveButtonRow() + 1
-	}
-	return themeApplyButtonRow()
+	return themeActionButtonRow()
 }
 
-func themeCenteredButtonRow(label string, width int, background, accent string) string {
-	button := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(background)).
-		Background(lipgloss.Color(accent)).
-		Bold(true).
-		Padding(0, 1).
-		Render(label)
-	padding := max(0, (width-lipgloss.Width(button))/2)
-	fill := lipgloss.NewStyle().Background(lipgloss.Color(background))
-	left := fill.Render(strings.Repeat(" ", padding))
-	return fitThemeRowWithBackground(left+button, width, lipgloss.Color(background))
+type themeActionBounds struct {
+	Label string
+	Start int
+	End   int
+}
+
+func themeActionButtonLayout(width int, dirty bool) []themeActionBounds {
+	labels := []string{themeCloneButtonLabel}
+	if dirty {
+		labels = append(labels, themeSaveButtonLabel)
+	}
+	labels = append(labels, themeApplyButtonLabel)
+
+	gap := 2
+	total := 0
+	for _, label := range labels {
+		total += lipgloss.Width(label)
+	}
+	total += gap * (len(labels) - 1)
+	if total > width {
+		gap = 1
+		total -= len(labels) - 1
+	}
+	if total > width {
+		gap = 0
+		total -= len(labels) - 1
+	}
+	if total > width {
+		return nil
+	}
+
+	cursor := max(0, (width-total)/2)
+	buttons := make([]themeActionBounds, 0, len(labels))
+	for i, label := range labels {
+		end := cursor + lipgloss.Width(label)
+		buttons = append(buttons, themeActionBounds{Label: label, Start: cursor, End: end})
+		cursor = end + gap
+		if i == len(labels)-1 {
+			break
+		}
+	}
+	return buttons
+}
+
+func themeActionButtonBounds(width int, label string, dirty bool) (int, int, bool) {
+	for _, bounds := range themeActionButtonLayout(width, dirty) {
+		if bounds.Label == label {
+			return bounds.Start, bounds.End, true
+		}
+	}
+	return 0, 0, false
+}
+
+func themeActionButtonsRow(width int, dirty bool, background, accent string) string {
+	bg := lipgloss.Color(background)
+	fill := lipgloss.NewStyle().Background(bg)
+	text := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(accent)).
+		Background(bg).
+		Bold(true)
+
+	buttons := themeActionButtonLayout(width, dirty)
+	var row strings.Builder
+	cursor := 0
+	for _, button := range buttons {
+		if button.Start > cursor {
+			row.WriteString(fill.Render(strings.Repeat(" ", button.Start-cursor)))
+		}
+		row.WriteString(text.Render(button.Label))
+		cursor = button.End
+	}
+	if cursor < width {
+		row.WriteString(fill.Render(strings.Repeat(" ", width-cursor)))
+	}
+	return fitThemeRowWithBackground(row.String(), width, bg)
 }
 
 func (m model) themeActionButtonContains(label string, x, y int) bool {
 	if !m.themesOpen || m.themeError != "" || len(m.themeEntries) == 0 {
 		return false
 	}
-	row := -1
-	switch label {
-	case themeCloneButtonLabel:
-		row = themeCloneButtonRow()
-	case themeSaveButtonLabel:
-		if m.themeDirty {
-			row = themeSaveButtonRow()
-		}
-	case themeApplyButtonLabel:
-		row = m.themeApplyButtonRowIndex()
-	}
-	if row < 0 || row >= max(1, m.messageHeight()) || y != 2+row {
+	if y != 2+themeActionButtonRow() || themeActionButtonRow() >= max(1, m.messageHeight()) {
 		return false
 	}
 	leftWidth, rightWidth := m.themeBrowserColumnWidths()
 	rightStartX := m.themeBrowserContentStartX() + leftWidth + 1
-	buttonWidth := min(lipgloss.Width(label)+2, rightWidth)
-	buttonStartX := rightStartX + max(0, (rightWidth-buttonWidth)/2)
-	return x >= buttonStartX && x < buttonStartX+buttonWidth
+	start, end, ok := themeActionButtonBounds(rightWidth, label, m.themeDirty)
+	if !ok {
+		return false
+	}
+	return x >= rightStartX+start && x < rightStartX+end
 }
 
 func (m model) themeApplyButtonContains(x, y int) bool {
@@ -458,11 +506,7 @@ func (m model) themeDetailsRows(width int) []string {
 		rows = append(rows, swatch+paletteText)
 	}
 	rows = append(rows, "")
-	rows = append(rows, themeCenteredButtonRow(themeCloneButtonLabel, width, m.cfg.Theme.Background, m.cfg.Theme.AccentColor))
-	if m.themeDirty {
-		rows = append(rows, themeCenteredButtonRow(themeSaveButtonLabel, width, m.cfg.Theme.Background, m.cfg.Theme.AccentColor))
-	}
-	rows = append(rows, themeCenteredButtonRow(themeApplyButtonLabel, width, m.cfg.Theme.Background, m.cfg.Theme.AccentColor))
+	rows = append(rows, themeActionButtonsRow(width, m.themeDirty, m.cfg.Theme.Background, m.cfg.Theme.AccentColor))
 	return rows
 }
 
