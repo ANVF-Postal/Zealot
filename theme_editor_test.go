@@ -55,7 +55,11 @@ func TestCloneBuiltInThemeCreatesIndependentFile(t *testing.T) {
 	wantColors := themeBrowserSelectAutumn(t, &m)
 	leftWidth, rightWidth := m.themeBrowserColumnWidths()
 	rightStart := m.themeBrowserContentStartX() + leftWidth + 1
-	x := rightStart + max(0, (rightWidth-len(themeCloneButtonLabel)-2)/2)
+	start, end, ok := themeActionButtonBounds(rightWidth, themeCloneButtonLabel, false)
+	if !ok {
+		t.Fatal("clone action is not laid out in the horizontal row")
+	}
+	x := rightStart + (start+end)/2
 	y := 2 + themeCloneButtonRow()
 	if !m.themeCloneButtonContains(x, y) {
 		t.Fatal("clone button did not register its visible hitbox")
@@ -133,7 +137,11 @@ func TestThemeEditorRenameAndColorChangesSaveToRenamedFile(t *testing.T) {
 		t.Fatal("dirty theme does not show its Save button")
 	}
 
-	saveX := rightStart + max(0, (rightWidth-len(themeSaveButtonLabel)-2)/2)
+	saveStart, saveEnd, saveOK := themeActionButtonBounds(rightWidth, themeSaveButtonLabel, true)
+	if !saveOK {
+		t.Fatal("save action is not laid out in the horizontal row")
+	}
+	saveX := rightStart + (saveStart+saveEnd)/2
 	saveY := 2 + themeSaveButtonRow()
 	if !m.themeSaveButtonContains(saveX, saveY) {
 		t.Fatalf("Save button did not register its visible hitbox at (%d,%d)", saveX, saveY)
