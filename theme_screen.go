@@ -18,8 +18,18 @@ type themeListEntry struct {
 
 func flattenThemePacks(packs []ThemePack) []themeListEntry {
 	var entries []themeListEntry
+	builtInDescriptions := make(map[string]string)
+	for _, preset := range defaultThemePack().Themes {
+		builtInDescriptions[strings.ToLower(preset.ID)] = preset.Description
+	}
 	for _, pack := range packs {
 		for _, preset := range pack.Themes {
+			// Existing installations may have the original built-in pack without
+			// description fields. Supply the shipped copy in memory rather than
+			// rewriting a user-customized default-themes.toml file.
+			if preset.Description == "" && strings.EqualFold(pack.FileName, defaultThemePackFilename) {
+				preset.Description = builtInDescriptions[strings.ToLower(preset.ID)]
+			}
 			entries = append(entries, themeListEntry{
 				Preset: preset, PackName: pack.PackName, ThemeCount: len(pack.Themes), FileName: pack.FileName,
 			})
