@@ -148,7 +148,7 @@ func ensureMissingDefaultThemes(path string) error {
 	}
 	separator := []byte("\n")
 	if len(existing) > 0 && existing[len(existing)-1] != '\n' {
-		separator = []byte("\\n\\n")
+		separator = []byte("\n\n")
 	}
 	if _, err := file.Write(separator); err != nil {
 		_ = file.Close()

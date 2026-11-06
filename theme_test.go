@@ -158,11 +158,14 @@ func TestLoadConfigCreatesDefaultThemePack(t *testing.T) {
 	if pack.PackName != "Zealot defaults" {
 		t.Fatalf("pack name = %q, want Zealot defaults", pack.PackName)
 	}
-	if len(pack.Themes) != 1 {
-		t.Fatalf("default pack contains %d themes, want 1", len(pack.Themes))
+	if len(pack.Themes) != 2 {
+		t.Fatalf("default pack contains %d themes, want Zealot and Autumn", len(pack.Themes))
 	}
 	if pack.Themes[0].ID != "zealot" || pack.Themes[0].Name != "Zealot" {
 		t.Fatalf("default theme identity = (%q, %q), want (zealot, Zealot)", pack.Themes[0].ID, pack.Themes[0].Name)
+	}
+	if pack.Themes[1].ID != "autumn" || pack.Themes[1].Name != "Autumn" {
+		t.Fatalf("second default theme identity = (%q, %q), want (autumn, Autumn)", pack.Themes[1].ID, pack.Themes[1].Name)
 	}
 	if pack.Themes[0].Colors != cfg.Theme {
 		t.Fatalf("default pack colors do not match the active default palette: got %+v, want %+v", pack.Themes[0].Colors, cfg.Theme)
