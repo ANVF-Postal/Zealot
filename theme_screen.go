@@ -146,7 +146,7 @@ func (m model) themeBrowserDividerX() int {
 
 func (m model) themeBrowserDividerContains(x, y int) bool {
 	return m.themesOpen &&
-		x >= m.themeBrowserDividerX()-1 && x <= m.themeBrowserDividerX()+1 &&
+		x == m.themeBrowserDividerX() &&
 		y >= 2 && y < 1+m.messageHeight()
 }
 
