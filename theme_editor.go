@@ -169,6 +169,12 @@ func (m *model) finishThemeFieldEdit() {
 			m.themeEditError = "Theme name cannot be empty."
 			return
 		}
+		for index, other := range m.themeEntries {
+			if index != m.themeSelected && strings.EqualFold(strings.TrimSpace(other.Preset.Name), value) {
+				m.themeEditError = "A theme with that name already exists."
+				return
+			}
+		}
 	} else {
 		if !validUserColor(value) {
 			m.themeEditError = "Use a hex color such as #7C5CFC or an ANSI color number (0–255)."
