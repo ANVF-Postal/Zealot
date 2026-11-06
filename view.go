@@ -307,6 +307,8 @@ func (m model) renderSplashPanel() string {
 		Render(strings.Join(rows, "\n"))
 }
 
+const footerApplyButtonLabel = "[Apply]"
+
 type footerTargets struct {
 	quitStart  int
 	quitEnd    int
@@ -359,9 +361,9 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		case m.themeEditField != "":
 			scrollTail = ": Enter: confirm • Esc: cancel • Ctrl+C: "
 		case m.themeDirty:
-			scrollTail = ": Ctrl+S: Save • Ctrl+Enter/F2: Apply after save • Esc: back • Ctrl+C: "
+			scrollTail = ": Ctrl+S: Save • Ctrl+Enter/F2: " + footerApplyButtonLabel + " after save • Esc: back • Ctrl+C: "
 		default:
-			scrollTail = ": Ctrl+Enter/F2: Apply • Esc: back • Ctrl+C: "
+			scrollTail = ": Ctrl+Enter/F2: " + footerApplyButtonLabel + " • Esc: back • Ctrl+C: "
 		}
 	}
 	prefix := lead + scrollLabel + scrollTail
@@ -474,16 +476,16 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		targets.pgDnEnd = targets.pgDnStart + lipgloss.Width("PgDn")
 	}
 	if m.themesOpen && m.themeError == "" {
-		if applyStartByte := strings.Index(prefixVisible, "Apply"); applyStartByte >= 0 {
+		if applyStartByte := strings.Index(prefixVisible, footerApplyButtonLabel); applyStartByte >= 0 {
 			applyStart := lipgloss.Width(prefixVisible[:applyStartByte])
 			highlights = append(highlights, footerHighlight{
 				start: applyStartByte,
-				end: applyStartByte + len("Apply"),
-				rendered: m.styles.accent.Render("Apply"),
+				end: applyStartByte + len(footerApplyButtonLabel),
+				rendered: m.styles.accent.Render(footerApplyButtonLabel),
 			})
 			targets.hasApply = true
 			targets.applyStart = applyStart
-			targets.applyEnd = applyStart + lipgloss.Width("Apply")
+			targets.applyEnd = applyStart + lipgloss.Width(footerApplyButtonLabel)
 		}
 	}
 	sort.Slice(highlights, func(i, j int) bool { return highlights[i].start < highlights[j].start })
