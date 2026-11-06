@@ -27,6 +27,11 @@ type model struct {
 	usersAnimationRunning bool
 
 	splashOpen                       bool
+	themesOpen                       bool
+	themeEntries                     []themeListEntry
+	themeSelected                    int
+	themeScroll                      int
+	themeError                       string
 	splashScroll                     int
 	splashScrollDragging             bool
 	splashScrollDragOffset           int

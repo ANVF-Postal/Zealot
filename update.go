@@ -326,6 +326,7 @@ func (m model) Update(
 		if (m.usersOpen || m.splashOpen) && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width("[X]") && mouse.X < m.width {
 			m.usersOpen = false
 			m.splashOpen = false
+			m.themesOpen = false
 			m.usersScrollDragging = false
 			m.usersScrollbarHoldDirection = 0
 			m.usersScrollbarHoldGeneration++
@@ -335,7 +336,10 @@ func (m model) Update(
 			return m, nil
 		}
 		if mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= 0 && mouse.X < lipgloss.Width("ZEALOT") {
-			if m.splashOpen {
+			if m.themesOpen {
+				m.themesOpen = false
+				m.splashOpen = true
+			} else if m.splashOpen {
 				m.splashOpen = false
 				m.splashScrollDragging = false
 				m.splashScrollbarHoldDirection = 0
@@ -376,6 +380,17 @@ func (m model) Update(
 				return m, tea.Batch(sendWhoCmd, animationCmd)
 			}
 			return m, sendWhoCmd
+		}
+		if m.splashOpen && !m.themesOpen && mouse.Button == tea.MouseLeft && m.splashThemesButtonContains(mouse.X, mouse.Y) {
+			m.openThemeBrowser()
+			return m, nil
+		}
+		if m.themesOpen && mouse.Button == tea.MouseLeft {
+			if index, ok := m.themeBrowserListIndexAt(mouse.X, mouse.Y); ok {
+				m.themeSelected = index
+				m.clampThemeSelection()
+				return m, nil
+			}
 		}
 		if m.usersOpen && mouse.Button == tea.MouseLeft && mouse.X == m.chatScrollbarX() && m.maxUsersScroll() > 0 {
 			visible := m.usersPanelHeight()
@@ -564,6 +579,15 @@ func (m model) Update(
 	// -------------------------------------------------------------------------
 
 	if mouseMsg, ok := msg.(tea.MouseWheelMsg); ok {
+		if m.themesOpen {
+			switch mouseMsg.Button {
+			case tea.MouseWheelUp:
+				m.moveThemeSelection(-3)
+			case tea.MouseWheelDown:
+				m.moveThemeSelection(3)
+			}
+			return m, nil
+		}
 		if m.splashOpen {
 			switch mouseMsg.Button {
 			case tea.MouseWheelUp:
@@ -603,6 +627,43 @@ func (m model) Update(
 	handledNewline := false
 
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
+		if m.themesOpen {
+			switch keyMsg.String() {
+			case "esc", "escape":
+				m.themesOpen = false
+				m.themeError = ""
+				return m, nil
+			case "up":
+				m.moveThemeSelection(-1)
+				return m, nil
+			case "down":
+				m.moveThemeSelection(1)
+				return m, nil
+			case "pgup":
+				m.moveThemeSelection(-m.themeVisibleRows())
+				return m, nil
+			case "pgdown":
+				m.moveThemeSelection(m.themeVisibleRows())
+				return m, nil
+			case "home":
+				m.themeSelected = 0
+				m.clampThemeSelection()
+				return m, nil
+			case "end":
+				m.themeSelected = len(m.themeEntries)-1
+				m.clampThemeSelection()
+				return m, nil
+			case "enter":
+				m.applySelectedTheme()
+				return m, nil
+			case "ctrl+c", "ctrl+q":
+				m.sendTyping(false)
+				m.quitting = true
+				return m, tea.Quit
+			default:
+				return m, nil
+			}
+		}
 		switch keyMsg.String() {
 
 		case "esc", "escape":
@@ -784,6 +845,11 @@ func (m *model) applyMouseMotion(x, y int) {
 
 // scrollPage applies the same viewport movement for keyboard and footer clicks.
 func (m *model) scrollPage(up bool) {
+	if m.themesOpen {
+		step := m.themeVisibleRows()
+		if up { m.moveThemeSelection(-step) } else { m.moveThemeSelection(step) }
+		return
+	}
 	if m.splashOpen {
 		step := max(1, m.splashPanelHeight()/2)
 		if up {

@@ -1,0 +1,137 @@
+package main
+
+import (
+	"strings"
+
+	"charm.land/lipgloss/v2"
+	"testing"
+)
+
+func TestSplashIncludesCenteredThemesActionAfterStats(t *testing.T) {
+	m := newMessageInteractionTestModel(100)
+	m.splashOpen = true
+	rows := m.splashRows()
+	if len(rows) < 2 || rows[len(rows)-2] != "" {
+		t.Fatalf("splash theme action must be separated from stats by a blank line: %#v", rows)
+	}
+	if !strings.Contains(stripANSISequences(rows[len(rows)-1]), "[THEMES]") {
+		t.Fatalf("splash does not contain the themes action: %q", rows[len(rows)-1])
+	}
+	button := "[THEMES]"
+	wantX := 1 + max(0, (chatContentWidth(m.width)-len(button))/2)
+	if !m.splashThemesButtonContains(wantX, 2+len(rows)-1) {
+		t.Fatalf("centered themes action did not register its screen coordinate")
+	}
+}
+
+func TestFlattenThemePacks(t *testing.T) {
+	packs := []ThemePack{
+		{PackName: "Built in", FileName: "default-themes.toml", Themes: []ThemePreset{{ID: "one", Name: "One", Colors: defaultTheme()}}},
+		{PackName: "Community", FileName: "community.toml", Themes: []ThemePreset{{ID: "two", Name: "Two", Colors: defaultTheme()}, {ID: "three", Name: "Three", Colors: defaultTheme()}}},
+	}
+	entries := flattenThemePacks(packs)
+	if len(entries) != 3 {
+		t.Fatalf("flattened %d theme entries, want 3", len(entries))
+	}
+	if entries[1].PackName != "Community" || entries[2].Preset.ID != "three" {
+		t.Fatalf("flattening lost theme pack context or ordering: %+v", entries)
+	}
+}
+
+func TestThemeBrowserShowsPaletteDetails(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if _, err := loadConfig(); err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	m := newMessageInteractionTestModel(100)
+	m.height = 30
+	m.themeEntries = flattenThemePacks([]ThemePack{defaultThemePack()})
+	m.themeSelected = 0
+	panel := stripANSISequences(m.renderThemeBrowser())
+	for _, want := range []string{"THEMES", "Zealot", "COLOR PALETTE", "Background", "#111318", "Main text", "Composer selection", "#3D5275"} {
+		if !strings.Contains(panel, want) {
+			t.Errorf("theme browser does not show %q: %s", want, panel)
+		}
+	}
+}
+
+func TestThemeBrowserLoadsAllPackEntries(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if _, err := loadConfig(); err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	custom := ThemePack{
+		SchemaVersion: themePackSchemaVersion,
+		PackName: "Community",
+		Themes: []ThemePreset{{ID: "twilight", Name: "Twilight", Colors: defaultTheme()}},
+	}
+	if err := saveThemePack("community.toml", custom); err != nil {
+		t.Fatalf("save community pack: %v", err)
+	}
+	m := newMessageInteractionTestModel(100)
+	m.openThemeBrowser()
+	if !m.themesOpen || len(m.themeEntries) != 2 {
+		t.Fatalf("opening theme browser returned open=%v entries=%d, want true and 2", m.themesOpen, len(m.themeEntries))
+	}
+	if m.themeEntries[m.themeSelected].Preset.Name != "Zealot" {
+		t.Fatalf("active theme was not initially selected: %+v", m.themeEntries[m.themeSelected])
+	}
+}
+
+func TestThemeBrowserApplyUpdatesActiveThemeAndInputStyles(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	m := newModel(cfg, "lobby", false, nil)
+	m.width, m.height = 100, 30
+	custom := defaultTheme()
+	custom.Background = "#010203"
+	custom.AccentColor = "#AABBCC"
+	custom.SelectionBackgroundColor = "#223344"
+	m.themeEntries = []themeListEntry{{Preset: ThemePreset{ID: "custom", Name: "Custom", Colors: custom}, PackName: "Test"}}
+	m.applySelectedTheme()
+	if m.cfg.Theme != custom || m.styles.accent.GetForeground() != lipgloss.Color(custom.AccentColor) {
+		t.Fatalf("theme was not applied to model styles: %+v", m.cfg.Theme)
+	}
+	if m.input.Styles().Cursor.Color != lipgloss.Color(custom.AccentColor) {
+		t.Fatalf("composer cursor color was not refreshed")
+	}
+	data, err := os.ReadFile(configPath())
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if !strings.Contains(string(data), "background = \"#010203\"") {
+		t.Fatalf("applied theme was not persisted: %s", data)
+	}
+}
+
+func TestThemeBrowserSelectionKeepsVisibleRowInRange(t *testing.T) {
+	m := newMessageInteractionTestModel(100)
+	m.height = 14
+	for i := 0; i < 20; i++ {
+		m.themeEntries = append(m.themeEntries, themeListEntry{Preset: ThemePreset{Name: "Theme"}})
+	}
+	m.themeSelected = 19
+	m.clampThemeSelection()
+	if m.themeScroll == 0 || m.themeSelected >= m.themeScroll+m.themeVisibleRows() {
+		t.Fatalf("selected theme is outside the visible list: selected=%d scroll=%d visible=%d", m.themeSelected, m.themeScroll, m.themeVisibleRows())
+	}
+}
+
+func TestThemeBrowserListHitboxMapsVisibleRows(t *testing.T) {
+	m := newMessageInteractionTestModel(100)
+	m.height = 24
+	m.themeEntries = []themeListEntry{{Preset: ThemePreset{Name: "one"}}, {Preset: ThemePreset{Name: "two"}}}
+	firstX := 2
+	firstY := 5
+	index, ok := m.themeBrowserListIndexAt(firstX, firstY)
+	if !ok || index != 0 {
+		t.Fatalf("first list row hitbox = (%d, %v), want (0, true)", index, ok)
+	}
+	if _, ok := m.themeBrowserListIndexAt(90, firstY); ok {
+		t.Fatalf("right pane click was treated as a theme list selection")
+	}
+}
+
