@@ -325,7 +325,7 @@ func TestApplyThemePresetPersistsPaletteAndPreservesUserConfig(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.Name = "Tester"
 	cfg.UserColor = "#123456"
-	writeConfigForTest(t, "# Keep this config comment\\nname = \"Tester\" # identity note\\nuser_color = \"#123456\" # color note\\n# Keep this palette comment\\nbackground = \"#111318\" # background note\\ncustom_setting = \"untouched\"\\n")
+	writeConfigForTest(t, "# Keep this config comment\nname = \"Tester\" # identity note\nuser_color = \"#123456\" # color note\n# Keep this palette comment\nbackground = \"#111318\" # background note\ncustom_setting = \"untouched\"\n")
 	preset := ThemePreset{
 		ID: "midnight",
 		Name: "Midnight",
@@ -429,7 +429,7 @@ func TestSaveConfigPreservesCommentsFormattingAndCustomSettings(t *testing.T) {
 
 func TestIdentityConfigSavesOnlyChangeRequestedValue(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	const original = "# User's formatting\\nname   = \"Old\" # name comment\\nuser_color = 12 # bare ANSI color\\nadaptive_height = true # do not touch\\nbackground = \"#111318\" # theme note\\ncustom_setting = \"keep\"\\n"
+	const original = "# User's formatting\nname   = \"Old\" # name comment\nuser_color = 12 # bare ANSI color\nadaptive_height = true # do not touch\nbackground = \"#111318\" # theme note\ncustom_setting = \"keep\"\n"
 	writeConfigForTest(t, original)
 
 	if err := saveConfigName("New"); err != nil {
@@ -439,9 +439,9 @@ func TestIdentityConfigSavesOnlyChangeRequestedValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read config after name save: %v", err)
 	}
-	wantAfterRename := "# User's formatting\\nname   = \"New\" # name comment\\nuser_color = 12 # bare ANSI color\\nadaptive_height = true # do not touch\\nbackground = \"#111318\" # theme note\\ncustom_setting = \"keep\"\\n"
+	wantAfterRename := "# User's formatting\nname   = \"New\" # name comment\nuser_color = 12 # bare ANSI color\nadaptive_height = true # do not touch\nbackground = \"#111318\" # theme note\ncustom_setting = \"keep\"\n"
 	if string(data) != wantAfterRename {
-		t.Fatalf("rename changed unrelated config content:\\n--- got ---\\n%s\\n--- want ---\\n%s", data, wantAfterRename)
+		t.Fatalf("rename changed unrelated config content:\n--- got ---\n%s\n--- want ---\n%s", data, wantAfterRename)
 	}
 
 	if err := saveConfigUserColor("#ABCDEF"); err != nil {
@@ -451,8 +451,8 @@ func TestIdentityConfigSavesOnlyChangeRequestedValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read config after color save: %v", err)
 	}
-	wantAfterColor := "# User's formatting\\nname   = \"New\" # name comment\\nuser_color = \"#ABCDEF\" # bare ANSI color\\nadaptive_height = true # do not touch\\nbackground = \"#111318\" # theme note\\ncustom_setting = \"keep\"\\n"
+	wantAfterColor := "# User's formatting\nname   = \"New\" # name comment\nuser_color = \"#ABCDEF\" # bare ANSI color\nadaptive_height = true # do not touch\nbackground = \"#111318\" # theme note\ncustom_setting = \"keep\"\n"
 	if string(data) != wantAfterColor {
-		t.Fatalf("color command changed unrelated config content:\\n--- got ---\\n%s\\n--- want ---\\n%s", data, wantAfterColor)
+		t.Fatalf("color command changed unrelated config content:\n--- got ---\n%s\n--- want ---\n%s", data, wantAfterColor)
 	}
 }

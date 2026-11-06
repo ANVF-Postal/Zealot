@@ -311,7 +311,7 @@ func replaceConfigValue(line string, equals int, value string) string {
 	return line[:equals+1] + leading + value + trailing + comment
 }
 
-// updateConfigContents refreshes the known settings while retaining the
+// updateConfigValues refreshes only the supplied settings while retaining the
 // user's layout and all comments/unknown keys. It also fills in settings absent
 // from older configs, using the same defaults already present in Config.
 func updateConfigValues(contents string, entries []configFileEntry) string {
