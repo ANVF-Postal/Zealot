@@ -170,6 +170,42 @@ func TestThemeEditorRenameAndColorChangesSaveToRenamedFile(t *testing.T) {
 	}
 }
 
+func TestSavingPaletteOnlyChangeOverwritesExistingThemeFile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if _, err := loadConfig(); err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	entry, err := createThemePresetFile(ThemePreset{Name: "Midnight", Colors: defaultTheme()})
+	if err != nil {
+		t.Fatalf("create theme: %v", err)
+	}
+	originalFilename := entry.FileName
+	changed := entry.Preset
+	changed.Colors.AccentColor = "#123456"
+
+	saved, err := saveThemePresetFile(entry, changed)
+	if err != nil {
+		t.Fatalf("save palette update: %v", err)
+	}
+	if saved.FileName != originalFilename {
+		t.Fatalf("palette-only save changed filename from %q to %q", originalFilename, saved.FileName)
+	}
+	if _, err := os.Stat(filepath.Join(themesDir(), originalFilename)); err != nil {
+		t.Fatalf("original theme file was not preserved: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(themesDir(), originalFilename))
+	if err != nil {
+		t.Fatalf("read updated theme file: %v", err)
+	}
+	pack, err := decodeThemePackBytes(data)
+	if err != nil {
+		t.Fatalf("decode updated theme file: %v", err)
+	}
+	if len(pack.Themes) != 1 || pack.Themes[0].Colors.AccentColor != "#123456" {
+		t.Fatalf("overwritten theme file = %+v", pack.Themes)
+	}
+}
+
 func TestApplyingThemeRebuildsCachedMessageRowsImmediately(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	packet := interactionTestPacket("theme-cache-message", "Existing message")
