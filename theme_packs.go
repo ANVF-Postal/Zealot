@@ -76,6 +76,7 @@ func ensureThemeLibrary() error {
 		return fmt.Errorf("write default theme pack: %w", err)
 	}
 	if err := file.Close(); err != nil {
+		_ = os.Remove(defaultThemePackPath())
 		return fmt.Errorf("close default theme pack: %w", err)
 	}
 	return nil
@@ -159,6 +160,26 @@ func encodeThemePack(pack ThemePack) ([]byte, error) {
 	return content.Bytes(), nil
 }
 
+// applyThemePreset persists a preset as the active palette while preserving
+// the user's non-theme configuration. The caller can then refresh live UI
+// styles from the updated Config.
+func applyThemePreset(cfg *Config, preset ThemePreset) error {
+	if cfg == nil {
+		return fmt.Errorf("cannot apply a theme to a nil config")
+	}
+	if err := validateThemeColors(preset.Colors); err != nil {
+		return fmt.Errorf("cannot apply theme %q: %w", preset.ID, err)
+	}
+
+	updated := *cfg
+	updated.Theme = preset.Colors
+	if err := saveConfig(updated); err != nil {
+		return fmt.Errorf("save active theme: %w", err)
+	}
+	cfg.Theme = preset.Colors
+	return nil
+}
+
 func validateThemePack(pack ThemePack) error {
 	if pack.SchemaVersion != themePackSchemaVersion {
 		return fmt.Errorf("unsupported schema_version %d (supported: %d)", pack.SchemaVersion, themePackSchemaVersion)
@@ -184,20 +205,27 @@ func validateThemePack(pack ThemePack) error {
 		}
 		seenIDs[key] = struct{}{}
 
-		colors := map[string]string{
-			"background":                 preset.Colors.Background,
-			"text_color":                  preset.Colors.TextColor,
-			"border_color":                preset.Colors.BorderColor,
-			"accent_color":                preset.Colors.AccentColor,
-			"hover_text_color":            preset.Colors.HoverTextColor,
-			"muted_text_color":            preset.Colors.MutedTextColor,
-			"mention_background_color":    preset.Colors.MentionBackgroundColor,
-			"selection_background_color":  preset.Colors.SelectionBackgroundColor,
+		if err := validateThemeColors(preset.Colors); err != nil {
+			return fmt.Errorf("theme %q: %w", preset.ID, err)
 		}
-		for name, value := range colors {
-			if !validUserColor(value) {
-				return fmt.Errorf("theme %q has invalid %s color %q", preset.ID, name, value)
-			}
+	}
+	return nil
+}
+
+func validateThemeColors(theme Theme) error {
+	colors := map[string]string{
+		"background":                 theme.Background,
+		"text_color":                 theme.TextColor,
+		"border_color":               theme.BorderColor,
+		"accent_color":                theme.AccentColor,
+		"hover_text_color":            theme.HoverTextColor,
+		"muted_text_color":            theme.MutedTextColor,
+		"mention_background_color":    theme.MentionBackgroundColor,
+		"selection_background_color":  theme.SelectionBackgroundColor,
+	}
+	for name, value := range colors {
+		if !validUserColor(value) {
+			return fmt.Errorf("invalid %s color %q", name, value)
 		}
 	}
 	return nil

@@ -319,3 +319,41 @@ custom_setting = "keep"
 		}
 	}
 }
+
+func TestApplyThemePresetPersistsPaletteAndPreservesUserConfig(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := defaultConfig()
+	cfg.Name = "Tester"
+	cfg.UserColor = "#123456"
+	preset := ThemePreset{
+		ID: "midnight",
+		Name: "Midnight",
+		Colors: Theme{
+			Background: "#010203",
+			TextColor: "#E0E0E0",
+			BorderColor: "#303030",
+			AccentColor: "#7788FF",
+			HoverTextColor: "#FFFF00",
+			MutedTextColor: "#808080",
+			MentionBackgroundColor: "#332211",
+			SelectionBackgroundColor: "#445566",
+		},
+	}
+
+	if err := applyThemePreset(&cfg, preset); err != nil {
+		t.Fatalf("apply theme preset: %v", err)
+	}
+	if cfg.Theme != preset.Colors {
+		t.Fatalf("in-memory active theme = %+v, want %+v", cfg.Theme, preset.Colors)
+	}
+	loaded, err := loadConfig()
+	if err != nil {
+		t.Fatalf("reload applied theme: %v", err)
+	}
+	if loaded.Theme != preset.Colors {
+		t.Fatalf("saved active theme = %+v, want %+v", loaded.Theme, preset.Colors)
+	}
+	if loaded.Name != "Tester" || loaded.UserColor != "#123456" {
+		t.Fatalf("applying a theme changed user identity settings: %+v", loaded)
+	}
+}
