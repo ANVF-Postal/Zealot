@@ -245,6 +245,24 @@ func (m *model) cloneSelectedTheme() {
 	m.reloadThemeEntries(entry.FileName, entry.Preset.ID)
 }
 
+const unsavedThemeDiscardPrompt = "Unsaved changes. Press Esc again to discard, or Ctrl+S to save."
+
+// confirmThemeDiscard keeps an accidental close from silently losing edits.
+// The second close action explicitly discards the in-memory changes.
+func (m *model) confirmThemeDiscard() bool {
+	if !m.themeDirty {
+		return true
+	}
+	if m.themeEditError == unsavedThemeDiscardPrompt {
+		m.themeDirty = false
+		m.themeEditError = ""
+		m.themeSavedPreset = ThemePreset{}
+		return true
+	}
+	m.themeEditError = unsavedThemeDiscardPrompt
+	return false
+}
+
 func (m *model) saveSelectedThemeEdits() {
 	if m.themeEditField != "" {
 		m.themeEditError = "Confirm or cancel the current field edit first."
