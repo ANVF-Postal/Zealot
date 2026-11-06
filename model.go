@@ -32,6 +32,11 @@ type model struct {
 	themeSelected                    int
 	themeScroll                      int
 	themeError                       string
+	themeEditError                   string
+	themeDirty                       bool
+	themeSavedPreset                 ThemePreset
+	themeEditField                   string
+	themeComposerBackup              string
 	themeLeftWidth                   int
 	themeDividerDragging             bool
 	splashScroll                     int
