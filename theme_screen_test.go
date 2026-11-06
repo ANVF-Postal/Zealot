@@ -126,7 +126,7 @@ func TestThemeBrowserListHitboxMapsVisibleRows(t *testing.T) {
 	m.height = 24
 	m.themeEntries = []themeListEntry{{Preset: ThemePreset{Name: "one"}}, {Preset: ThemePreset{Name: "two"}}}
 	firstX := 2
-	firstY := 5
+	firstY := 4
 	index, ok := m.themeBrowserListIndexAt(firstX, firstY)
 	if !ok || index != 0 {
 		t.Fatalf("first list row hitbox = (%d, %v), want (0, true)", index, ok)
@@ -136,6 +136,38 @@ func TestThemeBrowserListHitboxMapsVisibleRows(t *testing.T) {
 	}
 }
 
+
+
+func TestThemeBrowserDividerCanBeResized(t *testing.T) {
+	m := newMessageInteractionTestModel(100)
+	m.width, m.height = 100, 30
+	left, right := m.themeBrowserColumnWidths()
+	if left+1+right != chatInnerWidth(m.width) {
+		t.Fatalf("theme columns and divider use %d cells, want %d", left+1+right, chatInnerWidth(m.width))
+	}
+	initial := m.themeBrowserDividerX()
+	m.setThemeBrowserDivider(initial + 7)
+	if got := m.themeBrowserDividerX(); got != initial+7 {
+		t.Fatalf("divider moved to %d, want %d", got, initial+7)
+	}
+}
+
+func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
+	m := newMessageInteractionTestModel(100)
+	m.width, m.height = 100, 30
+	m.splashOpen = true
+	m.themesOpen = true
+	line, targets := m.renderStatusBar(false, false)
+	plain := stripANSISequences(line)
+	for _, want := range []string{"PgUp", "PgDn", "Ctrl+Enter: apply", "Esc: back", "[Send]", "Quit"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("theme footer is missing %q: %s", want, plain)
+		}
+	}
+	if !targets.hasSend {
+		t.Fatal("theme browser footer does not expose the send action")
+	}
+}
 
 func TestBrowsingThemeOnlyPreviewsUntilExplicitApply(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
