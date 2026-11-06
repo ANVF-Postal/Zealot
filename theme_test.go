@@ -404,4 +404,15 @@ func TestSaveConfigPreservesCommentsFormattingAndCustomSettings(t *testing.T) {
 	if strings.Contains(got, "adaptive_height =") || strings.Contains(got, "height_max_percent =") {
 		t.Fatalf("saveConfig added modern keys alongside legacy aliases: %s", got)
 	}
+
+	loaded, err := loadConfig()
+	if err != nil {
+		t.Fatalf("reload config with inline comments: %v", err)
+	}
+	if loaded.Name != cfg.Name || loaded.UserColor != cfg.UserColor || !loaded.AdaptiveHeight || loaded.HeightMaxPercent != 42 {
+		t.Fatalf("reload parsed inline-comment settings incorrectly: %+v", loaded)
+	}
+	if loaded.Theme.AccentColor != "#123ABC" {
+		t.Fatalf("reload accent color = %q, want #123ABC", loaded.Theme.AccentColor)
+	}
 }

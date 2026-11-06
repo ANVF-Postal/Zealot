@@ -103,8 +103,11 @@ func loadConfig() (Config, error) {
 
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
+		if comment := tomlCommentOffset(line); comment >= 0 {
+			line = strings.TrimSpace(line[:comment])
+		}
 
-		if line == "" || strings.HasPrefix(line, "#") {
+		if line == "" {
 			continue
 		}
 
