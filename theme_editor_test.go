@@ -143,7 +143,7 @@ func TestThemeEditorRenameAndColorChangesSaveToRenamedFile(t *testing.T) {
 	}
 	saveX := rightStart + (saveStart+saveEnd)/2
 	saveY := 2 + m.themeActionButtonRowForWidth(rightWidth)
-	if !m.themeSaveButtonContains(saveX, saveY) {}
+	if !m.themeSaveButtonContains(saveX, saveY) {
 		t.Fatalf("Save button did not register its visible hitbox at (%d,%d)", saveX, saveY)
 	}
 	updated, _ = m.Update(tea.MouseClickMsg{X: saveX, Y: saveY, Button: tea.MouseLeft})
