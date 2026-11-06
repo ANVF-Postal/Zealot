@@ -328,7 +328,7 @@ func (m model) themeActionButtonContains(label string, x, y int) bool {
 	}
 	leftWidth, rightWidth := m.themeBrowserColumnWidths()
 	rightStartX := m.themeBrowserContentStartX() + leftWidth + 1
-	buttonWidth := lipgloss.Width(label) + 2
+	buttonWidth := min(lipgloss.Width(label)+2, rightWidth)
 	buttonStartX := rightStartX + max(0, (rightWidth-buttonWidth)/2)
 	return x >= buttonStartX && x < buttonStartX+buttonWidth
 }
