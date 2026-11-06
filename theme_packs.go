@@ -146,8 +146,8 @@ func ensureMissingDefaultThemes(path string) error {
 	if err != nil {
 		return fmt.Errorf("open existing default theme pack: %w", err)
 	}
-	separator := []byte("\\n")
-	if len(existing) > 0 && existing[len(existing)-1] != '\\n' {
+	separator := []byte("\n")
+	if len(existing) > 0 && existing[len(existing)-1] != '\n' {
 		separator = []byte("\\n\\n")
 	}
 	if _, err := file.Write(separator); err != nil {

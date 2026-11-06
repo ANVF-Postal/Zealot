@@ -26,83 +26,6 @@ func TestSplashIncludesCenteredThemesActionAfterStats(t *testing.T) {
 	}
 }
 
-func TestDefaultThemePackIncludesAutumn(t *testing.T) {
-	pack := defaultThemePack()
-	if err := validateThemePack(pack); err != nil {
-		t.Fatalf("default theme pack is invalid: %v", err)
-	}
-
-	want := Theme{
-		Background:               "#2D170A",
-		TextColor:                "#F7E8D8",
-		BorderColor:              "#7A442A",
-		AccentColor:              "#FF8C2A",
-		HoverTextColor:           "#FFD166",
-		MutedTextColor:           "#C18B62",
-		MentionBackgroundColor:   "#622F1C",
-		SelectionBackgroundColor: "#92451F",
-	}
-	for _, preset := range pack.Themes {
-		if preset.ID == "autumn" {
-			if preset.Name != "Autumn" || preset.Colors != want {
-				t.Fatalf("Autumn preset = %+v, want palette %+v", preset, want)
-			}
-			return
-		}
-	}
-	t.Fatal("built-in theme pack does not contain Autumn")
-}
-
-func TestEnsureThemeLibraryAddsMissingBuiltInsWithoutReplacingPack(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	path := defaultThemePackPath()
-	if err := os.MkdirAll(themesDir(), 0700); err != nil {
-		t.Fatalf("create themes directory: %v", err)
-	}
-	originalPack := ThemePack{
-		SchemaVersion: themePackSchemaVersion,
-		PackName:      "Zealot defaults",
-		Themes: []ThemePreset{
-			{ID: "zealot", Name: "Zealot", Colors: defaultTheme()},
-			{ID: "my-custom", Name: "My customized preset", Colors: defaultTheme()},
-		},
-	}
-	original, err := encodeThemePack(originalPack)
-	if err != nil {
-		t.Fatalf("encode original pack: %v", err)
-	}
-	if err := os.WriteFile(path, original, 0600); err != nil {
-		t.Fatalf("write original pack: %v", err)
-	}
-
-	if err := ensureThemeLibrary(); err != nil {
-		t.Fatalf("ensure theme library: %v", err)
-	}
-	updated, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read migrated pack: %v", err)
-	}
-	if !strings.HasPrefix(string(updated), string(original)) {
-		t.Fatal("existing default pack contents were rewritten instead of preserved")
-	}
-
-	packs, err := loadThemePacks()
-	if err != nil {
-		t.Fatalf("load migrated theme packs: %v", err)
-	}
-	if len(packs) != 1 || len(packs[0].Themes) != 3 {
-		t.Fatalf("migrated pack contains %d packs and %d presets, want 1 pack and 3 presets", len(packs), len(packs[0].Themes))
-	}
-	foundAutumn, foundCustom := false, false
-	for _, preset := range packs[0].Themes {
-		foundAutumn = foundAutumn || preset.ID == "autumn"
-		foundCustom = foundCustom || preset.ID == "my-custom"
-	}
-	if !foundAutumn || !foundCustom {
-		t.Fatalf("migration lost a custom preset or failed to add Autumn: %+v", packs[0].Themes)
-	}
-}
-
 func TestFlattenThemePacks(t *testing.T) {
 	packs := []ThemePack{
 		{PackName: "Built in", FileName: "default-themes.toml", Themes: []ThemePreset{{ID: "one", Name: "One", Colors: defaultTheme()}}},
@@ -191,18 +114,11 @@ func TestThemeBrowserLoadsAllPackEntries(t *testing.T) {
 	}
 	m := newMessageInteractionTestModel(100)
 	m.openThemeBrowser()
-	if !m.themesOpen || len(m.themeEntries) != 3 {
-		t.Fatalf("opening theme browser returned open=%v entries=%d, want true and 3", m.themesOpen, len(m.themeEntries))
+	if !m.themesOpen || len(m.themeEntries) != 2 {
+		t.Fatalf("opening theme browser returned open=%v entries=%d, want true and 2", m.themesOpen, len(m.themeEntries))
 	}
 	if m.themeEntries[0].FileName != "default-themes.toml" || m.themeEntries[m.themeSelected].Preset.Name != "Zealot" {
 		t.Fatalf("built-in active theme was not first and initially selected: selected=%+v entries=%+v", m.themeEntries[m.themeSelected], m.themeEntries)
-	}
-	foundAutumn := false
-	for _, entry := range m.themeEntries {
-		foundAutumn = foundAutumn || entry.Preset.ID == "autumn"
-	}
-	if !foundAutumn {
-		t.Fatal("theme browser did not load Autumn from the built-in pack")
 	}
 }
 
