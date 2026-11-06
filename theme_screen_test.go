@@ -318,7 +318,7 @@ func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
 	m.themesOpen = true
 	line, targets := m.renderStatusBar(false, false)
 	plain := stripANSISequences(line)
-	for _, want := range []string{"PgUp", "PgDn", "Ctrl+Enter/F2: Apply", "Esc: back", "[Send]", "Quit"} {
+	for _, want := range []string{"PgUp", "PgDn", "Ctrl+Enter/F2: [Apply]", "Esc: back", "[Send]", "Quit"} {
 		if !strings.Contains(plain, want) {
 			t.Errorf("theme footer is missing %q: %s", want, plain)
 		}
@@ -351,7 +351,8 @@ func TestThemeBrowserActionsShareOneHorizontalRow(t *testing.T) {
 	m := newThemeEditorTestModel(t)
 	_, rightWidth := m.themeBrowserColumnWidths()
 	rows := m.themeDetailsRows(rightWidth)
-	row := stripANSISequences(rows[themeActionButtonRow()])
+	actionRow := m.themeActionButtonRowForWidth(rightWidth)
+	row := stripANSISequences(rows[actionRow])
 	cloneStart, cloneEnd, cloneOK := themeActionButtonBounds(rightWidth, themeCloneButtonLabel, false)
 	applyStart, applyEnd, applyOK := themeActionButtonBounds(rightWidth, themeApplyButtonLabel, false)
 	if !cloneOK || !applyOK || cloneEnd > applyStart {
@@ -360,10 +361,13 @@ func TestThemeBrowserActionsShareOneHorizontalRow(t *testing.T) {
 	if !strings.Contains(row, themeCloneButtonLabel) || !strings.Contains(row, themeApplyButtonLabel) {
 		t.Fatalf("horizontal action row is missing labels: %q", row)
 	}
+	if cloneStart != 0 {
+		t.Fatalf("action buttons are not anchored left: Clone starts at column %d", cloneStart)
+	}
 
 	m.themeDirty = true
 	rows = m.themeDetailsRows(rightWidth)
-	row = stripANSISequences(rows[themeActionButtonRow()])
+	row = stripANSISequences(rows[actionRow])
 	cloneStart, cloneEnd, cloneOK = themeActionButtonBounds(rightWidth, themeCloneButtonLabel, true)
 	saveStart, saveEnd, saveOK := themeActionButtonBounds(rightWidth, themeSaveButtonLabel, true)
 	applyStart, applyEnd, applyOK = themeActionButtonBounds(rightWidth, themeApplyButtonLabel, true)
@@ -375,6 +379,32 @@ func TestThemeBrowserActionsShareOneHorizontalRow(t *testing.T) {
 			t.Errorf("dirty horizontal action row is missing %s: %q", label, row)
 		}
 	}
+}
+
+func TestThemeBrowserWrapsOnlyDescriptionContent(t *testing.T) {
+	m := newThemeEditorTestModel(t)
+	entry, _ := m.selectedThemeEntry()
+	entry.Preset.Description = "A very long description that should wrap within the details pane while preserving the one row per color palette layout."
+	m.themeEntries[m.themeSelected] = entry
+
+	_, width := m.themeBrowserColumnWidths()
+	rows := m.themeDetailsRows(width)
+	descriptionStart := m.themeDescriptionTextStartRow()
+	if len(m.themeDescriptionLines(width)) < 2 {
+		t.Fatal("long description did not wrap")
+	}
+	for i := 0; i < themePaletteColorCount; i++ {
+		if lipglossWidthForThemeTest(stripANSISequences(rows[themePaletteFirstRow+i])) > width {
+			t.Fatalf("palette row %d exceeded pane width", i)
+		}
+	}
+	if m.themeActionButtonRowForWidth(width) <= descriptionStart+1 {
+		t.Fatal("action row did not move below the wrapped description")
+	}
+}
+
+func lipglossWidthForThemeTest(value string) int {
+	return len([]rune(value))
 }
 
 func TestThemeBrowserCtrlEnterShortcutAppliesSelectedTheme(t *testing.T) {
@@ -434,7 +464,7 @@ func TestThemeBrowserApplyButtonClickAppliesSelectedTheme(t *testing.T) {
 		t.Fatal("right pane did not lay out the Apply action")
 	}
 	x := m.themeBrowserContentStartX() + leftWidth + 1 + (start+end)/2
-	y := 2 + themeApplyButtonRow()
+	y := 2 + m.themeActionButtonRowForWidth(rightWidth)
 	if !m.themeApplyButtonContains(x, y) {
 		t.Fatalf("calculated apply button center (%d,%d) is not inside its hitbox", x, y)
 	}
