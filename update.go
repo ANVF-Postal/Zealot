@@ -274,6 +274,12 @@ func (m model) Update(
 		// particular, don't make a header click wait for an old hover timer.
 		m.refreshMessageHover()
 
+		// A field edit owns the composer until Enter or Escape completes it.
+		// Keep other panel clicks from closing the screen or firing actions.
+		if m.themesOpen && m.themeEditField != "" && !m.inputSelectionContains(mouse.X, mouse.Y) {
+			return m, nil
+		}
+
 		// The theme divider is a draggable one-cell splitter between the list
 		// and details columns.
 		if mouse.Button == tea.MouseLeft && m.themeBrowserDividerContains(mouse.X, mouse.Y) {
@@ -282,7 +288,7 @@ func (m model) Update(
 			return m, nil
 		}
 
-		if mouse.Button == tea.MouseLeft && m.themeApplyButtonContains(mouse.X, mouse.Y) {
+		if mouse.Button == tea.MouseLeft && m.themeEditField == "" && m.themeApplyButtonContains(mouse.X, mouse.Y) {
 			m.applySelectedTheme()
 			return m, nil
 		}
