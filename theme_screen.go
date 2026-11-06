@@ -50,6 +50,12 @@ func (m *model) openThemeBrowser() {
 			break
 		}
 	}
+	m.themeDirty = false
+	m.themeEditField = ""
+	m.themeEditError = ""
+	if len(m.themeEntries) > 0 {
+		m.themeSavedPreset = m.themeEntries[m.themeSelected].Preset
+	}
 	m.clampThemeSelection()
 }
 
@@ -81,8 +87,15 @@ func (m *model) moveThemeSelection(delta int) {
 	if len(m.themeEntries) == 0 {
 		return
 	}
+	if m.themeDirty || m.themeEditField != "" {
+		m.themeEditError = "Save the current edits before selecting another theme."
+		return
+	}
 	m.themeSelected += delta
 	m.clampThemeSelection()
+	if len(m.themeEntries) > 0 {
+		m.themeSavedPreset = m.themeEntries[m.themeSelected].Preset
+	}
 }
 
 func themeBrowserLeftWidth(total int) int {
@@ -170,7 +183,11 @@ func (m model) renderThemeBrowser() string {
 	border := lipgloss.Color(m.cfg.Theme.BorderColor)
 
 	leftRows := make([]string, 0, contentHeight)
-	leftRows = append(leftRows, m.styles.accent.Render("THEMES"))
+	header := m.styles.accent.Render("THEMES")
+	create := m.styles.accent.Render(themeCreateButtonLabel)
+	headerGap := max(1, leftWidth-lipgloss.Width(header)-lipgloss.Width(create))
+	headerFill := lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", headerGap))
+	leftRows = append(leftRows, fitThemeRowWithBackground(header+headerFill+create, leftWidth, bg))
 	leftRows = append(leftRows, m.styles.system.Render(strings.Repeat("─", leftWidth)))
 
 	visible := m.themeVisibleRows()
@@ -248,27 +265,129 @@ func fitThemeRowWithBackground(line string, width int, background color.Color) s
 	return line
 }
 
-const themeApplyButtonLabel = "[APPLY]"
+const (
+	themeCreateButtonLabel = "[+]"
+	themeCloneButtonLabel  = "[CLONE]"
+	themeSaveButtonLabel   = "[SAVE]"
+	themeApplyButtonLabel  = "[APPLY]"
+	themePaletteFirstRow   = 5
+	themePaletteColorCount = 8
+)
 
-func themeApplyButtonRow() int {
-	// Title, pack, state, spacer, palette heading, eight palette rows,
-	// then a spacer before the apply action.
-	return 5 + 8 + 1
+func themeCloneButtonRow() int {
+	return themePaletteFirstRow + themePaletteColorCount + 1
 }
 
-// themeApplyButtonContains maps the centered right-pane button to terminal
-// coordinates. The chat content begins on row two below the header and frame.
-func (m model) themeApplyButtonContains(x, y int) bool {
-	if !m.themesOpen || m.themeError != "" || len(m.themeEntries) == 0 ||
-		themeApplyButtonRow() >= max(1, m.messageHeight()) {
+func themeSaveButtonRow() int {
+	return themeCloneButtonRow() + 1
+}
+
+// themeApplyButtonRow is the stable row for the clean (not-yet-edited) editor.
+// Dirty editors insert a Save row immediately before Apply.
+func themeApplyButtonRow() int {
+	return themeCloneButtonRow() + 1
+}
+
+func (m model) themeApplyButtonRowIndex() int {
+	if m.themeDirty {
+		return themeSaveButtonRow() + 1
+	}
+	return themeApplyButtonRow()
+}
+
+func themeCenteredButtonRow(label string, width int, background, accent string) string {
+	button := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(background)).
+		Background(lipgloss.Color(accent)).
+		Bold(true).
+		Padding(0, 1).
+		Render(label)
+	padding := max(0, (width-lipgloss.Width(button))/2)
+	fill := lipgloss.NewStyle().Background(lipgloss.Color(background))
+	left := fill.Render(strings.Repeat(" ", padding))
+	return fitThemeRowWithBackground(left+button, width, lipgloss.Color(background))
+}
+
+func (m model) themeActionButtonContains(label string, x, y int) bool {
+	if !m.themesOpen || m.themeError != "" || len(m.themeEntries) == 0 {
+		return false
+	}
+	row := -1
+	switch label {
+	case themeCloneButtonLabel:
+		row = themeCloneButtonRow()
+	case themeSaveButtonLabel:
+		if m.themeDirty {
+			row = themeSaveButtonRow()
+		}
+	case themeApplyButtonLabel:
+		row = m.themeApplyButtonRowIndex()
+	}
+	if row < 0 || row >= max(1, m.messageHeight()) || y != 2+row {
 		return false
 	}
 	leftWidth, rightWidth := m.themeBrowserColumnWidths()
 	rightStartX := m.themeBrowserContentStartX() + leftWidth + 1
-	buttonWidth := lipgloss.Width(themeApplyButtonLabel) + 2 // one-cell padding on each side
+	buttonWidth := lipgloss.Width(label) + 2
 	buttonStartX := rightStartX + max(0, (rightWidth-buttonWidth)/2)
-	buttonY := 2 + themeApplyButtonRow()
-	return y == buttonY && x >= buttonStartX && x < buttonStartX+buttonWidth
+	return x >= buttonStartX && x < buttonStartX+buttonWidth
+}
+
+func (m model) themeApplyButtonContains(x, y int) bool {
+	return m.themeActionButtonContains(themeApplyButtonLabel, x, y)
+}
+
+func (m model) themeCloneButtonContains(x, y int) bool {
+	return m.themeActionButtonContains(themeCloneButtonLabel, x, y)
+}
+
+func (m model) themeSaveButtonContains(x, y int) bool {
+	return m.themeActionButtonContains(themeSaveButtonLabel, x, y)
+}
+
+func (m model) themeCreateButtonContains(x, y int) bool {
+	if !m.themesOpen || m.themeError != "" || y != 2 {
+		return false
+	}
+	leftWidth, _ := m.themeBrowserColumnWidths()
+	leftStartX := m.themeBrowserContentStartX()
+	buttonStartX := leftStartX + leftWidth - lipgloss.Width(themeCreateButtonLabel)
+	return x >= buttonStartX && x < leftStartX+leftWidth
+}
+
+func (m model) themeNameContains(x, y int) bool {
+	if !m.themesOpen || m.themeError != "" || len(m.themeEntries) == 0 || y != 2 {
+		return false
+	}
+	leftWidth, rightWidth := m.themeBrowserColumnWidths()
+	rightStartX := m.themeBrowserContentStartX() + leftWidth + 1
+	return x >= rightStartX && x < rightStartX+rightWidth
+}
+
+func (m model) themeColorFieldAt(x, y int) (string, bool) {
+	if !m.themesOpen || m.themeError != "" || len(m.themeEntries) == 0 {
+		return "", false
+	}
+	leftWidth, rightWidth := m.themeBrowserColumnWidths()
+	rightStartX := m.themeBrowserContentStartX() + leftWidth + 1
+	if x < rightStartX || x >= rightStartX+rightWidth {
+		return "", false
+	}
+	colorIndex := y - 2 - themePaletteFirstRow
+	if colorIndex < 0 || colorIndex >= themePaletteColorCount {
+		return "", false
+	}
+	fields := []string{
+		"background",
+		"text_color",
+		"border_color",
+		"accent_color",
+		"hover_text_color",
+		"muted_text_color",
+		"mention_background_color",
+		"selection_background_color",
+	}
+	return fields[colorIndex], true
 }
 
 func (m model) themeDetailsRows(width int) []string {
@@ -280,43 +399,63 @@ func (m model) themeDetailsRows(width int) []string {
 	}
 	entry := m.themeEntries[min(max(0, m.themeSelected), len(m.themeEntries)-1)]
 	preset := entry.Preset
-	state := "Preview only · F2 or [APPLY] to use"
+	editable := themeEntryEditable(entry)
+	title := preset.Name
+	state := "Built-in · read-only · clone to edit"
+	if editable {
+		title += "  ✎"
+		state = "Custom theme · click name or a color to edit"
+	}
 	if preset.Colors == m.cfg.Theme {
-		state = "✓ Currently active"
+		if editable {
+			state = "✓ Active custom theme"
+		} else {
+			state = "✓ Active built-in theme · read-only"
+		}
+	}
+	if m.themeEditField != "" {
+		state = "Editing " + themeFieldLabel(m.themeEditField) + " · Enter confirms · Esc cancels"
+	}
+	if m.themeDirty && m.themeEditField == "" {
+		state = "Unsaved changes · click [SAVE] or press Ctrl+S"
+	}
+	if m.themeEditError != "" {
+		state = truncateANSI(m.themeEditError, width)
 	}
 	rows := []string{
-		m.styles.accent.Render(preset.Name),
+		m.styles.accent.Render(title),
 		m.styles.system.Render("Pack: " + entry.PackName),
 		m.styles.system.Render(state),
 		"",
-		m.styles.accent.Render("COLOR PALETTE"),
+		m.styles.accent.Render("COLOR PALETTE · click a row to edit"),
 	}
-	colors := []struct{ label, value string }{
-		{"Background", preset.Colors.Background},
-		{"Main text", preset.Colors.TextColor},
-		{"Borders", preset.Colors.BorderColor},
-		{"Accent", preset.Colors.AccentColor},
-		{"Hover text", preset.Colors.HoverTextColor},
-		{"Muted text", preset.Colors.MutedTextColor},
-		{"Mention highlight", preset.Colors.MentionBackgroundColor},
-		{"Composer selection", preset.Colors.SelectionBackgroundColor},
+	colors := []struct{ field, label, value string }{
+		{"background", "Background", preset.Colors.Background},
+		{"text_color", "Main text", preset.Colors.TextColor},
+		{"border_color", "Borders", preset.Colors.BorderColor},
+		{"accent_color", "Accent", preset.Colors.AccentColor},
+		{"hover_text_color", "Hover text", preset.Colors.HoverTextColor},
+		{"muted_text_color", "Muted text", preset.Colors.MutedTextColor},
+		{"mention_background_color", "Mention highlight", preset.Colors.MentionBackgroundColor},
+		{"selection_background_color", "Composer selection", preset.Colors.SelectionBackgroundColor},
 	}
 	for _, color := range colors {
 		swatch := lipgloss.NewStyle().
 			Background(lipgloss.Color(color.value)).
 			Render("  ")
-		paletteText := m.styles.app.Render(fmt.Sprintf(" %-20s %s", color.label, color.value))
+		paletteStyle := m.styles.app
+		if m.themeEditField == color.field {
+			paletteStyle = m.styles.accent
+		}
+		paletteText := paletteStyle.Render(fmt.Sprintf(" %-20s %s", color.label, color.value))
 		rows = append(rows, swatch+paletteText)
 	}
-
-	button := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(m.cfg.Theme.Background)).
-		Background(lipgloss.Color(m.cfg.Theme.AccentColor)).
-		Bold(true).
-		Padding(0, 1).
-		Render(themeApplyButtonLabel)
-	buttonPadding := max(0, (width-lipgloss.Width(button))/2)
-	rows = append(rows, "", strings.Repeat(" ", buttonPadding)+button)
+	rows = append(rows, "")
+	rows = append(rows, themeCenteredButtonRow(themeCloneButtonLabel, width, m.cfg.Theme.Background, m.cfg.Theme.AccentColor))
+	if m.themeDirty {
+		rows = append(rows, themeCenteredButtonRow(themeSaveButtonLabel, width, m.cfg.Theme.Background, m.cfg.Theme.AccentColor))
+	}
+	rows = append(rows, themeCenteredButtonRow(themeApplyButtonLabel, width, m.cfg.Theme.Background, m.cfg.Theme.AccentColor))
 	return rows
 }
 
@@ -354,4 +493,7 @@ func (m *model) applySelectedTheme() {
 	inputStyles.Blurred.Placeholder = placeholder
 	inputStyles.Cursor.Color = lipgloss.Color(m.cfg.Theme.AccentColor)
 	m.input.SetStyles(inputStyles)
+	// Message rows are cached as ANSI-styled strings. Rebuild the visible
+	// window immediately so existing history adopts the new palette at once.
+	m.rebuildMessageCache()
 }
