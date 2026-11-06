@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"image/color"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -208,7 +209,7 @@ func (m model) renderThemeBrowser() string {
 	return m.chatBorderStyle().Width(m.width).Height(m.messageHeight()).Render(content)
 }
 
-func fitThemeRows(rows []string, height, width int, background ...lipgloss.Color) []string {
+func fitThemeRows(rows []string, height, width int, background ...color.Color) []string {
 	if len(rows) > height {
 		rows = rows[:height]
 	}
@@ -226,15 +227,15 @@ func fitThemeRows(rows []string, height, width int, background ...lipgloss.Color
 }
 
 func fitThemeRow(line string, width int) string {
-	return fitThemeRowWithBackground(line, width, "")
+	return fitThemeRowWithBackground(line, width, nil)
 }
 
-func fitThemeRowWithBackground(line string, width int, background lipgloss.Color) string {
+func fitThemeRowWithBackground(line string, width int, background color.Color) string {
 	line = truncateANSI(line, width)
 	padding := max(0, width-lipgloss.Width(line))
 	if padding > 0 {
 		spaces := strings.Repeat(" ", padding)
-		if background != "" {
+		if background != nil {
 			spaces = lipgloss.NewStyle().Background(background).Render(spaces)
 		}
 		line += spaces
