@@ -642,25 +642,37 @@ func (m model) Update(
 				m.themeError = ""
 				return m, nil
 			case "up":
-				m.moveThemeSelection(-1)
-				return m, nil
+				if m.input.Value() == "" {
+					m.moveThemeSelection(-1)
+					return m, nil
+				}
 			case "down":
-				m.moveThemeSelection(1)
-				return m, nil
+				if m.input.Value() == "" {
+					m.moveThemeSelection(1)
+					return m, nil
+				}
 			case "pgup":
-				m.moveThemeSelection(-m.themeVisibleRows())
-				return m, nil
+				if m.input.Value() == "" {
+					m.moveThemeSelection(-m.themeVisibleRows())
+					return m, nil
+				}
 			case "pgdown":
-				m.moveThemeSelection(m.themeVisibleRows())
-				return m, nil
+				if m.input.Value() == "" {
+					m.moveThemeSelection(m.themeVisibleRows())
+					return m, nil
+				}
 			case "home":
-				m.themeSelected = 0
-				m.clampThemeSelection()
-				return m, nil
+				if m.input.Value() == "" {
+					m.themeSelected = 0
+					m.clampThemeSelection()
+					return m, nil
+				}
 			case "end":
-				m.themeSelected = len(m.themeEntries)-1
-				m.clampThemeSelection()
-				return m, nil
+				if m.input.Value() == "" {
+					m.themeSelected = len(m.themeEntries)-1
+					m.clampThemeSelection()
+					return m, nil
+				}
 			case "ctrl+enter":
 				m.applySelectedTheme()
 				return m, nil
