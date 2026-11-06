@@ -33,6 +33,9 @@ func (m *model) openThemeBrowser() {
 	m.splashOpen = true
 	m.usersOpen = false
 	m.themeError = ""
+	// Opening the theme browser must not steal focus from the always-visible
+	// composer; keep the textarea ready for immediate typing.
+	m.input.Focus()
 	m.themeEntries = nil
 	m.themeSelected = 0
 	m.themeScroll = 0
