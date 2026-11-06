@@ -1,10 +1,11 @@
 package main
 
 import (
+	"os"
 	"strings"
+	"testing"
 
 	"charm.land/lipgloss/v2"
-	"testing"
 )
 
 func TestSplashIncludesCenteredThemesActionAfterStats(t *testing.T) {
