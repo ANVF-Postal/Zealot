@@ -31,6 +31,7 @@ func (m model) Update(
 			m.input.EndSelection()
 			m.inputSelecting = false
 		}
+		m.themeDividerDragging = false
 		m.resizeInput()
 		if oldWidth != m.width || !m.renderCacheValid {
 			m.rebuildMessageCache()
@@ -273,11 +274,17 @@ func (m model) Update(
 		// particular, don't make a header click wait for an old hover timer.
 		m.refreshMessageHover()
 
-		// Begin a textarea selection before handling other clickable UI. The
-		// coordinate helper accounts for the composer frame and its first-row
-		// prompt, which is rendered outside the Bubbles textarea.
-		if mouse.Button == tea.MouseLeft && !m.usersOpen && !m.splashOpen &&
-			m.inputSelectionContains(mouse.X, mouse.Y) {
+		// The theme divider is a draggable one-cell splitter between the list
+		// and details columns.
+		if mouse.Button == tea.MouseLeft && m.themeBrowserDividerContains(mouse.X, mouse.Y) {
+			m.themeDividerDragging = true
+			m.setThemeBrowserDivider(mouse.X)
+			return m, nil
+		}
+
+		// Begin a textarea selection anywhere the composer is visible, including
+		// while the splash, theme browser, or users panel is open.
+		if mouse.Button == tea.MouseLeft && m.inputSelectionContains(mouse.X, mouse.Y) {
 			localX, localY := m.inputSelectionCoordinates(mouse.X, mouse.Y)
 			m.input.BeginSelection(localX, localY)
 			m.inputSelecting = true
@@ -287,7 +294,7 @@ func (m model) Update(
 		// Footer actions occupy the final terminal row. Their hitboxes are
 		// calculated by the same layout helper used to render the row.
 		if m.statusBarVisible() && mouse.Button == tea.MouseLeft && mouse.Y == m.height-1 {
-			_, targets := m.renderStatusBar(m.usersOpen, m.splashOpen)
+			_, targets := m.renderStatusBar(m.usersOpen, m.splashOpen && !m.themesOpen)
 			if targets.hasSend && mouse.X >= targets.sendStart && mouse.X < targets.sendEnd {
 				m.sendCurrentMessage()
 				m.sendFeedback = true
@@ -528,6 +535,7 @@ func (m model) Update(
 			m.input.EndSelection()
 			m.inputSelecting = false
 		}
+		m.themeDividerDragging = false
 		m.splashScrollDragging = false
 		m.splashScrollbarHoldDirection = 0
 		m.splashScrollbarHoldGeneration++
@@ -653,7 +661,7 @@ func (m model) Update(
 				m.themeSelected = len(m.themeEntries)-1
 				m.clampThemeSelection()
 				return m, nil
-			case "enter":
+			case "ctrl+enter":
 				m.applySelectedTheme()
 				return m, nil
 			case "ctrl+c", "ctrl+q":
@@ -661,7 +669,8 @@ func (m model) Update(
 				m.quitting = true
 				return m, tea.Quit
 			default:
-				return m, nil
+				// Ordinary text and composer editing keys continue to the
+				// textarea below. Enter retains its normal send behavior.
 			}
 		}
 		switch keyMsg.String() {
@@ -815,6 +824,10 @@ func (m *model) applyMouseMotion(x, y int) {
 	m.lastMouseY = y
 	m.mousePositionKnown = true
 
+	if m.themesOpen && m.themeDividerDragging {
+		m.setThemeBrowserDivider(x)
+		return
+	}
 	if m.inputSelecting {
 		localX, localY := m.inputSelectionCoordinates(x, y)
 		m.input.ExtendSelection(localX, localY)
