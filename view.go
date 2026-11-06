@@ -357,11 +357,11 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	if m.themesOpen {
 		switch {
 		case m.themeEditField != "":
-			scrollTail = ": Enter: confirm edit • Esc: cancel • Ctrl+C: "
+			scrollTail = ": Enter: confirm • Esc: cancel • Ctrl+C: "
 		case m.themeDirty:
-			scrollTail = ": Scroll • F2: [APPLY] / Ctrl+Enter: apply • Ctrl+S: [SAVE] • Esc: back • Ctrl+C: "
+			scrollTail = ": Ctrl+Enter: apply • Ctrl+S: [SAVE] • F2: [APPLY] • Esc: "
 		default:
-			scrollTail = ": Scroll • F2: [APPLY] / Ctrl+Enter: apply • Esc: back • Ctrl+C: "
+			scrollTail = ": Ctrl+Enter: apply • F2: [APPLY] • Esc: back • Ctrl+C: "
 		}
 	}
 	prefix := lead + scrollLabel + scrollTail
