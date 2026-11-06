@@ -407,11 +407,12 @@ func (m model) themeDetailsRows(width int) []string {
 	preset := entry.Preset
 	editable := themeEntryEditable(entry)
 	title := preset.Name
-	state := "Built-in · read-only · clone to edit"
+	description := "Built-in · read-only · clone to edit"
 	if editable {
 		title += "  ✎"
-		state = "Custom theme · click name or a color to edit"
+		description = "Custom theme · click name or a color to edit"
 	}
+	state := "Preview only · " + description
 	if preset.Colors == m.cfg.Theme {
 		if editable {
 			state = "✓ Active custom theme"
