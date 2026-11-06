@@ -84,7 +84,7 @@ func TestCloneBuiltInThemeCreatesIndependentFile(t *testing.T) {
 	if len(pack.Themes) != 1 || pack.Themes[0].Colors != wantColors {
 		t.Fatalf("clone file contains %+v, want exactly one copied theme", pack.Themes)
 	}
-	if !themeEntryEditable(themeListEntry{FileName: defaultThemePackFilename}) {
+	if themeEntryEditable(themeListEntry{FileName: defaultThemePackFilename}) {
 		t.Fatal("built-in pack unexpectedly became editable")
 	}
 }
