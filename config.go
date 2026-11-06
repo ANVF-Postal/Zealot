@@ -216,32 +216,175 @@ selection_background_color = "#3D5275"
 `
 }
 
+// configFileValues returns every setting managed by Config in stable file order.
+// Legacy aliases are updated in place when present, rather than adding duplicate
+// modern keys to an otherwise user-maintained config file.
+func configFileValues(cfg Config) []configFileEntry {
+	return []configFileEntry{
+		{key: "name", value: strconv.Quote(cfg.Name)},
+		{key: "user_color", value: strconv.Quote(cfg.UserColor)},
+		{key: "bell", value: strconv.FormatBool(cfg.Bell)},
+		{key: "input_height", value: strconv.Itoa(cfg.InputHeight)},
+		{key: "adaptive_height", value: strconv.FormatBool(cfg.AdaptiveHeight)},
+		{key: "height_max_percent", value: strconv.Itoa(cfg.HeightMaxPercent)},
+		{key: "background", value: strconv.Quote(cfg.Theme.Background)},
+		{key: "text_color", value: strconv.Quote(cfg.Theme.TextColor)},
+		{key: "border_color", value: strconv.Quote(cfg.Theme.BorderColor)},
+		{key: "accent_color", value: strconv.Quote(cfg.Theme.AccentColor)},
+		{key: "hover_text_color", value: strconv.Quote(cfg.Theme.HoverTextColor)},
+		{key: "muted_text_color", value: strconv.Quote(cfg.Theme.MutedTextColor)},
+		{key: "mention_background_color", value: strconv.Quote(cfg.Theme.MentionBackgroundColor)},
+		{key: "selection_background_color", value: strconv.Quote(cfg.Theme.SelectionBackgroundColor)},
+	}
+}
+
+type configFileEntry struct {
+	key   string
+	value string
+}
+
+// configKeyCanonical maps older setting names onto their current Config field.
+func configKeyCanonical(key string) string {
+	switch key {
+	case "adaptive_input":
+		return "adaptive_height"
+	case "input_max_percent":
+		return "height_max_percent"
+	default:
+		return key
+	}
+}
+
+// tomlCommentOffset finds a TOML comment marker outside a quoted string.
+func tomlCommentOffset(value string) int {
+	var quote byte
+	escaped := false
+	for i := 0; i < len(value); i++ {
+		ch := value[i]
+		if quote == '"' && escaped {
+			escaped = false
+			continue
+		}
+		if quote == '"' && ch == '\\\\' {
+			escaped = true
+			continue
+		}
+		if quote != 0 {
+			if ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		if ch == '"' || ch == '\\'' {
+			quote = ch
+			continue
+		}
+		if ch == '#' {
+			return i
+		}
+	}
+	return -1
+}
+
+// replaceConfigValue changes only the value portion of one assignment. Its
+// indentation, spacing around '=', trailing whitespace, and inline comment
+// remain byte-for-byte intact.
+func replaceConfigValue(line string, equals int, value string) string {
+	rhs := line[equals+1:]
+	comment := ""
+	if offset := tomlCommentOffset(rhs); offset >= 0 {
+		comment = rhs[offset:]
+		rhs = rhs[:offset]
+	}
+	leading := rhs[:len(rhs)-len(strings.TrimLeft(rhs, " \\t"))]
+	trimmedRight := strings.TrimRight(rhs, " \\t")
+	trailing := rhs[len(trimmedRight):]
+	return line[:equals+1] + leading + value + trailing + comment
+}
+
+// updateConfigContents refreshes the known settings while retaining the
+// user's layout and all comments/unknown keys. It also fills in settings absent
+// from older configs, using the same defaults already present in Config.
+func updateConfigContents(contents string, cfg Config) string {
+	entries := configFileValues(cfg)
+	values := make(map[string]string, len(entries))
+	for _, entry := range entries {
+		values[entry.key] = entry.value
+	}
+
+	present := make(map[string]bool, len(entries))
+	var output strings.Builder
+	for _, rawLine := range strings.SplitAfter(contents, "\\n") {
+		if rawLine == "" {
+			continue
+		}
+		ending := ""
+		line := rawLine
+		if strings.HasSuffix(line, "\\n") {
+			line = strings.TrimSuffix(line, "\\n")
+			ending = "\\n"
+		}
+		if strings.HasSuffix(line, "\\r") {
+			line = strings.TrimSuffix(line, "\\r")
+			ending = "\\r" + ending
+		}
+
+		equals := strings.IndexByte(line, '=')
+		if equals >= 0 {
+			key := strings.TrimSpace(line[:equals])
+			canonical := configKeyCanonical(key)
+			if value, managed := values[canonical]; managed {
+				line = replaceConfigValue(line, equals, value)
+				present[canonical] = true
+			}
+		}
+		output.WriteString(line)
+		output.WriteString(ending)
+	}
+
+	var missing []configFileEntry
+	for _, entry := range entries {
+		if !present[entry.key] {
+			missing = append(missing, entry)
+		}
+	}
+	if len(missing) > 0 {
+		current := output.String()
+		if current != "" && !strings.HasSuffix(current, "\\n") {
+			output.WriteByte('\\n')
+		}
+		if current != "" {
+			output.WriteByte('\\n')
+		}
+		output.WriteString("# Settings added by Zealot.\\n")
+		for _, entry := range missing {
+			output.WriteString(entry.key)
+			output.WriteString(" = ")
+			output.WriteString(entry.value)
+			output.WriteByte('\\n')
+		}
+	}
+	return output.String()
+}
+
+// saveConfig updates managed values in place instead of rebuilding the file.
+// This keeps comments, custom settings, and formatting intact when commands
+// such as /rename and /color persist a change.
 func saveConfig(cfg Config) error {
 	path := configPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-	content := fmt.Sprintf(`# Zealot configuration
-# Colors may be ANSI colors ("12"), 256-color numbers, or hexadecimal colors ("#7CFFCB").
 
-name = %q
-user_color = %q
-bell = %t
-input_height = %d
-adaptive_height = %t
-height_max_percent = %d
-# Main theme palette.
-background = %q
-text_color = %q
-border_color = %q
-accent_color = %q
-hover_text_color = %q
-muted_text_color = %q
-mention_background_color = %q
-selection_background_color = %q
-`, cfg.Name, cfg.UserColor, cfg.Bell, cfg.InputHeight, cfg.AdaptiveHeight, cfg.HeightMaxPercent, cfg.Theme.Background, cfg.Theme.TextColor, cfg.Theme.BorderColor, cfg.Theme.AccentColor,
-		cfg.Theme.HoverTextColor, cfg.Theme.MutedTextColor, cfg.Theme.MentionBackgroundColor, cfg.Theme.SelectionBackgroundColor)
-	return os.WriteFile(path, []byte(content), 0600)
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		contents = []byte(defaultConfigFile())
+	}
+	updated := updateConfigContents(string(contents), cfg)
+	return os.WriteFile(path, []byte(updated), 0600)
 }
 
 func validUserColor(value string) bool {
