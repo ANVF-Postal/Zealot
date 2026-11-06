@@ -59,7 +59,7 @@ func (m *model) beginThemeFieldEdit(field string) {
 		return
 	}
 	value := themePresetFieldValue(entry.Preset, field)
-	if value == "" {
+	if value == "" && field != "description" {
 		return
 	}
 	m.themeComposerBackup = m.input.Value()
@@ -74,6 +74,8 @@ func themeFieldLabel(field string) string {
 	switch field {
 	case "name":
 		return "theme name"
+	case "description":
+		return "theme description"
 	case "background":
 		return "background color"
 	case "text_color":
@@ -99,6 +101,8 @@ func themePresetFieldValue(preset ThemePreset, field string) string {
 	switch field {
 	case "name":
 		return preset.Name
+	case "description":
+		return preset.Description
 	case "background":
 		return preset.Colors.Background
 	case "text_color":
@@ -127,6 +131,8 @@ func setThemePresetField(preset *ThemePreset, field, value string) {
 	switch field {
 	case "name":
 		preset.Name = value
+	case "description":
+		preset.Description = value
 	case "background":
 		preset.Colors.Background = value
 	case "text_color":
@@ -175,14 +181,15 @@ func (m *model) finishThemeFieldEdit() {
 				return
 			}
 		}
+	} else if m.themeEditField == "description" {
+		value = strings.Join(strings.Fields(value), " ")
 	} else {
-		if !validUserColor(value) {
-			m.themeEditError = "Use a hex color such as #7C5CFC or an ANSI color number (0–255)."
+		normalized, ok := normalizeUserColor(value)
+		if !ok {
+			m.themeEditError = "Use six hex digits (with or without #), or an ANSI color number (0–255)."
 			return
 		}
-		if strings.HasPrefix(value, "#") {
-			value = strings.ToUpper(value)
-		}
+		value = normalized
 	}
 
 	setThemePresetField(&entry.Preset, m.themeEditField, value)
@@ -241,8 +248,9 @@ func (m *model) cloneSelectedTheme() {
 	}
 	name := uniqueThemeName(current.Preset.Name+" Copy", m.themeEntries)
 	entry, err := createThemePresetFile(ThemePreset{
-		Name:   name,
-		Colors: current.Preset.Colors,
+		Name:        name,
+		Description: current.Preset.Description,
+		Colors:      current.Preset.Colors,
 	})
 	if err != nil {
 		m.themeEditError = err.Error()
