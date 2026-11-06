@@ -32,6 +32,8 @@ type model struct {
 	themeSelected                    int
 	themeScroll                      int
 	themeError                       string
+	themeLeftWidth                   int
+	themeDividerDragging             bool
 	splashScroll                     int
 	splashScrollDragging             bool
 	splashScrollDragOffset           int
