@@ -131,8 +131,21 @@ func saveThemePack(filename string, pack ThemePack) error {
 		return err
 	}
 	path := filepath.Join(themesDir(), filename)
-	if err := os.WriteFile(path, content, 0600); err != nil {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if errors.Is(err, os.ErrExist) {
+		return fmt.Errorf("theme pack %q already exists; refusing to overwrite it", filename)
+	}
+	if err != nil {
+		return fmt.Errorf("create theme pack %q: %w", filename, err)
+	}
+	if _, err := file.Write(content); err != nil {
+		_ = file.Close()
+		_ = os.Remove(path)
 		return fmt.Errorf("write theme pack %q: %w", filename, err)
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(path)
+		return fmt.Errorf("close theme pack %q: %w", filename, err)
 	}
 	return nil
 }

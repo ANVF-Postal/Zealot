@@ -231,6 +231,42 @@ func TestSaveAndLoadThemePack(t *testing.T) {
 	}
 }
 
+func TestSaveThemePackDoesNotOverwriteExistingFile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if _, err := loadConfig(); err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	const original = "pack_name = \"Keep me\"\n"
+	path := filepath.Join(themesDir(), "custom.toml")
+	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+		t.Fatalf("write existing pack: %v", err)
+	}
+	pack := ThemePack{
+		SchemaVersion: themePackSchemaVersion,
+		PackName: "Replacement",
+		Themes: []ThemePreset{{ID: "replacement", Name: "Replacement", Colors: defaultTheme()}},
+	}
+	if err := saveThemePack("custom.toml", pack); err == nil {
+		t.Fatalf("saveThemePack() overwrote an existing pack")
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read existing pack: %v", err)
+	}
+	if string(got) != original {
+		t.Fatalf("existing pack changed: got %q, want %q", got, original)
+	}
+}
+
+func TestValidateThemePackRejectsInvalidColor(t *testing.T) {
+	pack := defaultThemePack()
+	pack.Themes[0].Colors.SelectionBackgroundColor = "not-a-color"
+	if err := validateThemePack(pack); err == nil {
+		t.Fatalf("validateThemePack() accepted an invalid selection color")
+	}
+}
+
 func TestLoadThemePacksRejectsUnsupportedSchema(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	if _, err := loadConfig(); err != nil {
