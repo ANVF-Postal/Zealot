@@ -191,6 +191,31 @@ func TestApplyingThemeRebuildsCachedMessageRowsImmediately(t *testing.T) {
 	}
 }
 
+func TestApplyingDirtyCustomThemeRequiresSavingFirst(t *testing.T) {
+	m := newThemeEditorTestModel(t)
+	themeBrowserSelectAutumn(t, &m)
+	m.cloneSelectedTheme()
+	entry, ok := m.selectedThemeEntry()
+	if !ok || !themeEntryEditable(entry) {
+		t.Fatal("cloning the built-in theme did not create an editable theme")
+	}
+	originalActive := m.cfg.Theme
+	m.beginThemeFieldEdit("background")
+	m.input.SetValue("#010203")
+	m.finishThemeFieldEdit()
+	if !m.themeDirty {
+		t.Fatal("editing the custom theme did not mark it dirty")
+	}
+
+	m.applySelectedTheme()
+	if m.cfg.Theme != originalActive {
+		t.Fatal("applying an unsaved custom theme changed the active config")
+	}
+	if !strings.Contains(m.themeEditError, "Save") {
+		t.Fatalf("unsaved apply did not explain that Save is required: %q", m.themeEditError)
+	}
+}
+
 func TestBuiltInThemePaletteIsReadOnlyButCloneIsAvailable(t *testing.T) {
 	m := newThemeEditorTestModel(t)
 	entry, _ := m.selectedThemeEntry()
