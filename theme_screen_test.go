@@ -160,6 +160,7 @@ func TestThemeBrowserAllowsComposerTyping(t *testing.T) {
 	m.splashOpen = true
 	m.themesOpen = true
 	m.connected = false // Keep the input regression test independent of a live socket.
+	m.input.Focus()
 	updated, _ := m.Update(tea.KeyPressMsg{Text: "h"})
 	next := updated.(model)
 	if next.input.Value() != "h" {
