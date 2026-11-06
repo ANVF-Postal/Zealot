@@ -402,9 +402,41 @@ func (m model) Update(
 			return m, nil
 		}
 		if m.themesOpen && mouse.Button == tea.MouseLeft {
+			// While a theme field is being edited, keep clicks from changing
+			// selection or triggering actions before the edit is confirmed.
+			if m.themeEditField != "" {
+				return m, nil
+			}
+			if m.themeCreateButtonContains(mouse.X, mouse.Y) {
+				m.createFreshTheme()
+				return m, nil
+			}
+			if m.themeCloneButtonContains(mouse.X, mouse.Y) {
+				m.cloneSelectedTheme()
+				return m, nil
+			}
+			if m.themeSaveButtonContains(mouse.X, mouse.Y) {
+				m.saveSelectedThemeEdits()
+				return m, nil
+			}
+			if m.themeApplyButtonContains(mouse.X, mouse.Y) {
+				m.applySelectedTheme()
+				return m, nil
+			}
+			if m.themeNameContains(mouse.X, mouse.Y) {
+				if entry, ok := m.selectedThemeEntry(); ok && themeEntryEditable(entry) {
+					m.beginThemeFieldEdit("name")
+				}
+				return m, nil
+			}
+			if field, ok := m.themeColorFieldAt(mouse.X, mouse.Y); ok {
+				if entry, exists := m.selectedThemeEntry(); exists && themeEntryEditable(entry) {
+					m.beginThemeFieldEdit(field)
+				}
+				return m, nil
+			}
 			if index, ok := m.themeBrowserListIndexAt(mouse.X, mouse.Y); ok {
-				m.themeSelected = index
-				m.clampThemeSelection()
+				m.selectThemeEntry(index)
 				return m, nil
 			}
 		}
@@ -646,44 +678,59 @@ func (m model) Update(
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		if m.themesOpen {
 			switch keyMsg.String() {
+			case "enter":
+				if m.themeEditField != "" {
+					m.finishThemeFieldEdit()
+					return m, nil
+				}
 			case "esc", "escape":
+				if m.themeEditField != "" {
+					m.cancelThemeFieldEdit()
+					return m, nil
+				}
 				m.themesOpen = false
 				m.themeError = ""
+				m.themeEditError = ""
+				return m, nil
+			case "ctrl+s":
+				if m.themeEditField == "" {
+					m.saveSelectedThemeEdits()
+				}
 				return m, nil
 			case "up":
-				if m.input.Value() == "" {
+				if m.themeEditField == "" && m.input.Value() == "" {
 					m.moveThemeSelection(-1)
 					return m, nil
 				}
 			case "down":
-				if m.input.Value() == "" {
+				if m.themeEditField == "" && m.input.Value() == "" {
 					m.moveThemeSelection(1)
 					return m, nil
 				}
 			case "pgup":
-				if m.input.Value() == "" {
+				if m.themeEditField == "" && m.input.Value() == "" {
 					m.moveThemeSelection(-m.themeVisibleRows())
 					return m, nil
 				}
 			case "pgdown":
-				if m.input.Value() == "" {
+				if m.themeEditField == "" && m.input.Value() == "" {
 					m.moveThemeSelection(m.themeVisibleRows())
 					return m, nil
 				}
 			case "home":
-				if m.input.Value() == "" {
-					m.themeSelected = 0
-					m.clampThemeSelection()
+				if m.themeEditField == "" && m.input.Value() == "" {
+					m.selectThemeEntry(0)
 					return m, nil
 				}
 			case "end":
-				if m.input.Value() == "" {
-					m.themeSelected = len(m.themeEntries)-1
-					m.clampThemeSelection()
+				if m.themeEditField == "" && m.input.Value() == "" {
+					m.selectThemeEntry(len(m.themeEntries) - 1)
 					return m, nil
 				}
 			case "f2", "ctrl+enter":
-				m.applySelectedTheme()
+				if m.themeEditField == "" {
+					m.applySelectedTheme()
+				}
 				return m, nil
 			case "ctrl+c", "ctrl+q":
 				m.sendTyping(false)
@@ -691,7 +738,7 @@ func (m model) Update(
 				return m, tea.Quit
 			default:
 				// Ordinary text and composer editing keys continue to the
-				// textarea below. Enter retains its normal send behavior.
+				// textarea. Enter confirms a field edit and otherwise sends.
 			}
 		}
 		switch keyMsg.String() {
@@ -805,7 +852,7 @@ func (m model) Update(
 	// -------------------------------------------------------------------------
 
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
-		if m.connected && isTextInputKey(keyMsg) {
+		if m.connected && isTextInputKey(keyMsg) && m.themeEditField == "" {
 
 			// Start blinking only when there is actual text.
 			blinkCmd := m.startCursorBlink()
