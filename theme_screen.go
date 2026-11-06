@@ -423,7 +423,7 @@ func (m model) themeDetailsRows(width int) []string {
 		state = "Editing " + themeFieldLabel(m.themeEditField) + " · Enter confirms · Esc cancels"
 	}
 	if m.themeDirty && m.themeEditField == "" {
-		state = "Unsaved changes · click [SAVE] or press Ctrl+S"
+		state = "Unsaved changes · save before applying"
 	}
 	if m.themeEditError != "" {
 		state = truncateANSI(m.themeEditError, width)
