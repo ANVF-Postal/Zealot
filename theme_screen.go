@@ -471,6 +471,10 @@ func (m *model) applySelectedTheme() {
 	if len(m.themeEntries) == 0 {
 		return
 	}
+	if m.themeDirty || m.themeEditField != "" {
+		m.themeEditError = "Save or finish the current theme edits before applying them."
+		return
+	}
 	entry := m.themeEntries[min(max(0, m.themeSelected), len(m.themeEntries)-1)]
 	if err := applyThemePreset(&m.cfg, entry.Preset); err != nil {
 		m.themeError = err.Error()
