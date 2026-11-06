@@ -279,6 +279,11 @@ func (m model) Update(
 		if m.themesOpen && m.themeEditField != "" && !m.inputSelectionContains(mouse.X, mouse.Y) {
 			return m, nil
 		}
+		if m.themesOpen && m.themeDirty && mouse.Button == tea.MouseLeft && mouse.Y == 0 {
+			if !m.confirmThemeDiscard() {
+				return m, nil
+			}
+		}
 
 		// The theme divider is a draggable one-cell splitter between the list
 		// and details columns.
@@ -692,6 +697,9 @@ func (m model) Update(
 			case "esc", "escape":
 				if m.themeEditField != "" {
 					m.cancelThemeFieldEdit()
+					return m, nil
+				}
+				if !m.confirmThemeDiscard() {
 					return m, nil
 				}
 				m.themesOpen = false
