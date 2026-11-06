@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -307,15 +308,18 @@ func (m model) renderSplashPanel() string {
 }
 
 type footerTargets struct {
-	quitStart int
-	quitEnd   int
-	sendStart int
-	sendEnd   int
-	pgUpStart int
-	pgUpEnd   int
-	pgDnStart int
-	pgDnEnd   int
-	hasSend   bool
+	quitStart  int
+	quitEnd    int
+	sendStart  int
+	sendEnd    int
+	applyStart int
+	applyEnd   int
+	pgUpStart  int
+	pgUpEnd    int
+	pgDnStart  int
+	pgDnEnd    int
+	hasSend    bool
+	hasApply   bool
 	hasPageScroll bool
 }
 
@@ -351,7 +355,7 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		scrollTail = ": Scroll • Esc: close • Ctrl+C: "
 	}
 	if m.themesOpen {
-		scrollTail = ": Scroll • Ctrl+Enter: apply • Esc: back • Ctrl+C: "
+		scrollTail = ": Scroll • F2: [APPLY] • Esc: back • Ctrl+C: "
 	}
 	prefix := lead + scrollLabel + scrollTail
 
@@ -438,24 +442,60 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	prefixVisible := strings.TrimRight(prefix, " ")
 	prefixWidth := lipgloss.Width(prefixVisible)
 
-	// Highlight PgUp/PgDn and derive the mouse hitboxes from the final
-	// compacted prefix so the clickable areas always match the rendered text.
-	renderedPrefix := m.styles.status.Render(prefixVisible)
+	// Highlight visible shortcuts and derive their mouse hitboxes from the
+	// final compacted prefix so clicks always match the rendered labels.
+	type footerHighlight struct {
+		start   int
+		end     int
+		rendered string
+	}
+	var highlights []footerHighlight
 	pageStartByte := strings.Index(prefixVisible, scrollLabel)
 	if pageStartByte >= 0 {
 		pageStart := lipgloss.Width(prefixVisible[:pageStartByte])
-		pageEndByte := pageStartByte + len(scrollLabel)
-		renderedPrefix = m.styles.status.Render(prefixVisible[:pageStartByte]) +
-			m.styles.accent.Render("PgUp") +
-			m.styles.status.Render("/") +
-			m.styles.accent.Render("PgDn") +
-			m.styles.status.Render(prefixVisible[pageEndByte:])
+		pgUpEndByte := pageStartByte + len("PgUp")
+		pgDnStartByte := pgUpEndByte + 1
+		pgDnEndByte := pgDnStartByte + len("PgDn")
+		highlights = append(highlights,
+			footerHighlight{start: pageStartByte, end: pgUpEndByte, rendered: m.styles.accent.Render("PgUp")},
+			footerHighlight{start: pgDnStartByte, end: pgDnEndByte, rendered: m.styles.accent.Render("PgDn")},
+		)
 		targets.hasPageScroll = true
 		targets.pgUpStart = pageStart
 		targets.pgUpEnd = pageStart + lipgloss.Width("PgUp")
 		targets.pgDnStart = pageStart + lipgloss.Width("PgUp/")
 		targets.pgDnEnd = targets.pgDnStart + lipgloss.Width("PgDn")
 	}
+	if m.themesOpen && len(m.themeEntries) > 0 && m.themeError == "" {
+		if applyStartByte := strings.Index(prefixVisible, "[APPLY]"); applyStartByte >= 0 {
+			applyStart := lipgloss.Width(prefixVisible[:applyStartByte])
+			applyStyle := lipgloss.NewStyle().
+				Foreground(lipgloss.Color(m.cfg.Theme.Background)).
+				Background(lipgloss.Color(m.cfg.Theme.AccentColor)).
+				Bold(true)
+			highlights = append(highlights, footerHighlight{
+				start: applyStartByte,
+				end: applyStartByte + len("[APPLY]"),
+				rendered: applyStyle.Render("[APPLY]"),
+			})
+			targets.hasApply = true
+			targets.applyStart = applyStart
+			targets.applyEnd = applyStart + lipgloss.Width("[APPLY]")
+		}
+	}
+	sort.Slice(highlights, func(i, j int) bool { return highlights[i].start < highlights[j].start })
+	var prefixBuilder strings.Builder
+	cursor := 0
+	for _, highlight := range highlights {
+		if highlight.start < cursor {
+			continue
+		}
+		prefixBuilder.WriteString(m.styles.status.Render(prefixVisible[cursor:highlight.start]))
+		prefixBuilder.WriteString(highlight.rendered)
+		cursor = highlight.end
+	}
+	prefixBuilder.WriteString(m.styles.status.Render(prefixVisible[cursor:]))
+	renderedPrefix := prefixBuilder.String()
 
 	gapWidth := availableWidth - prefixWidth - quitButtonWidth - sendWidth
 	if gapWidth < 0 {

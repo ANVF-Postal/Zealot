@@ -305,13 +305,91 @@ func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
 	m.themesOpen = true
 	line, targets := m.renderStatusBar(false, false)
 	plain := stripANSISequences(line)
-	for _, want := range []string{"PgUp", "PgDn", "Ctrl+Enter: apply", "Esc: back", "[Send]", "Quit"} {
+	for _, want := range []string{"PgUp", "PgDn", "F2:", "[APPLY]", "Esc: back", "[Send]", "Quit"} {
 		if !strings.Contains(plain, want) {
 			t.Errorf("theme footer is missing %q: %s", want, plain)
 		}
 	}
 	if !targets.hasSend {
 		t.Fatal("theme browser footer does not expose the send action")
+	}
+	if !targets.hasApply {
+		t.Fatal("theme browser footer does not expose a clickable apply action")
+	}
+}
+
+func themeBrowserSelectAutumn(t *testing.T, m *model) Theme {
+	t.Helper()
+	for i, entry := range m.themeEntries {
+		if entry.Preset.ID == "autumn" {
+			m.themeSelected = i
+			m.clampThemeSelection()
+			return entry.Preset.Colors
+		}
+	}
+	t.Fatal("Autumn preset not found in theme browser")
+	return Theme{}
+}
+
+func TestThemeBrowserF2ShortcutAppliesSelectedTheme(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	m := newModel(cfg, "lobby", false, nil)
+	m.width, m.height = 100, 30
+	m.openThemeBrowser()
+	want := themeBrowserSelectAutumn(t, &m)
+
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyF2})
+	next := updated.(model)
+	if next.cfg.Theme != want {
+		t.Fatalf("F2 did not apply selected theme: got %+v, want %+v", next.cfg.Theme, want)
+	}
+}
+
+func TestThemeBrowserApplyButtonClickAppliesSelectedTheme(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	m := newModel(cfg, "lobby", false, nil)
+	m.width, m.height = 100, 30
+	m.openThemeBrowser()
+	want := themeBrowserSelectAutumn(t, &m)
+	leftWidth, rightWidth := m.themeBrowserColumnWidths()
+	x := m.themeBrowserContentStartX() + leftWidth + 1 + rightWidth/2
+	y := 2 + themeApplyButtonRow()
+	if !m.themeApplyButtonContains(x, y) {
+		t.Fatalf("calculated apply button center (%d,%d) is not inside its hitbox", x, y)
+	}
+	updated, _ := m.Update(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	next := updated.(model)
+	if next.cfg.Theme != want {
+		t.Fatalf("clicking right-pane apply button did not apply theme: got %+v, want %+v", next.cfg.Theme, want)
+	}
+}
+
+func TestThemeBrowserFooterApplyClickAppliesSelectedTheme(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	m := newModel(cfg, "lobby", false, nil)
+	m.width, m.height = 100, 30
+	m.openThemeBrowser()
+	want := themeBrowserSelectAutumn(t, &m)
+	_, targets := m.renderStatusBar(false, false)
+	if !targets.hasApply {
+		t.Fatal("footer did not expose the apply target")
+	}
+	updated, _ := m.Update(tea.MouseClickMsg{X: targets.applyStart, Y: m.height - 1, Button: tea.MouseLeft})
+	next := updated.(model)
+	if next.cfg.Theme != want {
+		t.Fatalf("clicking footer apply action did not apply theme: got %+v, want %+v", next.cfg.Theme, want)
 	}
 }
 
