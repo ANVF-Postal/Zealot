@@ -265,7 +265,7 @@ func tomlCommentOffset(value string) int {
 			escaped = false
 			continue
 		}
-		if quote == '"' && ch == '\\\\' {
+		if quote == '"' && ch == '\\' {
 			escaped = true
 			continue
 		}
@@ -275,7 +275,7 @@ func tomlCommentOffset(value string) int {
 			}
 			continue
 		}
-		if ch == '"' || ch == '\\'' {
+		if ch == '"' || ch == '\'' {
 			quote = ch
 			continue
 		}
@@ -296,8 +296,8 @@ func replaceConfigValue(line string, equals int, value string) string {
 		comment = rhs[offset:]
 		rhs = rhs[:offset]
 	}
-	leading := rhs[:len(rhs)-len(strings.TrimLeft(rhs, " \\t"))]
-	trimmedRight := strings.TrimRight(rhs, " \\t")
+	leading := rhs[:len(rhs)-len(strings.TrimLeft(rhs, " \t"))]
+	trimmedRight := strings.TrimRight(rhs, " \t")
 	trailing := rhs[len(trimmedRight):]
 	return line[:equals+1] + leading + value + trailing + comment
 }
@@ -314,19 +314,19 @@ func updateConfigContents(contents string, cfg Config) string {
 
 	present := make(map[string]bool, len(entries))
 	var output strings.Builder
-	for _, rawLine := range strings.SplitAfter(contents, "\\n") {
+	for _, rawLine := range strings.SplitAfter(contents, "\n") {
 		if rawLine == "" {
 			continue
 		}
 		ending := ""
 		line := rawLine
-		if strings.HasSuffix(line, "\\n") {
-			line = strings.TrimSuffix(line, "\\n")
-			ending = "\\n"
+		if strings.HasSuffix(line, "\n") {
+			line = strings.TrimSuffix(line, "\n")
+			ending = "\n"
 		}
-		if strings.HasSuffix(line, "\\r") {
-			line = strings.TrimSuffix(line, "\\r")
-			ending = "\\r" + ending
+		if strings.HasSuffix(line, "\r") {
+			line = strings.TrimSuffix(line, "\r")
+			ending = "\r" + ending
 		}
 
 		equals := strings.IndexByte(line, '=')
@@ -350,18 +350,18 @@ func updateConfigContents(contents string, cfg Config) string {
 	}
 	if len(missing) > 0 {
 		current := output.String()
-		if current != "" && !strings.HasSuffix(current, "\\n") {
-			output.WriteByte('\\n')
+		if current != "" && !strings.HasSuffix(current, "\n") {
+			output.WriteByte('\n')
 		}
 		if current != "" {
-			output.WriteByte('\\n')
+			output.WriteByte('\n')
 		}
-		output.WriteString("# Settings added by Zealot.\\n")
+		output.WriteString("# Settings added by Zealot.\n")
 		for _, entry := range missing {
 			output.WriteString(entry.key)
 			output.WriteString(" = ")
 			output.WriteString(entry.value)
-			output.WriteByte('\\n')
+			output.WriteByte('\n')
 		}
 	}
 	return output.String()

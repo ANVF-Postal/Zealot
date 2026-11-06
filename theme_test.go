@@ -360,15 +360,15 @@ func TestApplyThemePresetPersistsPaletteAndPreservesUserConfig(t *testing.T) {
 
 func TestSaveConfigPreservesCommentsFormattingAndCustomSettings(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	const original = "# Keep this header\\r\\n" +
-		"name   = \"Before\"   # preserve the name note\\r\\n" +
-		"user_color = \"#123456\" # preserve the color note\\r\\n" +
-		"adaptive_input = false # legacy key stays in place\\r\\n" +
-		"input_max_percent=70\\r\\n" +
-		"# Palette comment stays here\\r\\n" +
-		"background = \"#111318\" # keep background note\\r\\n" +
-		"custom_setting = \"value with # inside\" # unknown setting\\r\\n" +
-		"# Final user comment\\r\\n"
+	const original = "# Keep this header\r\n" +
+		"name   = \"Before\"   # preserve the name note\r\n" +
+		"user_color = \"#123456\" # preserve the color note\r\n" +
+		"adaptive_input = false # legacy key stays in place\r\n" +
+		"input_max_percent=70\r\n" +
+		"# Palette comment stays here\r\n" +
+		"background = \"#111318\" # keep background note\r\n" +
+		"custom_setting = \"value with # inside\" # unknown setting\r\n" +
+		"# Final user comment\r\n"
 	writeConfigForTest(t, original)
 
 	cfg := defaultConfig()
@@ -386,17 +386,17 @@ func TestSaveConfigPreservesCommentsFormattingAndCustomSettings(t *testing.T) {
 		t.Fatalf("read saved config: %v", err)
 	}
 	got := string(data)
-	wantPrefix := "# Keep this header\\r\\n" +
-		"name   = \"After\"   # preserve the name note\\r\\n" +
-		"user_color = \"#ABCDEF\" # preserve the color note\\r\\n" +
-		"adaptive_input = true # legacy key stays in place\\r\\n" +
-		"input_max_percent=42\\r\\n" +
-		"# Palette comment stays here\\r\\n" +
-		"background = \"#111318\" # keep background note\\r\\n" +
-		"custom_setting = \"value with # inside\" # unknown setting\\r\\n" +
-		"# Final user comment\\r\\n"
+	wantPrefix := "# Keep this header\r\n" +
+		"name   = \"After\"   # preserve the name note\r\n" +
+		"user_color = \"#ABCDEF\" # preserve the color note\r\n" +
+		"adaptive_input = true # legacy key stays in place\r\n" +
+		"input_max_percent=42\r\n" +
+		"# Palette comment stays here\r\n" +
+		"background = \"#111318\" # keep background note\r\n" +
+		"custom_setting = \"value with # inside\" # unknown setting\r\n" +
+		"# Final user comment\r\n"
 	if !strings.HasPrefix(got, wantPrefix) {
-		t.Fatalf("saveConfig changed existing config layout or comments:\\n--- got ---\\n%s\\n--- want prefix ---\\n%s", got, wantPrefix)
+		t.Fatalf("saveConfig changed existing config layout or comments:\n--- got ---\n%s\n--- want prefix ---\n%s", got, wantPrefix)
 	}
 	if !strings.Contains(got, "accent_color = \"#123ABC\"") {
 		t.Fatalf("updated accent color was not persisted: %s", got)
