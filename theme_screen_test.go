@@ -74,8 +74,8 @@ func TestThemeBrowserLoadsAllPackEntries(t *testing.T) {
 	if !m.themesOpen || len(m.themeEntries) != 2 {
 		t.Fatalf("opening theme browser returned open=%v entries=%d, want true and 2", m.themesOpen, len(m.themeEntries))
 	}
-	if m.themeEntries[m.themeSelected].Preset.Name != "Zealot" {
-		t.Fatalf("active theme was not initially selected: %+v", m.themeEntries[m.themeSelected])
+	if m.themeEntries[0].FileName != "default-themes.toml" || m.themeEntries[m.themeSelected].Preset.Name != "Zealot" {
+		t.Fatalf("built-in active theme was not first and initially selected: selected=%+v entries=%+v", m.themeEntries[m.themeSelected], m.themeEntries)
 	}
 }
 
@@ -158,7 +158,22 @@ func TestBrowsingThemeOnlyPreviewsUntilExplicitApply(t *testing.T) {
 	m := newModel(cfg, "lobby", false, nil)
 	m.width, m.height = 100, 30
 	m.openThemeBrowser()
-	m.moveThemeSelection(1)
+	if len(m.themeEntries) < 2 {
+		t.Fatalf("expected built-in and custom presets, got %d", len(m.themeEntries))
+	}
+	// Select by the distinct palette rather than assuming directory order.
+	customIndex := -1
+	for i, entry := range m.themeEntries {
+		if entry.Preset.Colors == custom {
+			customIndex = i
+			break
+		}
+	}
+	if customIndex < 0 {
+		t.Fatalf("custom preset was not loaded: %+v", m.themeEntries)
+	}
+	m.themeSelected = customIndex
+	m.clampThemeSelection()
 	if m.cfg.Theme != original {
 		t.Fatalf("browsing a preset changed the active palette")
 	}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -109,6 +110,19 @@ func loadThemePacks() ([]ThemePack, error) {
 		pack.FileName = entry.Name()
 		packs = append(packs, pack)
 	}
+	// Keep the built-in Zealot pack first, then sort user packs by filename.
+	// os.ReadDir sorts names, but explicitly ordering the built-in pack first
+	// makes initial active-theme selection stable even when user packs sort
+	// before "default-themes.toml".
+	sort.SliceStable(packs, func(i, j int) bool {
+		const defaultFile = "default-themes.toml"
+		iDefault := packs[i].FileName == defaultFile
+		jDefault := packs[j].FileName == defaultFile
+		if iDefault != jDefault {
+			return iDefault
+		}
+		return strings.ToLower(packs[i].FileName) < strings.ToLower(packs[j].FileName)
+	})
 	return packs, nil
 }
 
