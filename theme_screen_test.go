@@ -26,6 +26,83 @@ func TestSplashIncludesCenteredThemesActionAfterStats(t *testing.T) {
 	}
 }
 
+func TestDefaultThemePackIncludesAutumn(t *testing.T) {
+	pack := defaultThemePack()
+	if err := validateThemePack(pack); err != nil {
+		t.Fatalf("default theme pack is invalid: %v", err)
+	}
+
+	want := Theme{
+		Background:               "#2D170A",
+		TextColor:                "#F7E8D8",
+		BorderColor:              "#7A442A",
+		AccentColor:              "#FF8C2A",
+		HoverTextColor:           "#FFD166",
+		MutedTextColor:           "#C18B62",
+		MentionBackgroundColor:   "#622F1C",
+		SelectionBackgroundColor: "#92451F",
+	}
+	for _, preset := range pack.Themes {
+		if preset.ID == "autumn" {
+			if preset.Name != "Autumn" || preset.Colors != want {
+				t.Fatalf("Autumn preset = %+v, want palette %+v", preset, want)
+			}
+			return
+		}
+	}
+	t.Fatal("built-in theme pack does not contain Autumn")
+}
+
+func TestEnsureThemeLibraryAddsMissingBuiltInsWithoutReplacingPack(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	path := defaultThemePackPath()
+	if err := os.MkdirAll(themesDir(), 0700); err != nil {
+		t.Fatalf("create themes directory: %v", err)
+	}
+	originalPack := ThemePack{
+		SchemaVersion: themePackSchemaVersion,
+		PackName:      "Zealot defaults",
+		Themes: []ThemePreset{
+			{ID: "zealot", Name: "Zealot", Colors: defaultTheme()},
+			{ID: "my-custom", Name: "My customized preset", Colors: defaultTheme()},
+		},
+	}
+	original, err := encodeThemePack(originalPack)
+	if err != nil {
+		t.Fatalf("encode original pack: %v", err)
+	}
+	if err := os.WriteFile(path, original, 0600); err != nil {
+		t.Fatalf("write original pack: %v", err)
+	}
+
+	if err := ensureThemeLibrary(); err != nil {
+		t.Fatalf("ensure theme library: %v", err)
+	}
+	updated, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read migrated pack: %v", err)
+	}
+	if !strings.HasPrefix(string(updated), string(original)) {
+		t.Fatal("existing default pack contents were rewritten instead of preserved")
+	}
+
+	packs, err := loadThemePacks()
+	if err != nil {
+		t.Fatalf("load migrated theme packs: %v", err)
+	}
+	if len(packs) != 1 || len(packs[0].Themes) != 3 {
+		t.Fatalf("migrated pack contains %d packs and %d presets, want 1 pack and 3 presets", len(packs), len(packs[0].Themes))
+	}
+	foundAutumn, foundCustom := false, false
+	for _, preset := range packs[0].Themes {
+		foundAutumn = foundAutumn || preset.ID == "autumn"
+		foundCustom = foundCustom || preset.ID == "my-custom"
+	}
+	if !foundAutumn || !foundCustom {
+		t.Fatalf("migration lost a custom preset or failed to add Autumn: %+v", packs[0].Themes)
+	}
+}
+
 func TestFlattenThemePacks(t *testing.T) {
 	packs := []ThemePack{
 		{PackName: "Built in", FileName: "default-themes.toml", Themes: []ThemePreset{{ID: "one", Name: "One", Colors: defaultTheme()}}},
@@ -64,6 +141,10 @@ func TestThemeBrowserPaletteTextUsesThemeBackground(t *testing.T) {
 		t.Fatalf("load config: %v", err)
 	}
 	m := newModel(cfg, "lobby", false, nil)
+	m.openThemeBrowser()
+	if len(m.themeEntries) == 0 {
+		t.Fatalf("opening theme browser did not load the generated default pack")
+	}
 
 	rows := m.themeDetailsRows(60)
 	var backgroundRow string
@@ -114,11 +195,18 @@ func TestThemeBrowserLoadsAllPackEntries(t *testing.T) {
 	}
 	m := newMessageInteractionTestModel(100)
 	m.openThemeBrowser()
-	if !m.themesOpen || len(m.themeEntries) != 2 {
-		t.Fatalf("opening theme browser returned open=%v entries=%d, want true and 2", m.themesOpen, len(m.themeEntries))
+	if !m.themesOpen || len(m.themeEntries) != 3 {
+		t.Fatalf("opening theme browser returned open=%v entries=%d, want true and 3", m.themesOpen, len(m.themeEntries))
 	}
 	if m.themeEntries[0].FileName != "default-themes.toml" || m.themeEntries[m.themeSelected].Preset.Name != "Zealot" {
 		t.Fatalf("built-in active theme was not first and initially selected: selected=%+v entries=%+v", m.themeEntries[m.themeSelected], m.themeEntries)
+	}
+	foundAutumn := false
+	for _, entry := range m.themeEntries {
+		foundAutumn = foundAutumn || entry.Preset.ID == "autumn"
+	}
+	if !foundAutumn {
+		t.Fatal("theme browser did not load Autumn from the built-in pack")
 	}
 }
 
@@ -217,13 +305,95 @@ func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
 	m.themesOpen = true
 	line, targets := m.renderStatusBar(false, false)
 	plain := stripANSISequences(line)
-	for _, want := range []string{"PgUp", "PgDn", "Ctrl+Enter: apply", "Esc: back", "[Send]", "Quit"} {
+	for _, want := range []string{"PgUp", "PgDn", "F2:", "[APPLY]", "Esc: back", "[Send]", "Quit"} {
 		if !strings.Contains(plain, want) {
 			t.Errorf("theme footer is missing %q: %s", want, plain)
 		}
 	}
 	if !targets.hasSend {
 		t.Fatal("theme browser footer does not expose the send action")
+	}
+	if !targets.hasApply {
+		t.Fatal("theme browser footer does not expose a clickable apply action")
+	}
+}
+
+func themeBrowserSelectAutumn(t *testing.T, m *model) Theme {
+	t.Helper()
+	for i, entry := range m.themeEntries {
+		if entry.Preset.ID == "autumn" {
+			m.themeSelected = i
+			m.clampThemeSelection()
+			return entry.Preset.Colors
+		}
+	}
+	t.Fatal("Autumn preset not found in theme browser")
+	return Theme{}
+}
+
+func TestThemeBrowserF2ShortcutAppliesSelectedTheme(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	m := newModel(cfg, "lobby", false, nil)
+	m.width, m.height = 100, 30
+	m.openThemeBrowser()
+	want := themeBrowserSelectAutumn(t, &m)
+
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyF2})
+	next := updated.(model)
+	if next.cfg.Theme != want {
+		t.Fatalf("F2 did not apply selected theme: got %+v, want %+v", next.cfg.Theme, want)
+	}
+}
+
+func TestThemeBrowserApplyButtonClickAppliesSelectedTheme(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	m := newModel(cfg, "lobby", false, nil)
+	m.width, m.height = 100, 30
+	m.openThemeBrowser()
+	want := themeBrowserSelectAutumn(t, &m)
+	leftWidth, rightWidth := m.themeBrowserColumnWidths()
+	details := stripANSISequences(strings.Join(m.themeDetailsRows(rightWidth), "\n"))
+	if !strings.Contains(details, "[APPLY]") {
+		t.Fatal("right pane does not render its apply button")
+	}
+	x := m.themeBrowserContentStartX() + leftWidth + 1 + rightWidth/2
+	y := 2 + themeApplyButtonRow()
+	if !m.themeApplyButtonContains(x, y) {
+		t.Fatalf("calculated apply button center (%d,%d) is not inside its hitbox", x, y)
+	}
+	updated, _ := m.Update(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	next := updated.(model)
+	if next.cfg.Theme != want {
+		t.Fatalf("clicking right-pane apply button did not apply theme: got %+v, want %+v", next.cfg.Theme, want)
+	}
+}
+
+func TestThemeBrowserFooterApplyClickAppliesSelectedTheme(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	m := newModel(cfg, "lobby", false, nil)
+	m.width, m.height = 100, 30
+	m.openThemeBrowser()
+	want := themeBrowserSelectAutumn(t, &m)
+	_, targets := m.renderStatusBar(false, false)
+	if !targets.hasApply {
+		t.Fatal("footer did not expose the apply target")
+	}
+	updated, _ := m.Update(tea.MouseClickMsg{X: targets.applyStart, Y: m.height - 1, Button: tea.MouseLeft})
+	next := updated.(model)
+	if next.cfg.Theme != want {
+		t.Fatalf("clicking footer apply action did not apply theme: got %+v, want %+v", next.cfg.Theme, want)
 	}
 }
 
