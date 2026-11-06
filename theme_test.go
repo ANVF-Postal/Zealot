@@ -262,6 +262,24 @@ func TestSaveThemePackDoesNotOverwriteExistingFile(t *testing.T) {
 	}
 }
 
+func TestNormalizeUserColorAcceptsOptionalHash(t *testing.T) {
+	for input, want := range map[string]string{
+		"ff8c2a": "#FF8C2A",
+		"#ff8c2a": "#FF8C2A",
+		"255": "255",
+	} {
+		got, ok := normalizeUserColor(input)
+		if !ok || got != want {
+			t.Errorf("normalizeUserColor(%q) = %q, %v; want %q, true", input, got, ok, want)
+		}
+	}
+	for _, input := range []string{"GGGGGG", "#12345", "256"} {
+		if got, ok := normalizeUserColor(input); ok {
+			t.Errorf("normalizeUserColor(%q) unexpectedly accepted %q", input, got)
+		}
+	}
+}
+
 func TestValidateThemePackRejectsInvalidColor(t *testing.T) {
 	pack := defaultThemePack()
 	pack.Themes[0].Colors.SelectionBackgroundColor = "not-a-color"
