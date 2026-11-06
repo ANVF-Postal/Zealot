@@ -3,8 +3,8 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"testing"
 	"strings"
+	"testing"
 
 	"github.com/BurntSushi/toml"
 )
@@ -127,7 +127,6 @@ func TestSaveConfigRoundTripsThemeColors(t *testing.T) {
 		t.Fatalf("saved selection background = %q, want %q", loaded.Theme.SelectionBackgroundColor, cfg.Theme.SelectionBackgroundColor)
 	}
 }
-
 
 func TestLoadConfigCreatesDefaultThemePack(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
@@ -281,7 +280,6 @@ func TestLoadThemePacksRejectsUnsupportedSchema(t *testing.T) {
 		t.Fatalf("loadThemePacks() accepted an unsupported schema version")
 	}
 }
-
 
 func TestLoadConfigAppendsMissingThemeColorsWithoutOverwritingCustomColors(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
