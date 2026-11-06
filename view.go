@@ -359,7 +359,7 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		case m.themeEditField != "":
 			scrollTail = ": Enter: confirm • Esc: cancel • Ctrl+C: "
 		case m.themeDirty:
-			scrollTail = ": Ctrl+Enter: apply • Ctrl+S: [SAVE] • F2: [APPLY] • Esc: "
+			scrollTail = ": Ctrl+S: [SAVE] • Ctrl+Enter/F2: apply after save • Esc: back • Ctrl+C: "
 		default:
 			scrollTail = ": Ctrl+Enter: apply • F2: [APPLY] • Esc: back • Ctrl+C: "
 		}
