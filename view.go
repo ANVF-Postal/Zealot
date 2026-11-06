@@ -355,7 +355,7 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		scrollTail = ": Scroll • Esc: close • Ctrl+C: "
 	}
 	if m.themesOpen {
-		scrollTail = ": Scroll • F2: [APPLY] • Esc: back • Ctrl+C: "
+		scrollTail = ": Scroll • F2: / Ctrl+Enter: apply [APPLY] • Esc: back • Ctrl+C: "
 	}
 	prefix := lead + scrollLabel + scrollTail
 
