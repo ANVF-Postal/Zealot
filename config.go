@@ -438,8 +438,18 @@ func normalizeUserColor(value string) (string, bool) {
 }
 
 func validUserColor(value string) bool {
-	_, ok := normalizeUserColor(value)
-	return ok
+	// Stored themes still use canonical #RRGGBB strings or ANSI indices.
+	// The editor separately accepts bare six-digit hex and normalizes it.
+	value = strings.TrimSpace(value)
+	if strings.HasPrefix(value, "#") {
+		if len(value) != 7 {
+			return false
+		}
+		_, err := strconv.ParseUint(value[1:], 16, 24)
+		return err == nil
+	}
+	n, err := strconv.Atoi(value)
+	return err == nil && n >= 0 && n <= 255
 }
 
 
