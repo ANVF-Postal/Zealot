@@ -251,7 +251,7 @@ func (m model) themeDetailsRows(width int) []string {
 	}
 	entry := m.themeEntries[min(max(0, m.themeSelected), len(m.themeEntries)-1)]
 	preset := entry.Preset
-	state := "Preview only · press Enter to apply"
+	state := "Preview only · Ctrl+Enter to apply"
 	if preset.Colors == m.cfg.Theme {
 		state = "✓ Currently active"
 	}
