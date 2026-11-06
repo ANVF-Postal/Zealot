@@ -414,17 +414,32 @@ func saveThemeConfig(theme Theme) error {
 	return saveConfigValues(themeConfigFileValues(theme))
 }
 
-func validUserColor(value string) bool {
+func normalizeUserColor(value string) (string, bool) {
 	value = strings.TrimSpace(value)
 	if strings.HasPrefix(value, "#") {
 		if len(value) != 7 {
-			return false
+			return "", false
 		}
-		_, err := strconv.ParseUint(value[1:], 16, 24)
-		return err == nil
+		if _, err := strconv.ParseUint(value[1:], 16, 24); err != nil {
+			return "", false
+		}
+		return strings.ToUpper(value), true
+	}
+	if len(value) == 6 {
+		if _, err := strconv.ParseUint(value, 16, 24); err == nil {
+			return "#" + strings.ToUpper(value), true
+		}
 	}
 	n, err := strconv.Atoi(value)
-	return err == nil && n >= 0 && n <= 255
+	if err == nil && n >= 0 && n <= 255 {
+		return value, true
+	}
+	return "", false
+}
+
+func validUserColor(value string) bool {
+	_, ok := normalizeUserColor(value)
+	return ok
 }
 
 
