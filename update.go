@@ -19,14 +19,14 @@ func isThemeApplyShortcut(key tea.KeyPressMsg) bool {
 	if key.Code == tea.KeyF2 || (key.Code == tea.KeyEnter && key.Mod&4 != 0) {
 		return true
 	}
-	return key.Keystroke() == "f2" || key.Keystroke() == "ctrl+enter"
+	return key.Keystroke() == "f2" || key.Keystroke() == "ctrl+enter" || key.String() == "ctrl+enter"
 }
 
 func isThemeSaveShortcut(key tea.KeyPressMsg) bool {
 	if (key.Code == 's' || key.Code == 'S') && key.Mod&4 != 0 {
 		return true
 	}
-	return key.Keystroke() == "ctrl+s"
+	return key.Keystroke() == "ctrl+s" || key.String() == "ctrl+s"
 }
 
 func (m model) Update(
