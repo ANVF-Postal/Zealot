@@ -50,7 +50,7 @@ func (m *model) openThemeBrowser() {
 }
 
 func (m *model) themeVisibleRows() int {
-	return max(1, m.messageHeight()-2-2) // pane border, title and separator
+	return max(1, m.messageHeight()-2-2) // outer frame, title and separator
 }
 
 func (m *model) clampThemeSelection() {
@@ -86,14 +86,64 @@ func themeBrowserLeftWidth(total int) int {
 	return min(30, max(14, total/3))
 }
 
-// themeBrowserListIndexAt maps a mouse click in the left pane to its selected
-// theme. The screen coordinates include the app header and both pane borders.
+// themeBrowserLeftBounds keeps both columns usable while allowing the divider
+// to move. The available width excludes the one-cell divider.
+func themeBrowserLeftBounds(total int) (int, int) {
+	if total <= 2 {
+		return 1, 1
+	}
+	minLeft := min(12, max(1, total/3))
+	minRight := min(16, max(1, total/3))
+	if minLeft+minRight > total {
+		minLeft = max(1, total/2)
+		minRight = max(1, total-minLeft)
+	}
+	maxLeft := max(minLeft, total-minRight)
+	return minLeft, maxLeft
+}
+
+func (m model) themeBrowserColumnWidths() (int, int) {
+	columns := max(1, chatInnerWidth(m.width)-1) // reserve the divider cell
+	left := m.themeLeftWidth
+	if left <= 0 {
+		left = themeBrowserLeftWidth(columns)
+	}
+	minLeft, maxLeft := themeBrowserLeftBounds(columns)
+	left = min(max(left, minLeft), maxLeft)
+	return left, max(1, columns-left)
+}
+
+func (m model) themeBrowserContentStartX() int {
+	if narrowBordersHidden(m.width) {
+		return 0
+	}
+	return 1
+}
+
+func (m model) themeBrowserDividerX() int {
+	left, _ := m.themeBrowserColumnWidths()
+	return m.themeBrowserContentStartX() + left
+}
+
+func (m model) themeBrowserDividerContains(x, y int) bool {
+	return m.themesOpen &&
+		x >= m.themeBrowserDividerX()-1 && x <= m.themeBrowserDividerX()+1 &&
+		y >= 2 && y < 1+m.messageHeight()
+}
+
+func (m *model) setThemeBrowserDivider(x int) {
+	columns := max(1, chatInnerWidth(m.width)-1)
+	minLeft, maxLeft := themeBrowserLeftBounds(columns)
+	m.themeLeftWidth = min(max(x-m.themeBrowserContentStartX(), minLeft), maxLeft)
+}
+
+// themeBrowserListIndexAt maps a click in the left column to its selected
+// theme. The one-cell divider separates it from the details column.
 func (m model) themeBrowserListIndexAt(x, y int) (int, bool) {
-	available := chatInnerWidth(m.width)
-	leftWidth := themeBrowserLeftWidth(available)
-	leftStartX := 1
-	firstRowY := 5 // app header, outer pane border, inner pane border, title, separator
-	if x < leftStartX+1 || x >= leftStartX+leftWidth-1 || y < firstRowY {
+	leftWidth, _ := m.themeBrowserColumnWidths()
+	leftStartX := m.themeBrowserContentStartX()
+	firstRowY := 4 // header, outer frame, title, separator
+	if x < leftStartX || x >= leftStartX+leftWidth || y < firstRowY {
 		return 0, false
 	}
 	index := m.themeScroll + y - firstRowY
@@ -103,22 +153,19 @@ func (m model) themeBrowserListIndexAt(x, y int) (int, bool) {
 	return index, true
 }
 
-// renderThemeBrowser replaces the splash pane with the theme list and palette
-// details. Browsing a preset is only a preview; Enter is the explicit Apply.
+// renderThemeBrowser uses the chat frame as its only border. The two columns
+// are aligned by a single, draggable divider. Browsing remains preview-only;
+// Ctrl+Enter explicitly applies the selected preset.
 func (m model) renderThemeBrowser() string {
-	availableWidth := chatInnerWidth(m.width)
-	leftWidth := themeBrowserLeftWidth(availableWidth)
-	gapWidth := 1
-	rightWidth := max(1, availableWidth-leftWidth-gapWidth)
+	leftWidth, rightWidth := m.themeBrowserColumnWidths()
 	contentHeight := max(1, m.messageHeight()-2)
-	leftContentWidth := max(1, leftWidth-2)
-	rightContentWidth := max(1, rightWidth-2)
-
 	bg := lipgloss.Color(m.cfg.Theme.Background)
+	accentBG := lipgloss.Color(m.cfg.Theme.AccentColor)
 	border := lipgloss.Color(m.cfg.Theme.BorderColor)
+
 	leftRows := make([]string, 0, contentHeight)
 	leftRows = append(leftRows, m.styles.accent.Render("THEMES"))
-	leftRows = append(leftRows, m.styles.system.Render(strings.Repeat("─", leftContentWidth)))
+	leftRows = append(leftRows, m.styles.system.Render(strings.Repeat("─", leftWidth)))
 
 	visible := m.themeVisibleRows()
 	for row := 0; row < visible; row++ {
@@ -134,35 +181,34 @@ func (m model) renderThemeBrowser() string {
 		}
 		if index == m.themeSelected {
 			label = "› " + label
-			style := lipgloss.NewStyle().Foreground(bg).Background(lipgloss.Color(m.cfg.Theme.AccentColor)).Bold(true)
-			leftRows = append(leftRows, fitThemeRow(style.Render(truncateANSI(label, leftContentWidth)), leftContentWidth))
+			style := lipgloss.NewStyle().Foreground(bg).Background(accentBG).Bold(true)
+			leftRows = append(leftRows, fitThemeRowWithBackground(style.Render(truncateANSI(label, leftWidth)), leftWidth, accentBG))
 		} else {
 			label = "  " + label
 			style := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.TextColor)).Background(bg)
-			leftRows = append(leftRows, fitThemeRow(style.Render(truncateANSI(label, leftContentWidth)), leftContentWidth))
+			leftRows = append(leftRows, fitThemeRowWithBackground(style.Render(truncateANSI(label, leftWidth)), leftWidth, bg))
 		}
 	}
-	leftRows = fitThemeRows(leftRows, contentHeight, leftContentWidth)
+	leftRows = fitThemeRows(leftRows, contentHeight, leftWidth, bg)
 
-	rightRows := m.themeDetailsRows(rightContentWidth)
-	rightRows = fitThemeRows(rightRows, contentHeight, rightContentWidth)
-	paneStyle := func(width int) lipgloss.Style {
-		return lipgloss.NewStyle().
-			Width(width-2).
-			Height(contentHeight).
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(border).
-			BorderBackground(bg).
-			Background(bg)
+	rightRows := m.themeDetailsRows(rightWidth)
+	rightRows = fitThemeRows(rightRows, contentHeight, rightWidth, bg)
+
+	dividerStyle := lipgloss.NewStyle().Foreground(border).Background(bg)
+	dividerRows := make([]string, contentHeight)
+	for i := range dividerRows {
+		dividerRows[i] = dividerStyle.Render("│")
 	}
-	leftPane := paneStyle(leftWidth).Render(strings.Join(leftRows, "\n"))
-	rightPane := paneStyle(rightWidth).Render(strings.Join(rightRows, "\n"))
-	gap := lipgloss.NewStyle().Width(gapWidth).Height(m.messageHeight()).Background(bg).Render("")
-	content := lipgloss.JoinHorizontal(lipgloss.Top, leftPane, gap, rightPane)
+	content := lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		strings.Join(leftRows, "\n"),
+		strings.Join(dividerRows, "\n"),
+		strings.Join(rightRows, "\n"),
+	)
 	return m.chatBorderStyle().Width(m.width).Height(m.messageHeight()).Render(content)
 }
 
-func fitThemeRows(rows []string, height, width int) []string {
+func fitThemeRows(rows []string, height, width int, background ...lipgloss.Color) []string {
 	if len(rows) > height {
 		rows = rows[:height]
 	}
@@ -170,16 +216,28 @@ func fitThemeRows(rows []string, height, width int) []string {
 		rows = append(rows, "")
 	}
 	for i := range rows {
-		rows[i] = fitThemeRow(rows[i], width)
+		if len(background) > 0 {
+			rows[i] = fitThemeRowWithBackground(rows[i], width, background[0])
+		} else {
+			rows[i] = fitThemeRow(rows[i], width)
+		}
 	}
 	return rows
 }
 
 func fitThemeRow(line string, width int) string {
+	return fitThemeRowWithBackground(line, width, "")
+}
+
+func fitThemeRowWithBackground(line string, width int, background lipgloss.Color) string {
 	line = truncateANSI(line, width)
 	padding := max(0, width-lipgloss.Width(line))
 	if padding > 0 {
-		line += strings.Repeat(" ", padding)
+		spaces := strings.Repeat(" ", padding)
+		if background != "" {
+			spaces = lipgloss.NewStyle().Background(background).Render(spaces)
+		}
+		line += spaces
 	}
 	return line
 }
@@ -215,7 +273,10 @@ func (m model) themeDetailsRows(width int) []string {
 		{"Composer selection", preset.Colors.SelectionBackgroundColor},
 	}
 	for _, color := range colors {
-		swatch := lipgloss.NewStyle().Foreground(lipgloss.Color(color.value)).Render("██")
+		swatch := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(color.value)).
+			Background(lipgloss.Color(color.value)).
+			Render("  ")
 		rows = append(rows, fmt.Sprintf("%s %-20s %s", swatch, color.label, color.value))
 	}
 	return rows
