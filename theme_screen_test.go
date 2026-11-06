@@ -57,6 +57,48 @@ func TestThemeBrowserShowsPaletteDetails(t *testing.T) {
 	}
 }
 
+func TestThemeBrowserPaletteTextUsesThemeBackground(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	m := newModel(cfg, "lobby", false, nil)
+
+	rows := m.themeDetailsRows(60)
+	var backgroundRow string
+	for _, row := range rows {
+		if strings.Contains(stripANSISequences(row), "Background") {
+			backgroundRow = row
+			break
+		}
+	}
+	if backgroundRow == "" {
+		t.Fatal("background palette row was not rendered")
+	}
+
+	wantText := m.styles.app.Render(" Background           " + cfg.Theme.Background)
+	if !strings.Contains(backgroundRow, wantText) {
+		t.Fatalf("palette label/value do not use the theme background: %q", backgroundRow)
+	}
+	wantSwatch := lipgloss.NewStyle().Background(lipgloss.Color(cfg.Theme.Background)).Render("  ")
+	if !strings.HasPrefix(backgroundRow, wantSwatch) {
+		t.Fatalf("palette color swatch is missing its solid background: %q", backgroundRow)
+	}
+}
+
+func TestThemeBrowserFillsTheChatViewport(t *testing.T) {
+	m := newMessageInteractionTestModel(100)
+	m.width, m.height = 100, 30
+
+	if got, want := m.themeVisibleRows()+2, m.messageHeight(); got != want {
+		t.Fatalf("theme list rows plus title/separator = %d, want chat viewport height %d", got, want)
+	}
+	if got, want := lipgloss.Height(m.renderThemeBrowser()), m.messageHeight()+2; got != want {
+		t.Fatalf("theme browser rendered %d rows, want %d including the outer border", got, want)
+	}
+}
+
 func TestThemeBrowserLoadsAllPackEntries(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	if _, err := loadConfig(); err != nil {

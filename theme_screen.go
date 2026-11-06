@@ -54,7 +54,9 @@ func (m *model) openThemeBrowser() {
 }
 
 func (m *model) themeVisibleRows() int {
-	return max(1, m.messageHeight()-2-2) // outer frame, title and separator
+	// The title and separator occupy two rows inside the chat viewport.
+	// The viewport height itself already excludes the outer frame.
+	return max(1, m.messageHeight()-2)
 }
 
 func (m *model) clampThemeSelection() {
@@ -162,7 +164,7 @@ func (m model) themeBrowserListIndexAt(x, y int) (int, bool) {
 // Ctrl+Enter explicitly applies the selected preset.
 func (m model) renderThemeBrowser() string {
 	leftWidth, rightWidth := m.themeBrowserColumnWidths()
-	contentHeight := max(1, m.messageHeight()-2)
+	contentHeight := max(1, m.messageHeight())
 	bg := lipgloss.Color(m.cfg.Theme.Background)
 	accentBG := lipgloss.Color(m.cfg.Theme.AccentColor)
 	border := lipgloss.Color(m.cfg.Theme.BorderColor)
@@ -278,10 +280,10 @@ func (m model) themeDetailsRows(width int) []string {
 	}
 	for _, color := range colors {
 		swatch := lipgloss.NewStyle().
-			Foreground(lipgloss.Color(color.value)).
 			Background(lipgloss.Color(color.value)).
 			Render("  ")
-		rows = append(rows, fmt.Sprintf("%s %-20s %s", swatch, color.label, color.value))
+		paletteText := m.styles.app.Render(fmt.Sprintf(" %-20s %s", color.label, color.value))
+		rows = append(rows, swatch+paletteText)
 	}
 	return rows
 }
