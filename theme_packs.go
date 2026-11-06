@@ -111,6 +111,13 @@ func ensureMissingDefaultThemes(path string) error {
 	if _, err := toml.Decode(string(existing), &pack); err != nil {
 		return fmt.Errorf("decode existing default theme pack: %w", err)
 	}
+	// A pre-existing file without a schema version is not a pack Zealot
+	// can safely migrate. Preserve it exactly and leave config loading usable.
+	// Versioned packs, including unsupported future versions, are validated
+	// normally so we never append data using an unknown schema.
+	if pack.SchemaVersion == 0 {
+		return nil
+	}
 	if err := validateThemePack(pack); err != nil {
 		return fmt.Errorf("validate existing default theme pack: %w", err)
 	}

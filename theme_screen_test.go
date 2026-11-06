@@ -141,6 +141,10 @@ func TestThemeBrowserPaletteTextUsesThemeBackground(t *testing.T) {
 		t.Fatalf("load config: %v", err)
 	}
 	m := newModel(cfg, "lobby", false, nil)
+	m.openThemeBrowser()
+	if len(m.themeEntries) == 0 {
+		t.Fatalf("opening theme browser did not load the generated default pack")
+	}
 
 	rows := m.themeDetailsRows(60)
 	var backgroundRow string
