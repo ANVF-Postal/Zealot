@@ -348,11 +348,10 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	scrollLabel := "PgUp/PgDn"
 	scrollTail := ": Scroll • Ctrl+C: "
 	if usersOpen || splashOpen {
-		// Keep panel-specific keyboard shortcut wording explicit.
 		scrollTail = ": Scroll • Esc: close • Ctrl+C: "
-		if m.themesOpen {
-			scrollTail = ": Scroll • Enter: apply • Esc: back • Ctrl+C: "
-		}
+	}
+	if m.themesOpen {
+		scrollTail = ": Scroll • Ctrl+Enter: apply • Esc: back • Ctrl+C: "
 	}
 	prefix := lead + scrollLabel + scrollTail
 
@@ -362,7 +361,7 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	}
 
 	targets := footerTargets{}
-	includeSend := !usersOpen && !splashOpen
+	includeSend := !usersOpen && (!splashOpen || m.themesOpen)
 	sendPrefix := "Enter: "
 	sendText := "[Send]"
 	quitWidth := lipgloss.Width(quitText)
@@ -406,7 +405,7 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	}
 
 	pageLabelWidth := lipgloss.Width(scrollLabel)
-	if !usersOpen && !splashOpen {
+	if !usersOpen && (!splashOpen || m.themesOpen) {
 		// Compression order in the main view:
 		// 1. Enter: is removed above.
 		// 2. The explanatory shortcut tail is clipped from its right edge.
@@ -570,7 +569,7 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen 
 
 	parts := []string{header, chatBox, inputBox}
 	if m.statusBarVisible() {
-		statusText, _ := m.renderStatusBar(usersOpen, splashOpen)
+		statusText, _ := m.renderStatusBar(usersOpen, splashOpen && !m.themesOpen)
 		status := m.styles.status.Render(statusText)
 		parts = append(parts, status)
 	}
