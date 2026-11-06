@@ -248,6 +248,29 @@ func fitThemeRowWithBackground(line string, width int, background color.Color) s
 	return line
 }
 
+const themeApplyButtonLabel = "[APPLY]"
+
+func themeApplyButtonRow() int {
+	// Title, pack, state, spacer, palette heading, eight palette rows,
+	// then a spacer before the apply action.
+	return 5 + 8 + 1
+}
+
+// themeApplyButtonContains maps the centered right-pane button to terminal
+// coordinates. The chat content begins on row two below the header and frame.
+func (m model) themeApplyButtonContains(x, y int) bool {
+	if !m.themesOpen || m.themeError != "" || len(m.themeEntries) == 0 ||
+		themeApplyButtonRow() >= max(1, m.messageHeight()) {
+		return false
+	}
+	leftWidth, rightWidth := m.themeBrowserColumnWidths()
+	rightStartX := m.themeBrowserContentStartX() + leftWidth + 1
+	buttonWidth := lipgloss.Width(themeApplyButtonLabel) + 2 // one-cell padding on each side
+	buttonStartX := rightStartX + max(0, (rightWidth-buttonWidth)/2)
+	buttonY := 2 + themeApplyButtonRow()
+	return y == buttonY && x >= buttonStartX && x < buttonStartX+buttonWidth
+}
+
 func (m model) themeDetailsRows(width int) []string {
 	if m.themeError != "" {
 		return []string{m.styles.accent.Render("THEME LIBRARY"), "", m.styles.system.Render(truncateANSI(m.themeError, width))}
@@ -257,7 +280,7 @@ func (m model) themeDetailsRows(width int) []string {
 	}
 	entry := m.themeEntries[min(max(0, m.themeSelected), len(m.themeEntries)-1)]
 	preset := entry.Preset
-	state := "Preview only · Ctrl+Enter to apply"
+	state := "Preview only · F2 or [APPLY] to use"
 	if preset.Colors == m.cfg.Theme {
 		state = "✓ Currently active"
 	}
@@ -285,6 +308,15 @@ func (m model) themeDetailsRows(width int) []string {
 		paletteText := m.styles.app.Render(fmt.Sprintf(" %-20s %s", color.label, color.value))
 		rows = append(rows, swatch+paletteText)
 	}
+
+	button := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.cfg.Theme.Background)).
+		Background(lipgloss.Color(m.cfg.Theme.AccentColor)).
+		Bold(true).
+		Padding(0, 1).
+		Render(themeApplyButtonLabel)
+	buttonPadding := max(0, (width-lipgloss.Width(button))/2)
+	rows = append(rows, "", strings.Repeat(" ", buttonPadding)+button)
 	return rows
 }
 
