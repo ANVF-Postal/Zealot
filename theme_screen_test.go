@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
 
@@ -149,6 +150,19 @@ func TestThemeBrowserDividerCanBeResized(t *testing.T) {
 	m.setThemeBrowserDivider(initial + 7)
 	if got := m.themeBrowserDividerX(); got != initial+7 {
 		t.Fatalf("divider moved to %d, want %d", got, initial+7)
+	}
+}
+
+
+func TestThemeBrowserAllowsComposerTyping(t *testing.T) {
+	m := newMessageInteractionTestModel(100)
+	m.width, m.height = 100, 30
+	m.splashOpen = true
+	m.themesOpen = true
+	updated, _ := m.Update(tea.KeyPressMsg{Text: "h"})
+	next := updated.(model)
+	if next.input.Value() != "h" {
+		t.Fatalf("theme browser swallowed composer input: got %q, want %q", next.input.Value(), "h")
 	}
 }
 
