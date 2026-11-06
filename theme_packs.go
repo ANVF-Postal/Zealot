@@ -392,7 +392,8 @@ func saveThemePresetFile(entry themeListEntry, preset ThemePreset) (themeListEnt
 			return themeListEntry{}, fmt.Errorf("close renamed theme file %q: %w", newFilename, err)
 		}
 		if err := os.Remove(oldPath); err != nil {
-			return themeListEntry{}, fmt.Errorf("theme saved as %q, but could not remove the previous file: %w", newFilename, err)
+			_ = os.Remove(newPath)
+			return themeListEntry{}, fmt.Errorf("could not finish renaming theme file %q: %w", entry.FileName, err)
 		}
 	}
 	return themeListEntry{Preset: preset, PackName: pack.PackName, FileName: newFilename}, nil
