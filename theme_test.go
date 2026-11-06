@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -278,5 +279,45 @@ func TestLoadThemePacksRejectsUnsupportedSchema(t *testing.T) {
 	}
 	if _, err := loadThemePacks(); err == nil {
 		t.Fatalf("loadThemePacks() accepted an unsupported schema version")
+	}
+}
+
+
+func TestLoadConfigAppendsMissingThemeColorsWithoutOverwritingCustomColors(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	const original = `name = "Legacy"
+background = "#202020"
+text_color = "#EEEEEE"
+border_color = "#555555"
+accent_color = "#7C5CFC"
+hover_text_color = "#ABCDEF"
+# keep this user's comment
+custom_setting = "keep"
+`
+	writeConfigForTest(t, original)
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load legacy config: %v", err)
+	}
+	if cfg.Theme.HoverTextColor != "#ABCDEF" {
+		t.Fatalf("custom hover color = %q, want #ABCDEF", cfg.Theme.HoverTextColor)
+	}
+	data, err := os.ReadFile(configPath())
+	if err != nil {
+		t.Fatalf("read migrated config: %v", err)
+	}
+	content := string(data)
+	for _, want := range []string{
+		"# keep this user's comment",
+		"custom_setting = \"keep\"",
+		"hover_text_color = \"#ABCDEF\"",
+		"muted_text_color = \"#707786\"",
+		"mention_background_color = \"#3C3622\"",
+		"selection_background_color = \"#3D5275\"",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("migrated config does not contain %q", want)
+		}
 	}
 }

@@ -174,6 +174,9 @@ func loadConfig() (Config, error) {
 		cfg.Name = "Anonymous"
 	}
 
+	if err := ensureThemeColorsInConfig(path, data, cfg.Theme); err != nil {
+		return cfg, err
+	}
 	if err := ensureThemeLibrary(); err != nil {
 		return cfg, err
 	}
@@ -252,4 +255,62 @@ func validUserColor(value string) bool {
 	}
 	n, err := strconv.Atoi(value)
 	return err == nil && n >= 0 && n <= 255
+}
+
+
+// ensureThemeColorsInConfig appends newly introduced palette keys that are
+// absent from an older config. It preserves existing values, comments, and
+// unrelated settings instead of rewriting the user's file.
+func ensureThemeColorsInConfig(path string, contents []byte, theme Theme) error {
+	present := make(map[string]bool)
+	for _, line := range strings.Split(string(contents), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			present[strings.TrimSpace(parts[0])] = true
+		}
+	}
+
+	entries := []struct {
+		key   string
+		value string
+	}{
+		{key: "background", value: theme.Background},
+		{key: "text_color", value: theme.TextColor},
+		{key: "border_color", value: theme.BorderColor},
+		{key: "accent_color", value: theme.AccentColor},
+		{key: "hover_text_color", value: theme.HoverTextColor},
+		{key: "muted_text_color", value: theme.MutedTextColor},
+		{key: "mention_background_color", value: theme.MentionBackgroundColor},
+		{key: "selection_background_color", value: theme.SelectionBackgroundColor},
+	}
+
+	var missing []string
+	for _, entry := range entries {
+		if !present[entry.key] {
+			missing = append(missing, fmt.Sprintf("%s = %q", entry.key, entry.value))
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		return fmt.Errorf("open config to add missing theme colors: %w", err)
+	}
+	defer file.Close()
+
+	if _, err := fmt.Fprintln(file, "\n# Theme colors added by Zealot."); err != nil {
+		return fmt.Errorf("write theme config migration comment: %w", err)
+	}
+	for _, line := range missing {
+		if _, err := fmt.Fprintln(file, line); err != nil {
+			return fmt.Errorf("write missing theme config key: %w", err)
+		}
+	}
+	return nil
 }
