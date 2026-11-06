@@ -60,7 +60,7 @@ func TestCloneBuiltInThemeCreatesIndependentFile(t *testing.T) {
 		t.Fatal("clone action is not laid out in the horizontal row")
 	}
 	x := rightStart + (start+end)/2
-	y := 2 + themeCloneButtonRow()
+	y := 2 + m.themeActionButtonRowForWidth(rightWidth)
 	if !m.themeCloneButtonContains(x, y) {
 		t.Fatal("clone button did not register its visible hitbox")
 	}
@@ -142,8 +142,8 @@ func TestThemeEditorRenameAndColorChangesSaveToRenamedFile(t *testing.T) {
 		t.Fatal("save action is not laid out in the horizontal row")
 	}
 	saveX := rightStart + (saveStart+saveEnd)/2
-	saveY := 2 + themeSaveButtonRow()
-	if !m.themeSaveButtonContains(saveX, saveY) {
+	saveY := 2 + m.themeActionButtonRowForWidth(rightWidth)
+	if !m.themeSaveButtonContains(saveX, saveY) {}
 		t.Fatalf("Save button did not register its visible hitbox at (%d,%d)", saveX, saveY)
 	}
 	updated, _ = m.Update(tea.MouseClickMsg{X: saveX, Y: saveY, Button: tea.MouseLeft})
@@ -257,6 +257,85 @@ func TestApplyingDirtyCustomThemeRequiresSavingFirst(t *testing.T) {
 	}
 	if !strings.Contains(m.themeEditError, "Save") {
 		t.Fatalf("unsaved apply did not explain that Save is required: %q", m.themeEditError)
+	}
+}
+
+func TestThemeDescriptionCanBeEditedAndSaved(t *testing.T) {
+	m := newThemeEditorTestModel(t)
+	m.cloneSelectedTheme()
+	leftWidth, _ := m.themeBrowserColumnWidths()
+	rightStart := m.themeBrowserContentStartX() + leftWidth + 1
+	y := 2 + m.themeDescriptionHeaderRow()
+	if !m.themeDescriptionContains(rightStart, y) {
+		t.Fatal("description did not expose an editable hitbox")
+	}
+	updated, _ := m.Update(tea.MouseClickMsg{X: rightStart, Y: y, Button: tea.MouseLeft})
+	m = updated.(model)
+	if m.themeEditField != "description" {
+		t.Fatalf("description click opened field %q, want description", m.themeEditField)
+	}
+	m.input.SetValue("A warm palette for late-night terminal sessions.")
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = updated.(model)
+	if !m.themeDirty {
+		t.Fatal("description edit did not mark the theme dirty")
+	}
+	m.saveSelectedThemeEdits()
+	saved, ok := m.selectedThemeEntry()
+	if !ok || saved.Preset.Description != "A warm palette for late-night terminal sessions." {
+		t.Fatalf("saved description = %+v", saved.Preset)
+	}
+	data, err := os.ReadFile(filepath.Join(themesDir(), saved.FileName))
+	if err != nil {
+		t.Fatalf("read theme file: %v", err)
+	}
+	pack, err := decodeThemePackBytes(data)
+	if err != nil {
+		t.Fatalf("decode theme file: %v", err)
+	}
+	if pack.Themes[0].Description != saved.Preset.Description {
+		t.Fatalf("description was not persisted: %+v", pack.Themes[0])
+	}
+}
+
+func TestSingleThemeFileOmitsPackLabelButMultiThemePackKeepsIt(t *testing.T) {
+	m := newThemeEditorTestModel(t)
+	m.themeEntries = []themeListEntry{{
+		Preset: ThemePreset{Name: "Solo", Colors: defaultTheme()},
+		PackName: "Custom themes", ThemeCount: 1, FileName: "theme-solo.toml",
+	}}
+	rows := stripANSISequences(strings.Join(m.themeDetailsRows(60), "\n"))
+	if strings.Contains(rows, "Pack: ") {
+		t.Fatalf("single-theme file unexpectedly displays a Pack label: %s", rows)
+	}
+	m.themeEntries[0].ThemeCount = 2
+	rows = stripANSISequences(strings.Join(m.themeDetailsRows(60), "\n"))
+	if !strings.Contains(rows, "Pack: Custom themes") {
+		t.Fatalf("multi-theme pack does not display its Pack label: %s", rows)
+	}
+}
+
+func TestThemeEditorAcceptsHexWithoutHash(t *testing.T) {
+	m := newThemeEditorTestModel(t)
+	m.cloneSelectedTheme()
+	m.beginThemeFieldEdit("accent_color")
+	m.input.SetValue("ff8c2a")
+	m.finishThemeFieldEdit()
+	entry, _ := m.selectedThemeEntry()
+	if entry.Preset.Colors.AccentColor != "#FF8C2A" {
+		t.Fatalf("bare hex color normalized to %q, want #FF8C2A", entry.Preset.Colors.AccentColor)
+	}
+}
+
+func TestThemeApplyShortcutUsesKeyCodeAndModifier(t *testing.T) {
+	if !isThemeApplyShortcut(tea.KeyPressMsg{Code: tea.KeyF2}) {
+		t.Fatal("F2 key code was not recognized")
+	}
+	if !isThemeApplyShortcut(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: 4}) {
+		t.Fatal("Ctrl+Enter key code/modifier was not recognized")
+	}
+	if !isThemeSaveShortcut(tea.KeyPressMsg{Code: 's', Mod: 4}) {
+		t.Fatal("Ctrl+S key code/modifier was not recognized")
 	}
 }
 
