@@ -318,13 +318,13 @@ func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
 	m.themesOpen = true
 	line, targets := m.renderStatusBar(false, false)
 	plain := stripANSISequences(line)
-	for _, want := range []string{"PgUp", "PgDn", "Ctrl+T: apply theme", "Esc: back", "[Send]", "apply", "Quit"} {
+	for _, want := range []string{"PgUp", "PgDn", "Ctrl+T: Apply • Esc: back", "[Send]", "Quit"} {
 		if !strings.Contains(plain, want) {
 			t.Errorf("theme footer is missing %q: %s", want, plain)
 		}
 	}
-	if strings.Contains(plain, "[apply]") || strings.Contains(plain, "[APPLY]") {
-		t.Fatalf("theme footer still renders Apply with square brackets: %s", plain)
+	if strings.Count(plain, "Apply") != 1 || strings.Contains(plain, "apply") {
+		t.Fatalf("theme footer should contain exactly one title-case Apply action in the shortcut hint: %s", plain)
 	}
 	if !targets.hasSend {
 		t.Fatal("theme browser footer does not expose the send action")
@@ -334,7 +334,7 @@ func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
 	}
 }
 
-func TestThemeFooterApplyMovesWithQuitAcrossWidths(t *testing.T) {
+func TestThemeFooterApplyStaysInShortcutHintAcrossWidths(t *testing.T) {
 	m := newMessageInteractionTestModel(100)
 	m.themesOpen = true
 	m.splashOpen = true
@@ -348,11 +348,15 @@ func TestThemeFooterApplyMovesWithQuitAcrossWidths(t *testing.T) {
 			if targets.applyStart < 0 || targets.applyEnd <= targets.applyStart {
 				t.Fatalf("width %d produced invalid Apply hitbox: %+v", width, targets)
 			}
+			runes := []rune(plain)
+			if targets.applyEnd > len(runes) || string(runes[targets.applyStart:targets.applyEnd]) != "Apply" {
+				t.Fatalf("width %d: Apply hitbox does not cover the shortcut label: %+v; footer=%q", width, targets, plain)
+			}
 			if targets.applyEnd > targets.quitStart {
 				t.Fatalf("width %d: Apply overlaps Quit: %+v; footer=%q", width, targets, plain)
 			}
-			if strings.Contains(plain, "[apply]") {
-				t.Fatalf("width %d: Apply still has brackets: %q", width, plain)
+			if strings.Contains(plain, "apply") || strings.Count(plain, "Apply") != 1 {
+				t.Fatalf("width %d: expected one Apply in the shortcut hint and no separate footer button: %q", width, plain)
 			}
 		}
 		if targets.hasSend && targets.quitEnd > targets.sendStart {
