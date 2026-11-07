@@ -433,18 +433,37 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	pageLabelWidth := lipgloss.Width(scrollLabel)
 	if !usersOpen && (!splashOpen || m.themesOpen) {
 		if lipgloss.Width(prefix) > maxPrefixWidth {
-			tailBudget := maxPrefixWidth - lipgloss.Width(lead) - pageLabelWidth
-			if tailBudget >= 0 {
-				prefix = lead + scrollLabel
-				if tailBudget > 0 {
-					prefix += truncateANSI(scrollTail, tailBudget)
+			if m.themesOpen && includeApply {
+				// Keep the theme Apply shortcut reachable as the footer narrows.
+				// Compress the status and trailing hints before clipping Ctrl+T.
+				const applyShortcut = ": Ctrl+T:"
+				coreWidth := lipgloss.Width(scrollLabel + applyShortcut)
+				if maxPrefixWidth >= coreWidth {
+					prefix = scrollLabel + applyShortcut
+					remainder := strings.TrimPrefix(scrollTail, applyShortcut)
+					remainingWidth := maxPrefixWidth - coreWidth
+					if remainingWidth > 0 {
+						prefix += truncateANSI(remainder, remainingWidth)
+					}
+				} else {
+					// At very narrow widths, move Apply into the fixed action
+					// cluster beside Quit rather than dropping the button.
+					prefix = ""
 				}
-			} else if maxPrefixWidth >= pageLabelWidth {
-				statusBudget := maxPrefixWidth - pageLabelWidth
-				prefix = compactFooterStatusLead(m.status, statusBudget) + scrollLabel
 			} else {
-				// Never show a partial page label as though it were clickable.
-				prefix = ""
+				tailBudget := maxPrefixWidth - lipgloss.Width(lead) - pageLabelWidth
+				if tailBudget >= 0 {
+					prefix = lead + scrollLabel
+					if tailBudget > 0 {
+						prefix += truncateANSI(scrollTail, tailBudget)
+					}
+				} else if maxPrefixWidth >= pageLabelWidth {
+					statusBudget := maxPrefixWidth - pageLabelWidth
+					prefix = compactFooterStatusLead(m.status, statusBudget) + scrollLabel
+				} else {
+					// Never show a partial page label as though it were clickable.
+					prefix = ""
+				}
 			}
 		}
 	} else {
@@ -483,8 +502,10 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		targets.pgDnEnd = targets.pgDnStart + lipgloss.Width("PgDn")
 	}
 
+	applyInline := false
 	if includeApply {
 		if applyInsertByte := strings.Index(prefixVisible, "Ctrl+T:"); applyInsertByte >= 0 {
+			applyInline = true
 			applyInsertByte += len("Ctrl+T:")
 			applyStart := lipgloss.Width(prefixVisible[:applyInsertByte]) + 1
 			targets.hasApply = true
@@ -496,6 +517,11 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 				rendered: m.styles.status.Render(" ") + m.styles.accent.Render("Apply"),
 			})
 		}
+	}
+	if includeApply && !applyInline {
+		targets.hasApply = true
+		targets.applyStart = prefixWidth + 1
+		targets.applyEnd = targets.applyStart + lipgloss.Width("Apply")
 	}
 
 	sort.Slice(highlights, func(i, j int) bool { return highlights[i].start < highlights[j].start })
@@ -522,6 +548,10 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	position := prefixWidth + applyWidth
 	var line strings.Builder
 	line.WriteString(renderedPrefix)
+	if includeApply && !applyInline {
+		line.WriteString(m.styles.status.Render(" "))
+		line.WriteString(m.styles.accent.Render("Apply"))
+	}
 	if quitLeftPad > 0 {
 		line.WriteString(m.styles.status.Render(strings.Repeat(" ", quitLeftPad)))
 		position += quitLeftPad
