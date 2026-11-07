@@ -360,7 +360,7 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		case m.themeEditField != "":
 			scrollTail = ": Enter: confirm • Esc: cancel • Ctrl+C: "
 		case m.themeDirty:
-			scrollTail = ": Ctrl+S: save • Ctrl+T • Esc: back • Ctrl+C: "
+			scrollTail = ": Ctrl+S: save • Ctrl+T after save • Esc: back • Ctrl+C: "
 		default:
 			scrollTail = ": Ctrl+T • Esc: back • Ctrl+C: "
 		}
@@ -501,8 +501,6 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		targets.pgDnEnd = targets.pgDnStart + lipgloss.Width("PgDn")
 	}
 
-
-
 	sort.Slice(highlights, func(i, j int) bool { return highlights[i].start < highlights[j].start })
 	var prefixBuilder strings.Builder
 	cursor := 0
@@ -522,9 +520,8 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		gapWidth = 0
 	}
 
-	// Quit is a real button, not merely decoration in the Ctrl+C hint. Keep
-	// its measured hitbox directly after the prefix so mouse confirmation,
-	// second-click quit, and the Sure? confirmation label continue to work.
+	// Apply (when shown) and Quit share the measured action cluster.
+	// Quit retains its confirmation and second-click behavior.
 	position := prefixWidth
 	var line strings.Builder
 	line.WriteString(renderedPrefix)
