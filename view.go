@@ -422,10 +422,8 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 			quitRightPad = 0
 		}
 	}
-	if availableWidth < quitWidth+applyWidth {
-		includeApply = false
-		applyWidth = 0
-	}
+	// Keep Apply in the fixed footer action layout even when space is tight.
+	// The shortcut prefix and its status lead compress before this action yields.
 	quitButtonWidth := quitWidth + quitLeftPad + quitRightPad
 	maxPrefixWidth := availableWidth - quitButtonWidth - applyWidth - sendWidth
 	if maxPrefixWidth < 0 {
