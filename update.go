@@ -18,7 +18,7 @@ import (
 func isThemeApplyShortcut(key tea.KeyPressMsg) bool {
 	// Ctrl+T can arrive as a printable key with a Ctrl modifier (enhanced
 	// keyboard protocols) or as the legacy ASCII control byte 0x14.
-	if key.Mod&4 != 0 && (key.Code == 't' || key.Code == 'T' || strings.EqualFold(key.Text, "t")) {
+	if key.Mod&tea.ModCtrl != 0 && (key.Code == 't' || key.Code == 'T' || strings.EqualFold(key.Text, "t")) {
 		return true
 	}
 	if key.Code == 20 || key.Text == string(rune(20)) {
@@ -30,7 +30,7 @@ func isThemeApplyShortcut(key tea.KeyPressMsg) bool {
 }
 
 func isThemeSaveShortcut(key tea.KeyPressMsg) bool {
-	if (key.Code == 's' || key.Code == 'S') && key.Mod&4 != 0 {
+	if (key.Code == 's' || key.Code == 'S') && key.Mod&tea.ModCtrl != 0 {
 		return true
 	}
 	return key.Keystroke() == "ctrl+s" || key.String() == "ctrl+s"
