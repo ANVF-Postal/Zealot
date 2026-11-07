@@ -414,6 +414,18 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 			sendWidth = 0
 		}
 	}
+	if availableWidth < quitWidth+applyWidth+quitLeftPad+quitRightPad {
+		if quitLeftPad > 0 {
+			quitLeftPad = 0
+		}
+		if availableWidth < quitWidth+applyWidth+quitRightPad {
+			quitRightPad = 0
+		}
+	}
+	if availableWidth < quitWidth+applyWidth {
+		includeApply = false
+		applyWidth = 0
+	}
 	quitButtonWidth := quitWidth + quitLeftPad + quitRightPad
 	maxPrefixWidth := availableWidth - quitButtonWidth - applyWidth - sendWidth
 	if maxPrefixWidth < 0 {
