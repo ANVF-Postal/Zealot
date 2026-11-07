@@ -331,8 +331,14 @@ func TestThemeApplyShortcutUsesKeyCodeAndModifier(t *testing.T) {
 	if !isThemeApplyShortcut(tea.KeyPressMsg{Code: tea.KeyF2}) {
 		t.Fatal("F2 key code was not recognized")
 	}
-	if !isThemeApplyShortcut(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: 4}) {
-		t.Fatal("Ctrl+Enter key code/modifier was not recognized")
+	if !isThemeApplyShortcut(tea.KeyPressMsg{Code: 't', Mod: 4}) {
+		t.Fatal("Ctrl+T key code/modifier was not recognized")
+	}
+	if !isThemeApplyShortcut(tea.KeyPressMsg{Code: 20}) {
+		t.Fatal("legacy Ctrl+T control byte was not recognized")
+	}
+	if isThemeApplyShortcut(tea.KeyPressMsg{Code: 't'}) {
+		t.Fatal("plain t key unexpectedly triggered theme application")
 	}
 	if !isThemeSaveShortcut(tea.KeyPressMsg{Code: 's', Mod: 4}) {
 		t.Fatal("Ctrl+S key code/modifier was not recognized")
