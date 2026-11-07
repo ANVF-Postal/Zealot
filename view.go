@@ -343,62 +343,52 @@ func compactFooterStatusLead(status string, maxWidth int) string {
 	return " " + shortStatus + separator
 }
 
-// renderStatusBar keeps ordinary shortcuts on the left and anchors the
-// Apply/Quit/Send action cluster to the right edge. The measured layout also
-// supplies mouse hitboxes, so clicks stay aligned with the rendered labels.
+// renderStatusBar keeps keyboard shortcuts and Quit together on the left,
+// while anchoring the composer Send action to the right edge. Measured
+// positions supply mouse hitboxes aligned with the rendered labels.
 func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTargets) {
 	availableWidth := max(1, m.width-1) // reserve one final cell as a styled blank
 	lead := " " + m.status + " • "
 	scrollLabel := "PgUp/PgDn"
-	scrollTail := ": Scroll • Ctrl+C: "
-	if usersOpen || splashOpen {
-		scrollTail = ": Scroll • Esc: close • Ctrl+C: "
-	}
-	if m.themesOpen {
-		switch {
-		case m.themeEditField != "":
-			scrollTail = ": Enter: confirm • Esc: cancel • Ctrl+C: "
-		case m.themeDirty:
-			scrollTail = ": Ctrl+S: save • Ctrl+T: Apply after save • Esc: back • Ctrl+C: "
-		default:
-			scrollTail = ": Ctrl+T: Apply • Esc: back • Ctrl+C: "
-		}
-	}
-	prefix := lead + scrollLabel + scrollTail
-
 	quitText := "Quit"
 	if m.quitConfirm {
 		quitText = "Sure?"
 	}
+	scrollTail := ": Scroll • " + quitText + " • Ctrl+C: "
+	if usersOpen || splashOpen {
+		scrollTail = ": Scroll • Esc: close • " + quitText + " • Ctrl+C: "
+	}
+	if m.themesOpen {
+		switch {
+		case m.themeEditField != "":
+			scrollTail = ": Enter: confirm • Esc: cancel • " + quitText + " • Ctrl+C: "
+		case m.themeDirty:
+			scrollTail = ": Ctrl+S: save • Ctrl+T: Apply after save • Esc: back • " + quitText + " • Ctrl+C: "
+		default:
+			scrollTail = ": Ctrl+T: Apply • Esc: back • " + quitText + " • Ctrl+C: "
+		}
+	}
+	prefix := lead + scrollLabel + scrollTail
+
 	sendText := "[Send]"
 	sendPrefix := "Enter: "
 	includeSend := !usersOpen && (!splashOpen || m.themesOpen)
 	includeApply := m.themesOpen && m.themeError == "" && m.themeEditField == ""
 
-	quitLeftPad, quitRightPad := 1, 1
-	quitWidth := lipgloss.Width(quitText)
 	sendTextWidth := lipgloss.Width(sendText)
 
 	actionWidth := func() int {
-		width := quitWidth + quitLeftPad + quitRightPad
+		width := 0
 		if includeSend {
 			width += lipgloss.Width(sendPrefix) + sendTextWidth
 		}
 		return width
 	}
 
-	// Give the Enter hint up first, then compact Quit padding. If the
-	// terminal is exceptionally narrow, drop Send before the Quit action.
+	// Keep the composer action on the right; Quit stays beside Ctrl+C in
+	// the shortcut text so the two keyboard hints remain together.
 	if includeSend && lipgloss.Width(prefix)+actionWidth() > availableWidth {
 		sendPrefix = ""
-	}
-	for actionWidth() > availableWidth && (quitLeftPad+quitRightPad) > 0 {
-		switch {
-		case quitRightPad > 0:
-			quitRightPad = 0
-		case quitLeftPad > 0:
-			quitLeftPad = 0
-		}
 	}
 	if actionWidth() > availableWidth && includeSend {
 		includeSend = false
@@ -463,6 +453,15 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 			})
 		}
 	}
+	quitStartByte := -1
+	if ctrlCStartByte := strings.Index(prefixVisible, "Ctrl+C: "); ctrlCStartByte >= 0 {
+		quitStartByte = strings.LastIndex(prefixVisible[:ctrlCStartByte], quitText)
+		if quitStartByte >= 0 {
+			highlights = append(highlights, footerHighlight{
+				start: quitStartByte, end: quitStartByte + len(quitText), rendered: m.styles.accent.Render(quitText),
+			})
+		}
+	}
 	sort.Slice(highlights, func(i, j int) bool { return highlights[i].start < highlights[j].start })
 	var prefixBuilder strings.Builder
 	cursor := 0
@@ -492,6 +491,10 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		targets.applyStart = lipgloss.Width(prefixVisible[:applyStartByte])
 		targets.applyEnd = targets.applyStart + lipgloss.Width("Apply")
 	}
+	if quitStartByte >= 0 {
+		targets.quitStart = lipgloss.Width(prefixVisible[:quitStartByte])
+		targets.quitEnd = targets.quitStart + lipgloss.Width(quitText)
+	}
 
 	var line strings.Builder
 	line.WriteString(renderedPrefix)
@@ -499,13 +502,6 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		line.WriteString(m.styles.status.Render(strings.Repeat("⠀", gapWidth)))
 	}
 	position := prefixWidth + gapWidth
-
-	targets.quitStart = position + quitLeftPad
-	targets.quitEnd = targets.quitStart + quitWidth
-	line.WriteString(m.styles.status.Render(strings.Repeat(" ", quitLeftPad)))
-	line.WriteString(m.styles.accent.Render(quitText))
-	line.WriteString(m.styles.status.Render(strings.Repeat(" ", quitRightPad)))
-	position += quitLeftPad + quitWidth + quitRightPad
 
 	if includeSend {
 		sendPrefixWidth := lipgloss.Width(sendPrefix)
@@ -522,8 +518,8 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		}
 	}
 
-	// Keep the final inset cell painted while Quit and Send remain measured
-	// as one right-aligned cluster across terminal resizes.
+	// Keep the final inset cell painted while the composer action remains
+	// anchored to the right edge across terminal resizes.
 	line.WriteString(m.styles.status.Render("⠀"))
 	return line.String(), targets
 }
