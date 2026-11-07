@@ -373,7 +373,7 @@ func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
 	m.themesOpen = true
 	line, targets := m.renderStatusBar(false, false)
 	plain := stripANSISequences(line)
-	for _, want := range []string{"PgUp", "PgDn", "Ctrl+T • Esc: back • Ctrl+C:", "Apply", "Quit", "[Send]"} {
+	for _, want := range []string{"PgUp", "PgDn", "Ctrl+T: Apply • Esc: back • Ctrl+C:", "Apply", "Quit", "[Send]"} {
 		if !strings.Contains(plain, want) {
 			t.Errorf("theme footer is missing %q: %s", want, plain)
 		}
@@ -383,8 +383,8 @@ func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
 		string(runes[targets.applyStart:targets.applyEnd]) != "Apply" {
 		t.Fatalf("theme footer does not expose a clickable Apply button: %+v; %s", targets, plain)
 	}
-	if targets.applyEnd > targets.quitStart {
-		t.Fatalf("theme Apply overlaps Quit: %+v; %s", targets, plain)
+	if !strings.Contains(plain, "Ctrl+T: Apply • Esc: back • Ctrl+C:") {
+		t.Fatalf("Apply is not inline in the Ctrl+T shortcut hint: %s", plain)
 	}
 	if targets.quitEnd <= targets.quitStart || targets.quitEnd > len(runes) ||
 		string(runes[targets.quitStart:targets.quitEnd]) != "Quit" {
@@ -443,7 +443,7 @@ func TestThemeBrowserFooterQuitClickOpensConfirmation(t *testing.T) {
 	}
 }
 
-func TestThemeFooterApplyMovesWithQuitAndSendAcrossWidths(t *testing.T) {
+func TestThemeFooterApplyStaysClickableInShortcutHintAcrossWidths(t *testing.T) {
 	m := newMessageInteractionTestModel(100)
 	m.themesOpen = true
 	m.splashOpen = true
@@ -480,8 +480,8 @@ func TestThemeFooterApplyMovesWithQuitAndSendAcrossWidths(t *testing.T) {
 		if targets.hasSend && (targets.quitEnd > targets.sendStart || targets.sendEnd != width-1) {
 			t.Fatalf("width %d: button cluster overlaps Send or Send moved from the right inset: %+v; footer=%q", width, targets, plain)
 		}
-		if targets.hasApply && targets.hasSend && targets.applyEnd > targets.sendStart {
-			t.Fatalf("width %d: Apply overlaps Send: %+v; footer=%q", width, targets, plain)
+		if targets.hasApply && targets.applyEnd > targets.quitStart {
+			t.Fatalf("width %d: inline Apply hitbox extends into Quit: %+v; footer=%q", width, targets, plain)
 		}
 	}
 }
@@ -649,8 +649,8 @@ func TestThemeBrowserFooterApplyClickAppliesSelectedTheme(t *testing.T) {
 	m.openThemeBrowser()
 	want := themeBrowserSelectAutumn(t, &m)
 	_, targets := m.renderStatusBar(false, false)
-	if !targets.hasApply || targets.applyEnd > targets.quitStart {
-		t.Fatalf("resized footer did not keep Apply separate from Quit: %+v", targets)
+	if !targets.hasApply {
+		t.Fatalf("resized footer did not expose the inline Apply shortcut hitbox: %+v", targets)
 	}
 	updated, _ := m.Update(tea.MouseClickMsg{X: targets.applyStart, Y: m.height - 1, Button: tea.MouseLeft})
 	next := updated.(model)
