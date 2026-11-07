@@ -645,12 +645,12 @@ func TestThemeBrowserFooterApplyClickAppliesSelectedTheme(t *testing.T) {
 		t.Fatalf("load config: %v", err)
 	}
 	m := newModel(cfg, "lobby", false, nil)
-	m.width, m.height = 100, 30
+	m.width, m.height = 72, 30
 	m.openThemeBrowser()
 	want := themeBrowserSelectAutumn(t, &m)
 	_, targets := m.renderStatusBar(false, false)
-	if !targets.hasApply {
-		t.Fatal("footer did not expose the apply target")
+	if !targets.hasApply || targets.applyEnd > targets.quitStart {
+		t.Fatalf("resized footer did not keep Apply separate from Quit: %+v", targets)
 	}
 	updated, _ := m.Update(tea.MouseClickMsg{X: targets.applyStart, Y: m.height - 1, Button: tea.MouseLeft})
 	next := updated.(model)
