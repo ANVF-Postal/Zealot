@@ -390,7 +390,7 @@ func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
 		string(runes[targets.quitStart:targets.quitEnd]) != "Quit" {
 		t.Fatalf("Quit hitbox does not cover its button: %+v; %s", targets, plain)
 	}
-	if targets.quitEnd > targets.applyStart || targets.applyEnd > targets.sendStart {
+	if targets.applyEnd > targets.quitStart || targets.quitEnd > targets.sendStart {
 		t.Fatalf("theme action buttons overlap: %+v; %s", targets, plain)
 	}
 	if strings.Count(plain, "Apply") != 1 || strings.Contains(plain, "apply") {
@@ -462,7 +462,7 @@ func TestThemeFooterApplyStaysClickableInButtonClusterAcrossWidths(t *testing.T)
 				string(runes[targets.applyStart:targets.applyEnd]) != "Apply" {
 				t.Fatalf("width %d: Apply hitbox does not cover the visible button: %+v; footer=%q", width, targets, plain)
 			}
-			if targets.applyStart < targets.quitEnd {
+			if targets.applyEnd > targets.quitStart {
 				t.Fatalf("width %d: Apply overlaps Quit: %+v; footer=%q", width, targets, plain)
 			}
 			if strings.Count(plain, "Apply") != 1 {
@@ -480,7 +480,7 @@ func TestThemeFooterApplyStaysClickableInButtonClusterAcrossWidths(t *testing.T)
 		if targets.hasSend && (targets.quitEnd > targets.sendStart || targets.sendEnd != width-1) {
 			t.Fatalf("width %d: button cluster overlaps Send or Send moved from the right inset: %+v; footer=%q", width, targets, plain)
 		}
-		if targets.hasApply && targets.applyStart < targets.quitEnd {
+		if targets.hasApply && targets.applyEnd > targets.quitStart {
 			t.Fatalf("width %d: Apply hitbox overlaps Quit: %+v; footer=%q", width, targets, plain)
 		}
 	}
