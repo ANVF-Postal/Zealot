@@ -318,11 +318,18 @@ func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
 	m.themesOpen = true
 	line, targets := m.renderStatusBar(false, false)
 	plain := stripANSISequences(line)
-	for _, want := range []string{"PgUp", "PgDn", "Ctrl+T: Apply • Esc: back", "[Send]", "Quit"} {
-		if !strings.Contains(plain, want) {
-			t.Errorf("theme footer is missing %q: %s", want, plain)
-		}
-	}
+\tfor _, want := range []string{"PgUp", "PgDn", "Ctrl+T: Apply • Esc: back • Quit • Ctrl+C:", "[Send]"} {
+\t\tif !strings.Contains(plain, want) {
+\t\t\tt.Errorf("theme footer is missing %q: %s", want, plain)
+\t\t}
+\t}
+\tif targets.quitEnd <= targets.quitStart {
+\t\tt.Fatalf("theme footer does not expose a clickable Quit action: %+v; %s", targets, plain)
+\t}
+\trunes := []rune(plain)
+\tif targets.quitEnd > len(runes) || string(runes[targets.quitStart:targets.quitEnd]) != "Quit" {
+\t\tt.Fatalf("Quit hitbox does not cover the shortcut label: %+v; %s", targets, plain)
+\t}
 	if strings.Count(plain, "Apply") != 1 || strings.Contains(plain, "apply") {
 		t.Fatalf("theme footer should contain exactly one title-case Apply action in the shortcut hint: %s", plain)
 	}
@@ -357,6 +364,15 @@ func TestThemeFooterApplyStaysInShortcutHintAcrossWidths(t *testing.T) {
 			}
 			if strings.Contains(plain, "apply") || strings.Count(plain, "Apply") != 1 {
 				t.Fatalf("width %d: expected one Apply in the shortcut hint and no separate footer button: %q", width, plain)
+			}
+		}
+		if targets.quitEnd > targets.quitStart {
+			runes := []rune(plain)
+			if targets.quitEnd > len(runes) || string(runes[targets.quitStart:targets.quitEnd]) != "Quit" {
+				t.Fatalf("width %d: Quit hitbox does not cover the shortcut label: %+v; footer=%q", width, targets, plain)
+			}
+			if !strings.Contains(plain, "Quit • Ctrl+C:") {
+				t.Fatalf("width %d: Quit is not directly before the Ctrl+C hint: %q", width, plain)
 			}
 		}
 		if targets.hasSend && targets.quitEnd > targets.sendStart {
