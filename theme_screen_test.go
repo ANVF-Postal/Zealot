@@ -378,21 +378,23 @@ func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
 			t.Errorf("theme footer is missing %q: %s", want, plain)
 		}
 	}
+	runes := []rune(plain)
+	if !targets.hasApply || targets.applyStart < 0 || targets.applyEnd > len(runes) ||
+		string(runes[targets.applyStart:targets.applyEnd]) != "Apply" {
+		t.Fatalf("theme footer does not expose a clickable Apply button: %+v; %s", targets, plain)
+	}
 	if targets.applyEnd > targets.quitStart {
 		t.Fatalf("theme Apply overlaps Quit: %+v; %s", targets, plain)
+	}
+	if targets.quitEnd <= targets.quitStart || targets.quitEnd > len(runes) ||
+		string(runes[targets.quitStart:targets.quitEnd]) != "Quit" {
+		t.Fatalf("Quit hitbox does not cover its button: %+v; %s", targets, plain)
 	}
 	if targets.quitEnd > targets.sendStart {
 		t.Fatalf("theme Quit overlaps Send: %+v; %s", targets, plain)
 	}
-	if targets.quitEnd <= targets.quitStart {
-		t.Fatalf("theme footer does not expose a clickable Quit action: %+v; %s", targets, plain)
-	}
-	runes := []rune(plain)
-	if targets.quitEnd > len(runes) || string(runes[targets.quitStart:targets.quitEnd]) != "Quit" {
-		t.Fatalf("Quit hitbox does not cover the shortcut label: %+v; %s", targets, plain)
-	}
 	if strings.Count(plain, "Apply") != 1 || strings.Contains(plain, "apply") {
-		t.Fatalf("theme footer should contain exactly one title-case Apply action in the shortcut hint: %s", plain)
+		t.Fatalf("theme footer should contain exactly one title-case Apply button: %s", plain)
 	}
 	if !targets.hasSend {
 		t.Fatal("theme browser footer does not expose the send action")
