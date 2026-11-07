@@ -344,6 +344,7 @@ func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
 func TestThemeBrowserFooterQuitClickOpensConfirmation(t *testing.T) {
 	m := newMessageInteractionTestModel(100)
 	m.width, m.height = 72, 30
+	m.status = "Connected"
 	m.splashOpen = true
 	m.themesOpen = true
 	_, targets := m.renderStatusBar(false, false)
