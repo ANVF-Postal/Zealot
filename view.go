@@ -461,6 +461,13 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	prefixVisible := strings.TrimRight(prefix, " ")
 	prefixWidth := lipgloss.Width(prefixVisible)
 
+	type footerHighlight struct {
+		start    int
+		end      int
+		rendered string
+	}
+	var highlights []footerHighlight
+
 	pageStartByte := strings.Index(prefixVisible, scrollLabel)
 	if pageStartByte >= 0 {
 		pgUpEndByte := pageStartByte + len("PgUp")
