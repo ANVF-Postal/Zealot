@@ -10,8 +10,6 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-const mentionHighlightBackground = "#3C3622"
-
 type mentionSpan struct {
 	Start int
 	End   int
@@ -111,9 +109,9 @@ func messageMentionsUser(msg Packet, username string) bool {
 
 func (m model) messageBackground(msg Packet) color.Color {
 	if msg.Type == "message" && messageMentionsUser(msg, m.user.Name) {
-		return lipgloss.Color(mentionHighlightBackground)
+		return lipgloss.Color(m.cfg.Theme.MentionBackgroundColor)
 	}
-	return lipgloss.Color(m.cfg.Background)
+	return lipgloss.Color(m.cfg.Theme.Background)
 }
 
 func (m model) mentionCandidates() []string {
@@ -141,9 +139,13 @@ func (m *model) refreshMentionUsernames() {
 	m.mentionUsernames = names
 }
 
-func (m model) mentionStyle(background color.Color) lipgloss.Style {
+func (m model) mentionStyle(background color.Color, hovered bool) lipgloss.Style {
+	foreground := m.cfg.Theme.AccentColor
+	if hovered {
+		foreground = m.cfg.Theme.HoverTextColor
+	}
 	return lipgloss.NewStyle().
-		Foreground(lipgloss.Color(m.cfg.AccentColor)).
+		Foreground(lipgloss.Color(foreground)).
 		Background(background).
 		Bold(true)
 }

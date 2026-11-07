@@ -8,14 +8,15 @@ import (
 )
 
 func newRenderCacheTestModel() model {
-	m := newModel(Config{
-		Name:        "tester",
-		UserColor:   "#FFFFFF",
-		Background:  "#000000",
-		TextColor:   "#FFFFFF",
-		AccentColor: "#00AEEF",
-		InputHeight: 1,
-	}, "test", false, nil)
+	cfg := defaultConfig()
+	cfg.Name = "tester"
+	cfg.UserColor = "#FFFFFF"
+	cfg.Theme.Background = "#000000"
+	cfg.Theme.TextColor = "#FFFFFF"
+	cfg.Theme.AccentColor = "#00AEEF"
+	cfg.InputHeight = 1
+
+	m := newModel(cfg, "test", false, nil)
 	m.width = 80
 	m.height = 18
 	m.input.SetWidth(74)

@@ -139,7 +139,7 @@ func (m *model) sendMessage(text string, replyTo string) bool {
 		}
 		old := m.cfg.Name
 		m.cfg.Name = fields[1]
-		if err := saveConfig(m.cfg); err != nil {
+		if err := saveConfigName(fields[1]); err != nil {
 			m.cfg.Name = old
 			m.appendMessage(Packet{Type: "system", Text: "Could not save config: " + err.Error(), Time: time.Now()})
 			return false
@@ -154,7 +154,7 @@ func (m *model) sendMessage(text string, replyTo string) bool {
 		old := m.cfg.UserColor
 		m.cfg.UserColor = fields[1]
 		m.user.Color = fields[1]
-		if err := saveConfig(m.cfg); err != nil {
+		if err := saveConfigUserColor(fields[1]); err != nil {
 			m.cfg.UserColor = old
 			m.user.Color = old
 			m.appendMessage(Packet{Type: "system", Text: "Could not save config: " + err.Error(), Time: time.Now()})

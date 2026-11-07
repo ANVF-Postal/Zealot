@@ -13,8 +13,6 @@ import (
 // Message rendering
 // -----------------------------------------------------------------------------
 
-const messageHoverTextColor = "#F9F871"
-
 func (m model) renderMessageLines() []string {
 	if m.renderCacheValid && m.renderCacheWidth == m.width {
 		return m.renderedLines
@@ -321,7 +319,7 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 	rowFill := lipgloss.NewStyle().Width(contentWidth).Background(m.messageBackground(msg))
 	separatorStyle := lipgloss.NewStyle().Background(m.messageBackground(msg))
 	replyMarkerStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(m.cfg.AccentColor)).
+		Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).
 		Background(m.messageBackground(msg)).
 		Bold(true)
 
@@ -428,9 +426,9 @@ func (m model) renderReplyBadgeForWidth(msg Packet, width int) string {
 	if msg.ReplyTo == "" {
 		return ""
 	}
-	color := m.cfg.AccentColor
+	color := m.cfg.Theme.AccentColor
 	if !m.hasMessageID(msg.ReplyTo) {
-		color = m.cfg.BorderColor
+		color = m.cfg.Theme.BorderColor
 	}
 	style := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(color)).
@@ -446,13 +444,13 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 	contentWidth := chatContentWidth(width)
 
 	bg := m.messageBackground(msg)
-	text := lipgloss.Color(m.cfg.TextColor)
+	text := lipgloss.Color(m.cfg.Theme.TextColor)
 	rowFill := lipgloss.NewStyle().Width(contentWidth).Background(bg)
 	normalBodyStyle := lipgloss.NewStyle().Foreground(text).Background(bg)
 	bodyStyle := normalBodyStyle
 	hovered := msg.Type == "message" && msg.ID != "" && (msg.ID == m.hoveredMessageID || msg.ID == m.highlightedMessageID)
 	if hovered {
-		hoverColor := lipgloss.Color(messageHoverTextColor)
+		hoverColor := lipgloss.Color(m.cfg.Theme.HoverTextColor)
 		bodyStyle = bodyStyle.Foreground(hoverColor)
 	}
 
@@ -507,8 +505,8 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 		return lines
 	}
 
-	mentionStyle := m.mentionStyle(bg)
-	timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#707786")).Background(bg)
+	mentionStyle := m.mentionStyle(bg, hovered)
+	timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).Background(bg)
 	timeText := msg.Time.Local().Format("15:04")
 	nameStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(msg.User.Color)).
@@ -612,7 +610,7 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 						}
 						continue
 					}
-					styled.WriteString(rainbowLogoColor(string(glyph), msg.RainbowPhase, row+column, m.cfg.Background))
+					styled.WriteString(rainbowLogoColor(string(glyph), msg.RainbowPhase, row+column, m.cfg.Theme.Background))
 				}
 			} else if msg.XKeyscore == 2 {
 				for _, glyph := range artLine {

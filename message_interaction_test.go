@@ -21,7 +21,7 @@ func newMessageInteractionTestModel(width int, messages ...Packet) model {
 		height:   24,
 		input:    input,
 		messages: append([]Packet(nil), messages...),
-		styles:   makeStyles(cfg),
+		styles:   makeStyles(cfg.Theme),
 	}
 	m.rebuildMessageCache()
 	return m

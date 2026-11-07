@@ -27,6 +27,18 @@ type model struct {
 	usersAnimationRunning bool
 
 	splashOpen                       bool
+	themesOpen                       bool
+	themeEntries                     []themeListEntry
+	themeSelected                    int
+	themeScroll                      int
+	themeError                       string
+	themeEditError                   string
+	themeDirty                       bool
+	themeSavedPreset                 ThemePreset
+	themeEditField                   string
+	themeComposerBackup              string
+	themeLeftWidth                   int
+	themeDividerDragging             bool
 	splashScroll                     int
 	splashScrollDragging             bool
 	splashScrollDragOffset           int
@@ -134,9 +146,9 @@ func newModel(
 	}
 	input.SetHeight(cfg.InputHeight)
 
-	bg := lipgloss.Color(cfg.Background)
+	bg := lipgloss.Color(cfg.Theme.Background)
 	textStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(cfg.TextColor)).
+		Foreground(lipgloss.Color(cfg.Theme.TextColor)).
 		Background(bg)
 	inputStyles := input.Styles()
 	inputStyles.Focused.Base = textStyle
@@ -148,16 +160,22 @@ func newModel(
 	inputStyles.Focused.Text = textStyle
 	inputStyles.Blurred.Text = textStyle
 
+	// Text selection is part of the active theme, not Bubbles' default palette.
+	selectionStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color(cfg.Theme.SelectionBackgroundColor))
+	inputStyles.Focused.Selection = selectionStyle
+	inputStyles.Blurred.Selection = selectionStyle
+
 	// Match the placeholder to the keyboard-shortcut hint at the bottom.
 	placeholderStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#707786")).
+		Foreground(lipgloss.Color(cfg.Theme.MutedTextColor)).
 		Background(bg).
 		Faint(false).
 		Bold(false).
 		Italic(false)
 	inputStyles.Focused.Placeholder = placeholderStyle
 	inputStyles.Blurred.Placeholder = placeholderStyle
-	inputStyles.Cursor.Color = lipgloss.Color(cfg.AccentColor)
+	inputStyles.Cursor.Color = lipgloss.Color(cfg.Theme.AccentColor)
 	inputStyles.Cursor.Blink = false
 	input.SetStyles(inputStyles)
 
@@ -179,7 +197,7 @@ func newModel(
 		input:        input,
 		connected:    true,
 		status:       "Connected",
-		styles:       makeStyles(cfg),
+		styles:       makeStyles(cfg.Theme),
 	}
 }
 

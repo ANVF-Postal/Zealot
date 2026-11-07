@@ -15,6 +15,27 @@ import (
 // UI update
 // -----------------------------------------------------------------------------
 
+func isThemeApplyShortcut(key tea.KeyPressMsg) bool {
+	// Ctrl+T can arrive as a printable key with a Ctrl modifier (enhanced
+	// keyboard protocols) or as the legacy ASCII control byte 0x14.
+	if key.Mod&tea.ModCtrl != 0 && (key.Code == 't' || key.Code == 'T' || strings.EqualFold(key.Text, "t")) {
+		return true
+	}
+	if key.Code == 20 || key.Text == string(rune(20)) {
+		return true
+	}
+	keystroke := strings.ToLower(key.Keystroke())
+	keyString := strings.ToLower(key.String())
+	return key.Code == tea.KeyF2 || keystroke == "ctrl+t" || keyString == "ctrl+t"
+}
+
+func isThemeSaveShortcut(key tea.KeyPressMsg) bool {
+	if (key.Code == 's' || key.Code == 'S') && key.Mod&tea.ModCtrl != 0 {
+		return true
+	}
+	return key.Keystroke() == "ctrl+s" || key.String() == "ctrl+s"
+}
+
 func (m model) Update(
 	msg tea.Msg,
 ) (tea.Model, tea.Cmd) {
@@ -31,6 +52,7 @@ func (m model) Update(
 			m.input.EndSelection()
 			m.inputSelecting = false
 		}
+		m.themeDividerDragging = false
 		m.resizeInput()
 		if oldWidth != m.width || !m.renderCacheValid {
 			m.rebuildMessageCache()
@@ -273,11 +295,33 @@ func (m model) Update(
 		// particular, don't make a header click wait for an old hover timer.
 		m.refreshMessageHover()
 
-		// Begin a textarea selection before handling other clickable UI. The
-		// coordinate helper accounts for the composer frame and its first-row
-		// prompt, which is rendered outside the Bubbles textarea.
-		if mouse.Button == tea.MouseLeft && !m.usersOpen && !m.splashOpen &&
-			m.inputSelectionContains(mouse.X, mouse.Y) {
+		// A field edit owns the composer until Enter or Escape completes it.
+		// Keep other panel clicks from closing the screen or firing actions.
+		if m.themesOpen && m.themeEditField != "" && !m.inputSelectionContains(mouse.X, mouse.Y) {
+			return m, nil
+		}
+		if m.themesOpen && m.themeDirty && mouse.Button == tea.MouseLeft && mouse.Y == 0 {
+			if !m.confirmThemeDiscard() {
+				return m, nil
+			}
+		}
+
+		// The theme divider is a draggable one-cell splitter between the list
+		// and details columns.
+		if mouse.Button == tea.MouseLeft && m.themeBrowserDividerContains(mouse.X, mouse.Y) {
+			m.themeDividerDragging = true
+			m.setThemeBrowserDivider(mouse.X)
+			return m, nil
+		}
+
+		if mouse.Button == tea.MouseLeft && m.themeEditField == "" && m.themeApplyButtonContains(mouse.X, mouse.Y) {
+			m.applySelectedTheme()
+			return m, nil
+		}
+
+		// Begin a textarea selection anywhere the composer is visible, including
+		// while the splash, theme browser, or users panel is open.
+		if mouse.Button == tea.MouseLeft && m.inputSelectionContains(mouse.X, mouse.Y) {
 			localX, localY := m.inputSelectionCoordinates(mouse.X, mouse.Y)
 			m.input.BeginSelection(localX, localY)
 			m.inputSelecting = true
@@ -287,7 +331,11 @@ func (m model) Update(
 		// Footer actions occupy the final terminal row. Their hitboxes are
 		// calculated by the same layout helper used to render the row.
 		if m.statusBarVisible() && mouse.Button == tea.MouseLeft && mouse.Y == m.height-1 {
-			_, targets := m.renderStatusBar(m.usersOpen, m.splashOpen)
+			_, targets := m.renderStatusBar(m.usersOpen, m.splashOpen && !m.themesOpen)
+			if targets.hasApply && mouse.X >= targets.applyStart && mouse.X < targets.applyEnd {
+				m.applySelectedTheme()
+				return m, nil
+			}
 			if targets.hasSend && mouse.X >= targets.sendStart && mouse.X < targets.sendEnd {
 				m.sendCurrentMessage()
 				m.sendFeedback = true
@@ -326,6 +374,7 @@ func (m model) Update(
 		if (m.usersOpen || m.splashOpen) && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width("[X]") && mouse.X < m.width {
 			m.usersOpen = false
 			m.splashOpen = false
+			m.themesOpen = false
 			m.usersScrollDragging = false
 			m.usersScrollbarHoldDirection = 0
 			m.usersScrollbarHoldGeneration++
@@ -335,7 +384,10 @@ func (m model) Update(
 			return m, nil
 		}
 		if mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= 0 && mouse.X < lipgloss.Width("ZEALOT") {
-			if m.splashOpen {
+			if m.themesOpen {
+				m.themesOpen = false
+				m.splashOpen = true
+			} else if m.splashOpen {
 				m.splashOpen = false
 				m.splashScrollDragging = false
 				m.splashScrollbarHoldDirection = 0
@@ -376,6 +428,55 @@ func (m model) Update(
 				return m, tea.Batch(sendWhoCmd, animationCmd)
 			}
 			return m, sendWhoCmd
+		}
+		if m.splashOpen && !m.themesOpen && mouse.Button == tea.MouseLeft && m.splashThemesButtonContains(mouse.X, mouse.Y) {
+			m.openThemeBrowser()
+			return m, nil
+		}
+		if m.themesOpen && mouse.Button == tea.MouseLeft {
+			// While a theme field is being edited, keep clicks from changing
+			// selection or triggering actions before the edit is confirmed.
+			if m.themeEditField != "" {
+				return m, nil
+			}
+			if m.themeCreateButtonContains(mouse.X, mouse.Y) {
+				m.createFreshTheme()
+				return m, nil
+			}
+			if m.themeCloneButtonContains(mouse.X, mouse.Y) {
+				m.cloneSelectedTheme()
+				return m, nil
+			}
+			if m.themeSaveButtonContains(mouse.X, mouse.Y) {
+				m.saveSelectedThemeEdits()
+				return m, nil
+			}
+			if m.themeApplyButtonContains(mouse.X, mouse.Y) {
+				m.applySelectedTheme()
+				return m, nil
+			}
+			if m.themeNameContains(mouse.X, mouse.Y) {
+				if entry, ok := m.selectedThemeEntry(); ok && themeEntryEditable(entry) {
+					m.beginThemeFieldEdit("name")
+				}
+				return m, nil
+			}
+			if m.themeDescriptionContains(mouse.X, mouse.Y) {
+				if entry, ok := m.selectedThemeEntry(); ok && themeEntryEditable(entry) {
+					m.beginThemeFieldEdit("description")
+				}
+				return m, nil
+			}
+			if field, ok := m.themeColorFieldAt(mouse.X, mouse.Y); ok {
+				if entry, exists := m.selectedThemeEntry(); exists && themeEntryEditable(entry) {
+					m.beginThemeFieldEdit(field)
+				}
+				return m, nil
+			}
+			if index, ok := m.themeBrowserListIndexAt(mouse.X, mouse.Y); ok {
+				m.selectThemeEntry(index)
+				return m, nil
+			}
 		}
 		if m.usersOpen && mouse.Button == tea.MouseLeft && mouse.X == m.chatScrollbarX() && m.maxUsersScroll() > 0 {
 			visible := m.usersPanelHeight()
@@ -513,6 +614,7 @@ func (m model) Update(
 			m.input.EndSelection()
 			m.inputSelecting = false
 		}
+		m.themeDividerDragging = false
 		m.splashScrollDragging = false
 		m.splashScrollbarHoldDirection = 0
 		m.splashScrollbarHoldGeneration++
@@ -564,6 +666,15 @@ func (m model) Update(
 	// -------------------------------------------------------------------------
 
 	if mouseMsg, ok := msg.(tea.MouseWheelMsg); ok {
+		if m.themesOpen {
+			switch mouseMsg.Button {
+			case tea.MouseWheelUp:
+				m.moveThemeSelection(-3)
+			case tea.MouseWheelDown:
+				m.moveThemeSelection(3)
+			}
+			return m, nil
+		}
 		if m.splashOpen {
 			switch mouseMsg.Button {
 			case tea.MouseWheelUp:
@@ -603,6 +714,84 @@ func (m model) Update(
 	handledNewline := false
 
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
+		if m.themesOpen {
+			if m.themeEditField == "" && isThemeApplyShortcut(keyMsg) {
+				m.applySelectedTheme()
+				return m, nil
+			}
+			if isThemeSaveShortcut(keyMsg) {
+				if m.themeEditField == "" {
+					m.saveSelectedThemeEdits()
+				}
+				return m, nil
+			}
+			switch keyMsg.Keystroke() {
+			case "enter":
+				if m.themeEditField != "" {
+					m.finishThemeFieldEdit()
+					return m, nil
+				}
+			case "esc", "escape":
+				if m.themeEditField != "" {
+					m.cancelThemeFieldEdit()
+					return m, nil
+				}
+				if !m.confirmThemeDiscard() {
+					return m, nil
+				}
+				m.themesOpen = false
+				m.themeError = ""
+				m.themeEditError = ""
+				return m, nil
+			case "ctrl+s":
+				if m.themeEditField == "" {
+					m.saveSelectedThemeEdits()
+				}
+				return m, nil
+			case "up":
+				if m.themeEditField == "" && m.input.Value() == "" {
+					m.moveThemeSelection(-1)
+					return m, nil
+				}
+			case "down":
+				if m.themeEditField == "" && m.input.Value() == "" {
+					m.moveThemeSelection(1)
+					return m, nil
+				}
+			case "pgup":
+				if m.themeEditField == "" && m.input.Value() == "" {
+					m.moveThemeSelection(-m.themeVisibleRows())
+					return m, nil
+				}
+			case "pgdown":
+				if m.themeEditField == "" && m.input.Value() == "" {
+					m.moveThemeSelection(m.themeVisibleRows())
+					return m, nil
+				}
+			case "home":
+				if m.themeEditField == "" && m.input.Value() == "" {
+					m.selectThemeEntry(0)
+					return m, nil
+				}
+			case "end":
+				if m.themeEditField == "" && m.input.Value() == "" {
+					m.selectThemeEntry(len(m.themeEntries) - 1)
+					return m, nil
+				}
+			case "f2":
+				if m.themeEditField == "" {
+					m.applySelectedTheme()
+				}
+				return m, nil
+			case "ctrl+c", "ctrl+q":
+				m.sendTyping(false)
+				m.quitting = true
+				return m, tea.Quit
+			default:
+				// Ordinary text and composer editing keys continue to the
+				// textarea. Enter confirms a field edit and otherwise sends.
+			}
+		}
 		switch keyMsg.String() {
 
 		case "esc", "escape":
@@ -714,7 +903,7 @@ func (m model) Update(
 	// -------------------------------------------------------------------------
 
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
-		if m.connected && isTextInputKey(keyMsg) {
+		if m.connected && isTextInputKey(keyMsg) && m.themeEditField == "" {
 
 			// Start blinking only when there is actual text.
 			blinkCmd := m.startCursorBlink()
@@ -754,6 +943,10 @@ func (m *model) applyMouseMotion(x, y int) {
 	m.lastMouseY = y
 	m.mousePositionKnown = true
 
+	if m.themesOpen && m.themeDividerDragging {
+		m.setThemeBrowserDivider(x)
+		return
+	}
 	if m.inputSelecting {
 		localX, localY := m.inputSelectionCoordinates(x, y)
 		m.input.ExtendSelection(localX, localY)
@@ -784,6 +977,11 @@ func (m *model) applyMouseMotion(x, y int) {
 
 // scrollPage applies the same viewport movement for keyboard and footer clicks.
 func (m *model) scrollPage(up bool) {
+	if m.themesOpen {
+		step := m.themeVisibleRows()
+		if up { m.moveThemeSelection(-step) } else { m.moveThemeSelection(step) }
+		return
+	}
 	if m.splashOpen {
 		step := max(1, m.splashPanelHeight()/2)
 		if up {
