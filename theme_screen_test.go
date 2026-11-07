@@ -419,6 +419,20 @@ func TestThemeBrowserFooterQuitClickOpensConfirmation(t *testing.T) {
 	if !next.quitConfirm {
 		t.Fatal("clicking Quit beside Ctrl+C did not open quit confirmation")
 	}
+	sureLine, sureTargets := next.renderStatusBar(false, false)
+	surePlain := stripANSISequences(sureLine)
+	if !strings.Contains(surePlain, "Sure?") {
+		t.Fatalf("Quit confirmation did not replace the button label with Sure?: %q", surePlain)
+	}
+	sureRunes := []rune(surePlain)
+	if sureTargets.quitEnd <= sureTargets.quitStart || sureTargets.quitEnd > len(sureRunes) ||
+		string(sureRunes[sureTargets.quitStart:sureTargets.quitEnd]) != "Sure?" {
+		t.Fatalf("confirmation hitbox does not cover Sure?: %+v; footer=%q", sureTargets, surePlain)
+	}
+	timedOut, _ := next.Update(quitConfirmTimeoutMsg{generation: next.quitConfirmGeneration})
+	if timedOut.(model).quitConfirm {
+		t.Fatal("Quit confirmation did not reset when its timeout elapsed")
+	}
 }
 
 func TestThemeFooterApplyStaysInShortcutHintAcrossWidths(t *testing.T) {
