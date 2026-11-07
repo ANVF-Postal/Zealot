@@ -318,12 +318,12 @@ func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
 	m.themesOpen = true
 	line, targets := m.renderStatusBar(false, false)
 	plain := stripANSISequences(line)
-	for _, want := range []string{"PgUp", "PgDn", "Ctrl+T: apply theme", "Esc: back", "[Send]", "Apply", "Quit"} {
+	for _, want := range []string{"PgUp", "PgDn", "Ctrl+T: apply theme", "Esc: back", "[Send]", "apply", "Quit"} {
 		if !strings.Contains(plain, want) {
 			t.Errorf("theme footer is missing %q: %s", want, plain)
 		}
 	}
-	if strings.Contains(plain, "[Apply]") || strings.Contains(plain, "[APPLY]") {
+	if strings.Contains(plain, "[apply]") || strings.Contains(plain, "[APPLY]") {
 		t.Fatalf("theme footer still renders Apply with square brackets: %s", plain)
 	}
 	if !targets.hasSend {
@@ -351,7 +351,7 @@ func TestThemeFooterApplyMovesWithQuitAcrossWidths(t *testing.T) {
 			if targets.applyEnd > targets.quitStart {
 				t.Fatalf("width %d: Apply overlaps Quit: %+v; footer=%q", width, targets, plain)
 			}
-			if strings.Contains(plain, "[Apply]") {
+			if strings.Contains(plain, "[apply]") {
 				t.Fatalf("width %d: Apply still has brackets: %q", width, plain)
 			}
 		}
