@@ -363,7 +363,7 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		case m.themeDirty:
 			scrollTail = ": Ctrl+S: save • Ctrl+T after save • Esc: back • Ctrl+C: "
 		default:
-			scrollTail = ": Ctrl+T • Esc: back • Ctrl+C: "
+			scrollTail = ": Ctrl+T: • Esc: back • Ctrl+C: "
 		}
 	}
 	prefix := lead + scrollLabel + scrollTail
@@ -380,7 +380,7 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	quitWidth := lipgloss.Width(quitText)
 	applyWidth := 0
 	if includeApply {
-		applyWidth = lipgloss.Width("Apply")
+		applyWidth = lipgloss.Width(" Apply")
 	}
 	fullSendWidth := lipgloss.Width(sendPrefix + sendText)
 	shortSendWidth := lipgloss.Width(sendText)
@@ -485,6 +485,21 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		targets.pgDnEnd = targets.pgDnStart + lipgloss.Width("PgDn")
 	}
 
+	if includeApply {
+		if applyInsertByte := strings.Index(prefixVisible, "Ctrl+T:"); applyInsertByte >= 0 {
+			applyInsertByte += len("Ctrl+T:")
+			applyStart := lipgloss.Width(prefixVisible[:applyInsertByte]) + 1
+			targets.hasApply = true
+			targets.applyStart = applyStart
+			targets.applyEnd = applyStart + lipgloss.Width("Apply")
+			highlights = append(highlights, footerHighlight{
+				start: applyInsertByte,
+				end: applyInsertByte,
+				rendered: m.styles.status.Render(" ") + m.styles.accent.Render("Apply"),
+			})
+		}
+	}
+
 	sort.Slice(highlights, func(i, j int) bool { return highlights[i].start < highlights[j].start })
 	var prefixBuilder strings.Builder
 	cursor := 0
@@ -504,18 +519,11 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		gapWidth = 0
 	}
 
-	// Keep the theme Apply action in the fixed button cluster with Quit and
-	// Send, rather than in the compressible shortcut prefix.
-	position := prefixWidth
+	// Apply is rendered inline after Ctrl+T in the shortcut hint. Its width
+	// remains reserved above so the Quit and Send buttons keep their layout.
+	position := prefixWidth + applyWidth
 	var line strings.Builder
 	line.WriteString(renderedPrefix)
-	if includeApply {
-		targets.hasApply = true
-		targets.applyStart = position
-		targets.applyEnd = position + applyWidth
-		line.WriteString(m.styles.accent.Render("Apply"))
-		position += applyWidth
-	}
 	if quitLeftPad > 0 {
 		line.WriteString(m.styles.status.Render(strings.Repeat(" ", quitLeftPad)))
 		position += quitLeftPad
