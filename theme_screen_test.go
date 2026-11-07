@@ -373,7 +373,7 @@ func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
 	m.themesOpen = true
 	line, targets := m.renderStatusBar(false, false)
 	plain := stripANSISequences(line)
-	for _, want := range []string{"PgUp", "PgDn", "Ctrl+T • Esc: back • Ctrl+C:", "Apply", "Quit", "[Send]"} {
+	for _, want := range []string{"PgUp", "PgDn", "Ctrl+T: Apply • Esc: back • Ctrl+C:", "Apply", "Quit", "[Send]"} {
 		if !strings.Contains(plain, want) {
 			t.Errorf("theme footer is missing %q: %s", want, plain)
 		}
@@ -383,8 +383,8 @@ func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
 		string(runes[targets.applyStart:targets.applyEnd]) != "Apply" {
 		t.Fatalf("theme footer does not expose a clickable Apply button: %+v; %s", targets, plain)
 	}
-	if strings.Contains(plain, "Ctrl+T: Apply") {
-		t.Fatalf("Apply should be a fixed footer action, not part of the compressible shortcut hint: %s", plain)
+	if !strings.Contains(plain, "Ctrl+T: Apply") {
+		t.Fatalf("Apply should follow the Ctrl+T shortcut in the theme hint: %s", plain)
 	}
 	if targets.quitEnd <= targets.quitStart || targets.quitEnd > len(runes) ||
 		string(runes[targets.quitStart:targets.quitEnd]) != "Quit" {
