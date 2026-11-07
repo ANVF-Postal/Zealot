@@ -307,8 +307,6 @@ func (m model) renderSplashPanel() string {
 		Render(strings.Join(rows, "\n"))
 }
 
-const footerApplyButtonLabel = "[Apply]"
-
 type footerTargets struct {
 	quitStart  int
 	quitEnd    int
