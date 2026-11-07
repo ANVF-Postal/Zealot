@@ -451,6 +451,19 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		rendered string
 	}
 	var highlights []footerHighlight
+	if includeApply {
+		if applyStartByte := strings.Index(prefixVisible, "Apply"); applyStartByte >= 0 {
+			highlights = append(highlights, footerHighlight{
+				start: applyStartByte,
+				end: applyStartByte + len("Apply"),
+				rendered: m.styles.accent.Render("Apply"),
+			})
+			targets.hasApply = true
+			targets.applyStart = lipgloss.Width(prefixVisible[:applyStartByte])
+			targets.applyEnd = targets.applyStart + lipgloss.Width("Apply")
+		}
+	}
+
 	pageStartByte := strings.Index(prefixVisible, scrollLabel)
 	if pageStartByte >= 0 {
 		pgUpEndByte := pageStartByte + len("PgUp")
@@ -487,17 +500,7 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		gapWidth = 0
 	}
 
-	// Apply stays in the Ctrl+T shortcut hint; its hitbox is measured
-	// within the prefix, while Quit remains a separately padded button.
-	if includeApply {
-		applyStartByte := strings.Index(prefixVisible, "Apply")
-		if applyStartByte >= 0 {
-			applyStart := lipgloss.Width(prefixVisible[:applyStartByte])
-			targets.hasApply = true
-			targets.applyStart = applyStart
-			targets.applyEnd = applyStart + lipgloss.Width("Apply")
-		}
-	}
+	// Apply remains a clickable shortcut hint; Quit is a separately padded button.
 	position := prefixWidth
 	var line strings.Builder
 	line.WriteString(renderedPrefix)
