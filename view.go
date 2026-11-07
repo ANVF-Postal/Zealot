@@ -343,9 +343,6 @@ func compactFooterStatusLead(status string, maxWidth int) string {
 	return " " + shortStatus + separator
 }
 
-// renderStatusBar keeps keyboard shortcuts and Quit together on the left,
-// while anchoring the composer Send action to the right edge. Measured
-// positions supply mouse hitboxes aligned with the rendered labels.
 // renderStatusBar keeps ordinary shortcuts on the left, the Quit button
 // immediately after the Ctrl+C hint, and the composer Send action anchored
 // to the right edge. The measured layout supplies matching mouse hitboxes.
