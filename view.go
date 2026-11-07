@@ -454,7 +454,9 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		}
 	}
 	quitStartByte := -1
-	if ctrlCStartByte := strings.Index(prefixVisible, "Ctrl+C: "); ctrlCStartByte >= 0 {
+	// prefixVisible has trailing spaces trimmed above, so match the Ctrl+C
+	// label without requiring the ordinary space that used to follow it.
+	if ctrlCStartByte := strings.Index(prefixVisible, "Ctrl+C:"); ctrlCStartByte >= 0 {
 		quitStartByte = strings.LastIndex(prefixVisible[:ctrlCStartByte], quitText)
 		if quitStartByte >= 0 {
 			highlights = append(highlights, footerHighlight{
