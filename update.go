@@ -16,10 +16,17 @@ import (
 // -----------------------------------------------------------------------------
 
 func isThemeApplyShortcut(key tea.KeyPressMsg) bool {
-	if key.Code == tea.KeyF2 || (key.Code == tea.KeyEnter && key.Mod&4 != 0) {
+	// Ctrl+T can arrive as a printable key with a Ctrl modifier (enhanced
+	// keyboard protocols) or as the legacy ASCII control byte 0x14.
+	if key.Mod&4 != 0 && (key.Code == 't' || key.Code == 'T' || strings.EqualFold(key.Text, "t")) {
 		return true
 	}
-	return key.Keystroke() == "f2" || key.Keystroke() == "ctrl+enter" || key.String() == "ctrl+enter"
+	if key.Code == 20 || key.Text == string(rune(20)) {
+		return true
+	}
+	keystroke := strings.ToLower(key.Keystroke())
+	keyString := strings.ToLower(key.String())
+	return key.Code == tea.KeyF2 || keystroke == "ctrl+t" || keyString == "ctrl+t"
 }
 
 func isThemeSaveShortcut(key tea.KeyPressMsg) bool {
@@ -771,7 +778,7 @@ func (m model) Update(
 					m.selectThemeEntry(len(m.themeEntries) - 1)
 					return m, nil
 				}
-			case "f2", "ctrl+enter":
+			case "f2":
 				if m.themeEditField == "" {
 					m.applySelectedTheme()
 				}
