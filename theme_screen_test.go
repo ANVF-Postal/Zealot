@@ -373,10 +373,16 @@ func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
 	m.themesOpen = true
 	line, targets := m.renderStatusBar(false, false)
 	plain := stripANSISequences(line)
-	for _, want := range []string{"PgUp", "PgDn", "Ctrl+T: Apply • Esc: back • Ctrl+C: Quit", "[Send]"} {
+	for _, want := range []string{"PgUp", "PgDn", "Ctrl+T • Esc: back • Ctrl+C:", "Apply", "Quit", "[Send]"} {
 		if !strings.Contains(plain, want) {
 			t.Errorf("theme footer is missing %q: %s", want, plain)
 		}
+	}
+	if targets.applyEnd > targets.quitStart {
+		t.Fatalf("theme Apply overlaps Quit: %+v; %s", targets, plain)
+	}
+	if targets.quitEnd > targets.sendStart {
+		t.Fatalf("theme Quit overlaps Send: %+v; %s", targets, plain)
 	}
 	if targets.quitEnd <= targets.quitStart {
 		t.Fatalf("theme footer does not expose a clickable Quit action: %+v; %s", targets, plain)
@@ -404,8 +410,8 @@ func TestThemeBrowserFooterQuitClickOpensConfirmation(t *testing.T) {
 	m.themesOpen = true
 	line, targets := m.renderStatusBar(false, false)
 	plain := stripANSISequences(line)
-	if !strings.Contains(plain, "Ctrl+C: Quit") {
-		t.Fatalf("test setup did not preserve Quit immediately after the Ctrl+C hint: %q", plain)
+	if !strings.Contains(plain, "Ctrl+C:") || !strings.Contains(plain, "Apply") || !strings.Contains(plain, "Quit") {
+		t.Fatalf("test setup did not render the theme action cluster after the Ctrl+C hint: %q", plain)
 	}
 	if targets.quitEnd <= targets.quitStart {
 		t.Fatal("footer did not expose the clickable Quit button after the Ctrl+C hint")
@@ -435,50 +441,45 @@ func TestThemeBrowserFooterQuitClickOpensConfirmation(t *testing.T) {
 	}
 }
 
-func TestThemeFooterApplyStaysInShortcutHintAcrossWidths(t *testing.T) {
+func TestThemeFooterApplyMovesWithQuitAndSendAcrossWidths(t *testing.T) {
 	m := newMessageInteractionTestModel(100)
 	m.themesOpen = true
 	m.splashOpen = true
 	m.status = "Connected"
 
-	for _, width := range []int{100, 72, 44, 28, 20, 16, 12} {
+	for _, width := range []int{100, 72, 44, 28, 20, 16, 12, 10, 8} {
 		m.width = width
 		line, targets := m.renderStatusBar(false, false)
 		plain := stripANSISequences(line)
+		runes := []rune(plain)
+		if got := len(runes); got != width {
+			t.Fatalf("width %d produced footer width %d: %q", width, got, plain)
+		}
 		if targets.hasApply {
-			if targets.applyStart < 0 || targets.applyEnd <= targets.applyStart {
-				t.Fatalf("width %d produced invalid Apply hitbox: %+v", width, targets)
+			if targets.applyEnd <= targets.applyStart || targets.applyEnd > len(runes) ||
+				string(runes[targets.applyStart:targets.applyEnd]) != "Apply" {
+				t.Fatalf("width %d: Apply hitbox does not cover the visible button: %+v; footer=%q", width, targets, plain)
 			}
-			runes := []rune(plain)
-			if targets.applyEnd > len(runes) || string(runes[targets.applyStart:targets.applyEnd]) != "Apply" {
-				t.Fatalf("width %d: Apply hitbox does not cover the shortcut label: %+v; footer=%q", width, targets, plain)
-			}
-			if strings.Contains(plain, "Quit") && targets.applyEnd > targets.quitStart {
+			if targets.applyEnd > targets.quitStart {
 				t.Fatalf("width %d: Apply overlaps Quit: %+v; footer=%q", width, targets, plain)
 			}
-			if strings.Contains(plain, "apply") || strings.Count(plain, "Apply") != 1 {
-				t.Fatalf("width %d: expected one Apply in the shortcut hint and no separate footer button: %q", width, plain)
+			if strings.Count(plain, "Apply") != 1 {
+				t.Fatalf("width %d: expected one Apply button in the action cluster: %q", width, plain)
 			}
+		} else if strings.Contains(plain, "Apply") {
+			t.Fatalf("width %d: Apply is visible without a hitbox: %+v; footer=%q", width, targets, plain)
 		}
 		if strings.Contains(plain, "Quit") {
-			if targets.quitEnd <= targets.quitStart {
-				t.Fatalf("width %d: visible Quit label has no clickable hitbox: %+v; footer=%q", width, targets, plain)
-			}
-			runes := []rune(plain)
-			if targets.quitEnd > len(runes) || string(runes[targets.quitStart:targets.quitEnd]) != "Quit" {
-				t.Fatalf("width %d: Quit hitbox does not cover the shortcut label: %+v; footer=%q", width, targets, plain)
-			}
-			quitIndex := strings.LastIndex(plain, "Quit")
-			prefixBeforeQuit := strings.TrimRight(plain[:quitIndex], " ")
-			if strings.Contains(plain, "Ctrl+C:") && !strings.HasSuffix(prefixBeforeQuit, "Ctrl+C:") {
-				t.Fatalf("width %d: Quit is not immediately after the Ctrl+C hint: %q", width, plain)
+			if targets.quitEnd <= targets.quitStart || targets.quitEnd > len(runes) ||
+				string(runes[targets.quitStart:targets.quitEnd]) != "Quit" {
+				t.Fatalf("width %d: Quit hitbox does not cover the visible button: %+v; footer=%q", width, targets, plain)
 			}
 		}
-		if targets.hasSend && targets.quitEnd > targets.sendStart {
-			t.Fatalf("width %d: Quit overlaps Send: %+v; footer=%q", width, targets, plain)
+		if targets.hasSend && (targets.quitEnd > targets.sendStart || targets.sendEnd != width-1) {
+			t.Fatalf("width %d: button cluster overlaps Send or Send moved from the right inset: %+v; footer=%q", width, targets, plain)
 		}
-		if got := len([]rune(plain)); got != width {
-			t.Fatalf("width %d produced footer width %d: %q", width, got, plain)
+		if targets.hasApply && targets.hasSend && targets.applyEnd > targets.sendStart {
+			t.Fatalf("width %d: Apply overlaps Send: %+v; footer=%q", width, targets, plain)
 		}
 	}
 }
