@@ -509,6 +509,13 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	position := prefixWidth
 	var line strings.Builder
 	line.WriteString(renderedPrefix)
+	if includeApply {
+		targets.hasApply = true
+		targets.applyStart = position
+		targets.applyEnd = position + applyWidth
+		line.WriteString(m.styles.accent.Render("Apply"))
+		position += applyWidth
+	}
 	if quitLeftPad > 0 {
 		line.WriteString(m.styles.status.Render(strings.Repeat(" ", quitLeftPad)))
 		position += quitLeftPad
@@ -520,13 +527,6 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	if quitRightPad > 0 {
 		line.WriteString(m.styles.status.Render(strings.Repeat(" ", quitRightPad)))
 		position += quitRightPad
-	}
-	if includeApply {
-		targets.hasApply = true
-		targets.applyStart = position
-		targets.applyEnd = position + applyWidth
-		line.WriteString(m.styles.accent.Render("Apply"))
-		position += applyWidth
 	}
 	// Styled braille blanks force repainting when the footer changes length.
 	line.WriteString(m.styles.status.Render(strings.Repeat("⠀", gapWidth)))
