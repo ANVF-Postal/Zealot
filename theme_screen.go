@@ -185,7 +185,7 @@ func (m model) themeBrowserListIndexAt(x, y int) (int, bool) {
 
 // renderThemeBrowser uses the chat frame as its only border. The two columns
 // are aligned by a single, draggable divider. Browsing remains preview-only;
-// Ctrl+Enter explicitly applies the selected preset.
+// Ctrl+T explicitly applies the selected preset.
 func (m model) renderThemeBrowser() string {
 	leftWidth, rightWidth := m.themeBrowserColumnWidths()
 	contentHeight := max(1, m.messageHeight())
