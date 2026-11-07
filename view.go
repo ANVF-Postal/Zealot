@@ -363,7 +363,7 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		case m.themeDirty:
 			scrollTail = ": Ctrl+S: save • Ctrl+T after save • Esc: back • Ctrl+C: "
 		default:
-			scrollTail = ": Ctrl+T: Apply • Esc: back • Ctrl+C: "
+			scrollTail = ": Ctrl+T • Esc: back • Ctrl+C: "
 		}
 	}
 	prefix := lead + scrollLabel + scrollTail
@@ -378,6 +378,10 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	sendPrefix := "Enter: "
 	sendText := "[Send]"
 	quitWidth := lipgloss.Width(quitText)
+	applyWidth := 0
+	if includeApply {
+		applyWidth = lipgloss.Width("Apply")
+	}
 	fullSendWidth := lipgloss.Width(sendPrefix + sendText)
 	shortSendWidth := lipgloss.Width(sendText)
 	quitLeftPad := 1
@@ -386,14 +390,14 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	// Preserve the original footer resize priority: remove "Enter: " first,
 	// keep Quit and Send together, compact Quit padding only when necessary,
 	// then compress the shortcut prefix.
-	if includeSend && lipgloss.Width(prefix)+quitWidth+2+fullSendWidth > availableWidth {
+	if includeSend && lipgloss.Width(prefix)+quitWidth+applyWidth+2+fullSendWidth > availableWidth {
 		sendPrefix = ""
 	}
 
 	sendWidth := 0
 	if includeSend {
 		sendWidth = lipgloss.Width(sendPrefix) + shortSendWidth
-		for availableWidth < quitWidth+sendWidth+quitLeftPad+quitRightPad {
+		for availableWidth < quitWidth+applyWidth+sendWidth+quitLeftPad+quitRightPad {
 			if quitLeftPad > 0 {
 				quitLeftPad = 0
 				continue
@@ -404,14 +408,14 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 			}
 			break
 		}
-		if availableWidth < quitWidth+sendWidth {
+		if availableWidth < quitWidth+applyWidth+sendWidth {
 			includeSend = false
 			sendPrefix = ""
 			sendWidth = 0
 		}
 	}
 	quitButtonWidth := quitWidth + quitLeftPad + quitRightPad
-	maxPrefixWidth := availableWidth - quitButtonWidth - sendWidth
+	maxPrefixWidth := availableWidth - quitButtonWidth - applyWidth - sendWidth
 	if maxPrefixWidth < 0 {
 		maxPrefixWidth = 0
 	}
@@ -445,25 +449,6 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	prefixVisible := strings.TrimRight(prefix, " ")
 	prefixWidth := lipgloss.Width(prefixVisible)
 
-	type footerHighlight struct {
-		start    int
-		end      int
-		rendered string
-	}
-	var highlights []footerHighlight
-	if includeApply {
-		if applyStartByte := strings.Index(prefixVisible, "Apply"); applyStartByte >= 0 {
-			highlights = append(highlights, footerHighlight{
-				start: applyStartByte,
-				end: applyStartByte + len("Apply"),
-				rendered: m.styles.accent.Render("Apply"),
-			})
-			targets.hasApply = true
-			targets.applyStart = lipgloss.Width(prefixVisible[:applyStartByte])
-			targets.applyEnd = targets.applyStart + lipgloss.Width("Apply")
-		}
-	}
-
 	pageStartByte := strings.Index(prefixVisible, scrollLabel)
 	if pageStartByte >= 0 {
 		pgUpEndByte := pageStartByte + len("PgUp")
@@ -495,12 +480,13 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	prefixBuilder.WriteString(m.styles.status.Render(prefixVisible[cursor:]))
 	renderedPrefix := prefixBuilder.String()
 
-	gapWidth := availableWidth - prefixWidth - quitButtonWidth - sendWidth
+	gapWidth := availableWidth - prefixWidth - quitButtonWidth - applyWidth - sendWidth
 	if gapWidth < 0 {
 		gapWidth = 0
 	}
 
-	// Apply remains a clickable shortcut hint; Quit is a separately padded button.
+	// Keep the theme Apply action in the fixed button cluster with Quit and
+	// Send, rather than in the compressible shortcut prefix.
 	position := prefixWidth
 	var line strings.Builder
 	line.WriteString(renderedPrefix)
@@ -514,6 +500,14 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	position += quitWidth
 	if quitRightPad > 0 {
 		line.WriteString(m.styles.status.Render(strings.Repeat(" ", quitRightPad)))
+		position += quitRightPad
+	}
+	if includeApply {
+		targets.hasApply = true
+		targets.applyStart = position
+		targets.applyEnd = position + applyWidth
+		line.WriteString(m.styles.accent.Render("Apply"))
+		position += applyWidth
 	}
 	// Styled braille blanks force repainting when the footer changes length.
 	line.WriteString(m.styles.status.Render(strings.Repeat("⠀", gapWidth)))
