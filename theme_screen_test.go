@@ -343,12 +343,12 @@ func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
 
 func TestThemeBrowserFooterQuitClickOpensConfirmation(t *testing.T) {
 	m := newMessageInteractionTestModel(100)
-	m.width, m.height = 100, 30
+	m.width, m.height = 72, 30
 	m.splashOpen = true
 	m.themesOpen = true
 	_, targets := m.renderStatusBar(false, false)
 	if targets.quitEnd <= targets.quitStart {
-		t.Fatal("footer did not expose a clickable Quit action")
+		t.Fatal("footer did not expose a clickable Quit action when the Ctrl+C hint is truncated")
 	}
 	updated, _ := m.Update(tea.MouseClickMsg{
 		X: targets.quitStart,
@@ -386,12 +386,16 @@ func TestThemeFooterApplyStaysInShortcutHintAcrossWidths(t *testing.T) {
 				t.Fatalf("width %d: expected one Apply in the shortcut hint and no separate footer button: %q", width, plain)
 			}
 		}
-		if targets.quitEnd > targets.quitStart {
+		if strings.Contains(plain, "Quit") {
+			if targets.quitEnd <= targets.quitStart {
+				t.Fatalf("width %d: visible Quit label has no clickable hitbox: %+v; footer=%q", width, targets, plain)
+			}
 			runes := []rune(plain)
 			if targets.quitEnd > len(runes) || string(runes[targets.quitStart:targets.quitEnd]) != "Quit" {
 				t.Fatalf("width %d: Quit hitbox does not cover the shortcut label: %+v; footer=%q", width, targets, plain)
 			}
-			if !strings.Contains(plain, "Quit • Ctrl+C:") {
+			quitIndex := strings.LastIndex(plain, "Quit")
+			if !strings.HasPrefix(plain[quitIndex+len("Quit"):], " • Ctrl+C") {
 				t.Fatalf("width %d: Quit is not directly before the Ctrl+C hint: %q", width, plain)
 			}
 		}
