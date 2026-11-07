@@ -381,6 +381,12 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	applyWidth := 0
 	if includeApply {
 		applyWidth = lipgloss.Width(" Apply")
+		// Only yield Apply when the terminal cannot physically fit both
+		// action labels; otherwise keep it reserved through all resizing.
+		if availableWidth < quitWidth+applyWidth {
+			includeApply = false
+			applyWidth = 0
+		}
 	}
 	fullSendWidth := lipgloss.Width(sendPrefix + sendText)
 	shortSendWidth := lipgloss.Width(sendText)
