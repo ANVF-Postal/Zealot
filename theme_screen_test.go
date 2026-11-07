@@ -318,18 +318,18 @@ func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
 	m.themesOpen = true
 	line, targets := m.renderStatusBar(false, false)
 	plain := stripANSISequences(line)
-\tfor _, want := range []string{"PgUp", "PgDn", "Ctrl+T: Apply • Esc: back • Quit • Ctrl+C:", "[Send]"} {
-\t\tif !strings.Contains(plain, want) {
-\t\t\tt.Errorf("theme footer is missing %q: %s", want, plain)
-\t\t}
-\t}
-\tif targets.quitEnd <= targets.quitStart {
-\t\tt.Fatalf("theme footer does not expose a clickable Quit action: %+v; %s", targets, plain)
-\t}
-\trunes := []rune(plain)
-\tif targets.quitEnd > len(runes) || string(runes[targets.quitStart:targets.quitEnd]) != "Quit" {
-\t\tt.Fatalf("Quit hitbox does not cover the shortcut label: %+v; %s", targets, plain)
-\t}
+	for _, want := range []string{"PgUp", "PgDn", "Ctrl+T: Apply • Esc: back • Quit • Ctrl+C:", "[Send]"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("theme footer is missing %q: %s", want, plain)
+		}
+	}
+	if targets.quitEnd <= targets.quitStart {
+		t.Fatalf("theme footer does not expose a clickable Quit action: %+v; %s", targets, plain)
+	}
+	runes := []rune(plain)
+	if targets.quitEnd > len(runes) || string(runes[targets.quitStart:targets.quitEnd]) != "Quit" {
+		t.Fatalf("Quit hitbox does not cover the shortcut label: %+v; %s", targets, plain)
+	}
 	if strings.Count(plain, "Apply") != 1 || strings.Contains(plain, "apply") {
 		t.Fatalf("theme footer should contain exactly one title-case Apply action in the shortcut hint: %s", plain)
 	}
@@ -338,6 +338,26 @@ func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
 	}
 	if !targets.hasApply {
 		t.Fatal("theme browser footer does not expose a clickable apply action")
+	}
+}
+
+func TestThemeBrowserFooterQuitClickOpensConfirmation(t *testing.T) {
+	m := newMessageInteractionTestModel(100)
+	m.width, m.height = 100, 30
+	m.splashOpen = true
+	m.themesOpen = true
+	_, targets := m.renderStatusBar(false, false)
+	if targets.quitEnd <= targets.quitStart {
+		t.Fatal("footer did not expose a clickable Quit action")
+	}
+	updated, _ := m.Update(tea.MouseClickMsg{
+		X: targets.quitStart,
+		Y: m.height - 1,
+		Button: tea.MouseLeft,
+	})
+	next := updated.(model)
+	if !next.quitConfirm {
+		t.Fatal("clicking Quit beside Ctrl+C did not open quit confirmation")
 	}
 }
 
