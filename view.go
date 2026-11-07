@@ -392,10 +392,17 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	//    when the complete button cluster cannot fit.
 	// 3. Drop Send only if the Apply/Quit buttons still cannot fit with it.
 	// 4. Compress the left shortcut prefix (tail first, then status text).
-	applyButtonWidth := 0
+	applyBaseWidth := 0
 	if includeApply {
-		applyButtonWidth = applyWidth + applyLeftPad + applyRightPad
+		applyBaseWidth = applyWidth
 	}
+	applyPadding := func() int {
+		if !includeApply {
+			return 0
+		}
+		return applyLeftPad + applyRightPad
+	}
+	applyButtonWidth := applyBaseWidth + applyPadding()
 	if includeSend && lipgloss.Width(prefix)+applyButtonWidth+quitWidth+2+fullSendWidth > availableWidth {
 		sendPrefix = ""
 	}
@@ -403,8 +410,7 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	sendWidth := 0
 	if includeSend {
 		sendWidth = lipgloss.Width(sendPrefix) + shortSendWidth
-		for availableWidth < applyWidth*boolToInt(includeApply)+quitWidth+sendWidth+
-			applyLeftPad+applyRightPad+quitLeftPad+quitRightPad {
+		for availableWidth < applyBaseWidth+quitWidth+sendWidth+applyPadding()+quitLeftPad+quitRightPad {
 			if includeApply && applyLeftPad > 0 {
 				applyLeftPad = 0
 				continue
@@ -423,22 +429,20 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 			}
 			break
 		}
-		if availableWidth < applyWidth*boolToInt(includeApply)+quitWidth+sendWidth {
+		if availableWidth < applyBaseWidth+quitWidth+sendWidth {
 			includeSend = false
 			sendPrefix = ""
 			sendWidth = 0
 		}
 	}
-	if includeApply && availableWidth < applyWidth+quitWidth {
+	if includeApply && availableWidth < applyBaseWidth+quitWidth {
 		includeApply = false
+		applyBaseWidth = 0
 		applyLeftPad = 0
 		applyRightPad = 0
 	}
 
-	applyButtonWidth = 0
-	if includeApply {
-		applyButtonWidth = applyWidth + applyLeftPad + applyRightPad
-	}
+	applyButtonWidth = applyBaseWidth + applyPadding()
 	quitButtonWidth := quitWidth + quitLeftPad + quitRightPad
 	maxPrefixWidth := availableWidth - applyButtonWidth - quitButtonWidth - sendWidth
 	if maxPrefixWidth < 0 {
@@ -545,10 +549,8 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	}
 	targets.quitStart = position
 	targets.quitEnd = targets.quitStart + quitWidth
-	if quitLeftPad > 0 {
-		line.WriteString(m.styles.status.Render(strings.Repeat(" ", quitLeftPad)))
-	}
 	line.WriteString(m.styles.accent.Render(quitText))
+	position += quitWidth
 	if quitRightPad > 0 {
 		line.WriteString(m.styles.status.Render(strings.Repeat(" ", quitRightPad)))
 	}
