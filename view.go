@@ -454,15 +454,14 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		}
 	}
 	quitStartByte := -1
-	// prefixVisible has trailing spaces trimmed above, so match the Ctrl+C
-	// label without requiring the ordinary space that used to follow it.
-	if ctrlCStartByte := strings.Index(prefixVisible, "Ctrl+C:"); ctrlCStartByte >= 0 {
-		quitStartByte = strings.LastIndex(prefixVisible[:ctrlCStartByte], quitText)
-		if quitStartByte >= 0 {
-			highlights = append(highlights, footerHighlight{
-				start: quitStartByte, end: quitStartByte + len(quitText), rendered: m.styles.accent.Render(quitText),
-			})
-		}
+	// The shortcut tail can be truncated before the full Ctrl+C label fits.
+	// Find the visible Quit/Sure? label itself so its click target remains
+	// valid even when only part of the following hint is shown.
+	quitStartByte = strings.LastIndex(prefixVisible, quitText)
+	if quitStartByte >= 0 {
+		highlights = append(highlights, footerHighlight{
+			start: quitStartByte, end: quitStartByte + len(quitText), rendered: m.styles.accent.Render(quitText),
+		})
 	}
 	sort.Slice(highlights, func(i, j int) bool { return highlights[i].start < highlights[j].start })
 	var prefixBuilder strings.Builder
