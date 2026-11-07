@@ -343,9 +343,9 @@ func compactFooterStatusLead(status string, maxWidth int) string {
 	return " " + shortStatus + separator
 }
 
-// renderStatusBar keeps the ordinary shortcuts on the left and anchors the
-// send action to the right edge. The same measured layout supplies mouse
-// hitboxes, so clickable areas stay aligned with the rendered text.
+// renderStatusBar keeps ordinary shortcuts on the left and anchors the
+// Apply/Quit/Send action cluster to the right edge. The measured layout also
+// supplies mouse hitboxes, so clicks stay aligned with the rendered labels.
 func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTargets) {
 	availableWidth := max(1, m.width-1) // reserve one final cell as a styled blank
 	lead := " " + m.status + " • "
@@ -530,7 +530,6 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		} else {
 			line.WriteString(m.styles.accent.Render(sendText))
 		}
-		position += sendPrefixWidth + sendTextWidth
 	}
 
 	// Keep the final inset cell painted while all right-side actions remain
