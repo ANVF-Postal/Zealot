@@ -378,7 +378,7 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	applyLeftPad, applyRightPad := 1, 1
 	quitLeftPad, quitRightPad := 1, 1
 	quitWidth := lipgloss.Width(quitText)
-	applyWidth := lipgloss.Width("Apply")
+	applyWidth := lipgloss.Width("apply")
 	sendTextWidth := lipgloss.Width(sendText)
 
 	actionWidth := func() int {
@@ -504,7 +504,7 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		targets.hasApply = true
 		targets.applyStart = position
 		targets.applyEnd = position + applyWidth
-		line.WriteString(m.styles.accent.Render("Apply"))
+		line.WriteString(m.styles.accent.Render("apply"))
 		position += applyWidth
 		line.WriteString(m.styles.status.Render(strings.Repeat(" ", applyRightPad)))
 		position += applyRightPad
