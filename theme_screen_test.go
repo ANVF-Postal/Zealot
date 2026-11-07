@@ -442,7 +442,7 @@ func TestThemeBrowserCtrlTShortcutAppliesSelectedTheme(t *testing.T) {
 		name string
 		key  tea.KeyPressMsg
 	}{
-		{name: "enhanced key with Ctrl modifier", key: tea.KeyPressMsg{Code: 't', Mod: 4}},
+		{name: "enhanced key with Ctrl modifier", key: tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl}},
 		{name: "legacy control byte", key: tea.KeyPressMsg{Code: 20}},
 		{name: "control byte in text", key: tea.KeyPressMsg{Text: string(rune(20))}},
 	}
