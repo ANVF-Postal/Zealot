@@ -387,9 +387,9 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	quitLeftPad := 1
 	quitRightPad := 1
 
-	// Preserve the original footer resize priority: remove "Enter: " first,
-	// keep Quit and Send together, compact Quit padding only when necessary,
-	// then compress the shortcut prefix.
+	// Preserve the footer resize priority: remove "Enter: " first, keep the
+	// fixed action buttons together, compact Quit padding, then compress the
+	// shortcut prefix. At extreme widths, Send then Apply yield to Quit.
 	if includeSend && lipgloss.Width(prefix)+quitWidth+applyWidth+2+fullSendWidth > availableWidth {
 		sendPrefix = ""
 	}
