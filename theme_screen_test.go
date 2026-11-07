@@ -318,19 +318,49 @@ func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
 	m.themesOpen = true
 	line, targets := m.renderStatusBar(false, false)
 	plain := stripANSISequences(line)
-	for _, want := range []string{"PgUp", "PgDn", "Ctrl+Enter/F2: [Apply]", "Esc: back", "[Send]", "Quit"} {
+	for _, want := range []string{"PgUp", "PgDn", "Ctrl+T: apply theme", "Esc: back", "[Send]", "Apply", "Quit"} {
 		if !strings.Contains(plain, want) {
 			t.Errorf("theme footer is missing %q: %s", want, plain)
 		}
 	}
-	if strings.Contains(plain, "[APPLY]") {
-		t.Fatalf("theme footer still renders the old boxed Apply label: %s", plain)
+	if strings.Contains(plain, "[Apply]") || strings.Contains(plain, "[APPLY]") {
+		t.Fatalf("theme footer still renders Apply with square brackets: %s", plain)
 	}
 	if !targets.hasSend {
 		t.Fatal("theme browser footer does not expose the send action")
 	}
 	if !targets.hasApply {
 		t.Fatal("theme browser footer does not expose a clickable apply action")
+	}
+}
+
+func TestThemeFooterApplyMovesWithQuitAcrossWidths(t *testing.T) {
+	m := newMessageInteractionTestModel(100)
+	m.themesOpen = true
+	m.splashOpen = true
+	m.status = "Connected"
+
+	for _, width := range []int{100, 72, 44, 28, 20, 16, 12} {
+		m.width = width
+		line, targets := m.renderStatusBar(false, false)
+		plain := stripANSISequences(line)
+		if targets.hasApply {
+			if targets.applyStart < 0 || targets.applyEnd <= targets.applyStart {
+				t.Fatalf("width %d produced invalid Apply hitbox: %+v", width, targets)
+			}
+			if targets.applyEnd > targets.quitStart {
+				t.Fatalf("width %d: Apply overlaps Quit: %+v; footer=%q", width, targets, plain)
+			}
+			if strings.Contains(plain, "[Apply]") {
+				t.Fatalf("width %d: Apply still has brackets: %q", width, plain)
+			}
+		}
+		if targets.hasSend && targets.quitEnd > targets.sendStart {
+			t.Fatalf("width %d: Quit overlaps Send: %+v; footer=%q", width, targets, plain)
+		}
+		if got := len([]rune(plain)); got != width {
+			t.Fatalf("width %d produced footer width %d: %q", width, got, plain)
+		}
 	}
 }
 
@@ -407,22 +437,33 @@ func lipglossWidthForThemeTest(value string) int {
 	return len([]rune(value))
 }
 
-func TestThemeBrowserCtrlEnterShortcutAppliesSelectedTheme(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	cfg, err := loadConfig()
-	if err != nil {
-		t.Fatalf("load config: %v", err)
+func TestThemeBrowserCtrlTShortcutAppliesSelectedTheme(t *testing.T) {
+	tests := []struct {
+		name string
+		key  tea.KeyPressMsg
+	}{
+		{name: "enhanced key with Ctrl modifier", key: tea.KeyPressMsg{Code: 't', Mod: 4}},
+		{name: "legacy control byte", key: tea.KeyPressMsg{Code: 20}},
+		{name: "control byte in text", key: tea.KeyPressMsg{Text: string(rune(20))}},
 	}
-	m := newModel(cfg, "lobby", false, nil)
-	m.width, m.height = 100, 30
-	m.openThemeBrowser()
-	want := themeBrowserSelectAutumn(t, &m)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			cfg, err := loadConfig()
+			if err != nil {
+				t.Fatalf("load config: %v", err)
+			}
+			m := newModel(cfg, "lobby", false, nil)
+			m.width, m.height = 100, 30
+			m.openThemeBrowser()
+			want := themeBrowserSelectAutumn(t, &m)
 
-	// Bubble Tea's KeyMod uses bit 2 for Ctrl (Shift and Alt occupy bits 0-1).
-	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: 4})
-	next := updated.(model)
-	if next.cfg.Theme != want {
-		t.Fatalf("Ctrl+Enter did not apply selected theme: got %+v, want %+v", next.cfg.Theme, want)
+			updated, _ := m.Update(test.key)
+			next := updated.(model)
+			if next.cfg.Theme != want {
+				t.Fatalf("Ctrl+T did not apply selected theme: got %+v, want %+v", next.cfg.Theme, want)
+			}
+		})
 	}
 }
 
