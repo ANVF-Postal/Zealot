@@ -359,9 +359,9 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		case m.themeEditField != "":
 			scrollTail = ": Enter: confirm • Esc: cancel • Ctrl+C: "
 		case m.themeDirty:
-			scrollTail = ": Ctrl+S: save • Ctrl+T: apply after save • Esc: back • Ctrl+C: "
+			scrollTail = ": Ctrl+S: save • Ctrl+T: Apply after save • Esc: back • Ctrl+C: "
 		default:
-			scrollTail = ": Ctrl+T: apply theme • Esc: back • Ctrl+C: "
+			scrollTail = ": Ctrl+T: Apply • Esc: back • Ctrl+C: "
 		}
 	}
 	prefix := lead + scrollLabel + scrollTail
@@ -375,36 +375,27 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	includeSend := !usersOpen && (!splashOpen || m.themesOpen)
 	includeApply := m.themesOpen && m.themeError == "" && m.themeEditField == ""
 
-	applyLeftPad, applyRightPad := 1, 1
 	quitLeftPad, quitRightPad := 1, 1
 	quitWidth := lipgloss.Width(quitText)
-	applyWidth := lipgloss.Width("apply")
 	sendTextWidth := lipgloss.Width(sendText)
 
 	actionWidth := func() int {
 		width := quitWidth + quitLeftPad + quitRightPad
-		if includeApply {
-			width += applyWidth + applyLeftPad + applyRightPad
-		}
 		if includeSend {
 			width += lipgloss.Width(sendPrefix) + sendTextWidth
 		}
 		return width
 	}
 
-	// Give the Enter hint up first, then compact button padding. If the
-	// terminal is exceptionally narrow, drop Send before sacrificing Apply.
+	// Give the Enter hint up first, then compact Quit padding. If the
+	// terminal is exceptionally narrow, drop Send before the Quit action.
 	if includeSend && lipgloss.Width(prefix)+actionWidth() > availableWidth {
 		sendPrefix = ""
 	}
-	for actionWidth() > availableWidth && (applyLeftPad+applyRightPad+quitLeftPad+quitRightPad) > 0 {
+	for actionWidth() > availableWidth && (quitLeftPad+quitRightPad) > 0 {
 		switch {
-		case applyRightPad > 0:
-			applyRightPad = 0
 		case quitRightPad > 0:
 			quitRightPad = 0
-		case applyLeftPad > 0:
-			applyLeftPad = 0
 		case quitLeftPad > 0:
 			quitLeftPad = 0
 		}
@@ -412,9 +403,6 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	if actionWidth() > availableWidth && includeSend {
 		includeSend = false
 		sendPrefix = ""
-	}
-	if actionWidth() > availableWidth && includeApply {
-		includeApply = false
 	}
 
 	rightActionsWidth := actionWidth()
@@ -466,6 +454,15 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 			footerHighlight{start: pgDnStartByte, end: pgDnEndByte, rendered: m.styles.accent.Render("PgDn")},
 		)
 	}
+	applyStartByte := -1
+	if includeApply {
+		applyStartByte = strings.Index(prefixVisible, "Apply")
+		if applyStartByte >= 0 {
+			highlights = append(highlights, footerHighlight{
+				start: applyStartByte, end: applyStartByte + len("Apply"), rendered: m.styles.accent.Render("Apply"),
+			})
+		}
+	}
 	sort.Slice(highlights, func(i, j int) bool { return highlights[i].start < highlights[j].start })
 	var prefixBuilder strings.Builder
 	cursor := 0
@@ -490,6 +487,11 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		targets.pgDnStart = pageStart + lipgloss.Width("PgUp/")
 		targets.pgDnEnd = targets.pgDnStart + lipgloss.Width("PgDn")
 	}
+	if applyStartByte >= 0 {
+		targets.hasApply = true
+		targets.applyStart = lipgloss.Width(prefixVisible[:applyStartByte])
+		targets.applyEnd = targets.applyStart + lipgloss.Width("Apply")
+	}
 
 	var line strings.Builder
 	line.WriteString(renderedPrefix)
@@ -497,18 +499,6 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		line.WriteString(m.styles.status.Render(strings.Repeat("⠀", gapWidth)))
 	}
 	position := prefixWidth + gapWidth
-
-	if includeApply {
-		line.WriteString(m.styles.status.Render(strings.Repeat(" ", applyLeftPad)))
-		position += applyLeftPad
-		targets.hasApply = true
-		targets.applyStart = position
-		targets.applyEnd = position + applyWidth
-		line.WriteString(m.styles.accent.Render("apply"))
-		position += applyWidth
-		line.WriteString(m.styles.status.Render(strings.Repeat(" ", applyRightPad)))
-		position += applyRightPad
-	}
 
 	targets.quitStart = position + quitLeftPad
 	targets.quitEnd = targets.quitStart + quitWidth
@@ -532,8 +522,8 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		}
 	}
 
-	// Keep the final inset cell painted while all right-side actions remain
-	// measured as one cluster, so Apply and Quit cannot overlap on resize.
+	// Keep the final inset cell painted while Quit and Send remain measured
+	// as one right-aligned cluster across terminal resizes.
 	line.WriteString(m.styles.status.Render("⠀"))
 	return line.String(), targets
 }
