@@ -347,7 +347,11 @@ func TestThemeBrowserFooterQuitClickOpensConfirmation(t *testing.T) {
 	m.status = "Connected"
 	m.splashOpen = true
 	m.themesOpen = true
-	_, targets := m.renderStatusBar(false, false)
+	line, targets := m.renderStatusBar(false, false)
+	plain := stripANSISequences(line)
+	if !strings.Contains(plain, "Quit • Ctrl+C") || strings.Contains(plain, "Ctrl+C:") {
+		t.Fatalf("test setup did not produce a truncated Ctrl+C hint: %q", plain)
+	}
 	if targets.quitEnd <= targets.quitStart {
 		t.Fatal("footer did not expose a clickable Quit action when the Ctrl+C hint is truncated")
 	}
@@ -380,7 +384,7 @@ func TestThemeFooterApplyStaysInShortcutHintAcrossWidths(t *testing.T) {
 			if targets.applyEnd > len(runes) || string(runes[targets.applyStart:targets.applyEnd]) != "Apply" {
 				t.Fatalf("width %d: Apply hitbox does not cover the shortcut label: %+v; footer=%q", width, targets, plain)
 			}
-			if targets.applyEnd > targets.quitStart {
+			if strings.Contains(plain, "Quit") && targets.applyEnd > targets.quitStart {
 				t.Fatalf("width %d: Apply overlaps Quit: %+v; footer=%q", width, targets, plain)
 			}
 			if strings.Contains(plain, "apply") || strings.Count(plain, "Apply") != 1 {
