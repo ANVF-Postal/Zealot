@@ -408,7 +408,7 @@ func TestThemeBrowserFooterQuitClickOpensConfirmation(t *testing.T) {
 		t.Fatalf("test setup did not preserve Quit immediately after the Ctrl+C hint: %q", plain)
 	}
 	if targets.quitEnd <= targets.quitStart {
-		t.Fatal("footer did not expose a clickable Quit action when the Ctrl+C hint is truncated")
+		t.Fatal("footer did not expose the clickable Quit button after the Ctrl+C hint")
 	}
 	updated, _ := m.Update(tea.MouseClickMsg{
 		X: targets.quitStart,
