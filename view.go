@@ -355,6 +355,7 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		// Keep the secondary views' keyboard shortcut wording consistent.
 		scrollTail = ": Scroll • Esc: close • Ctrl+C: "
 	}
+	includeApply := m.themesOpen && m.themeError == "" && m.themeEditField == ""
 	if m.themesOpen {
 		switch {
 		case m.themeEditField != "":
@@ -362,7 +363,7 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		case m.themeDirty:
 			scrollTail = ": Ctrl+S: save • Ctrl+T after save • Esc: back • Ctrl+C: "
 		default:
-			scrollTail = ": Ctrl+T • Esc: back • Ctrl+C: "
+			scrollTail = ": Ctrl+T: Apply • Esc: back • Ctrl+C: "
 		}
 	}
 	prefix := lead + scrollLabel + scrollTail
@@ -379,46 +380,20 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	quitWidth := lipgloss.Width(quitText)
 	fullSendWidth := lipgloss.Width(sendPrefix + sendText)
 	shortSendWidth := lipgloss.Width(sendText)
-	includeApply := m.themesOpen && m.themeError == "" && m.themeEditField == ""
-	applyWidth := lipgloss.Width("Apply")
-	applyLeftPad := 1
-	applyRightPad := 1
 	quitLeftPad := 1
 	quitRightPad := 1
 
-	// Resize priority is deliberate and regression-tested:
-	// 1. Remove "Enter: " before sacrificing any clickable action.
-	// 2. Keep Apply, Quit, and Send; compact Apply and Quit padding only
-	//    when the complete button cluster cannot fit.
-	// 3. Drop Send only if the Apply/Quit buttons still cannot fit with it.
-	// 4. Compress the left shortcut prefix (tail first, then status text).
-	applyBaseWidth := 0
-	if includeApply {
-		applyBaseWidth = applyWidth
-	}
-	applyPadding := func() int {
-		if !includeApply {
-			return 0
-		}
-		return applyLeftPad + applyRightPad
-	}
-	applyButtonWidth := applyBaseWidth + applyPadding()
-	if includeSend && lipgloss.Width(prefix)+applyButtonWidth+quitWidth+2+fullSendWidth > availableWidth {
+	// Preserve the original footer resize priority: remove "Enter: " first,
+	// keep Quit and Send together, compact Quit padding only when necessary,
+	// then compress the shortcut prefix.
+	if includeSend && lipgloss.Width(prefix)+quitWidth+2+fullSendWidth > availableWidth {
 		sendPrefix = ""
 	}
 
 	sendWidth := 0
 	if includeSend {
 		sendWidth = lipgloss.Width(sendPrefix) + shortSendWidth
-		for availableWidth < applyBaseWidth+quitWidth+sendWidth+applyPadding()+quitLeftPad+quitRightPad {
-			if includeApply && applyLeftPad > 0 {
-				applyLeftPad = 0
-				continue
-			}
-			if includeApply && applyRightPad > 0 {
-				applyRightPad = 0
-				continue
-			}
+		for availableWidth < quitWidth+sendWidth+quitLeftPad+quitRightPad {
 			if quitLeftPad > 0 {
 				quitLeftPad = 0
 				continue
@@ -429,22 +404,14 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 			}
 			break
 		}
-		if availableWidth < applyBaseWidth+quitWidth+sendWidth {
+		if availableWidth < quitWidth+sendWidth {
 			includeSend = false
 			sendPrefix = ""
 			sendWidth = 0
 		}
 	}
-	if includeApply && availableWidth < applyBaseWidth+quitWidth {
-		includeApply = false
-		applyBaseWidth = 0
-		applyLeftPad = 0
-		applyRightPad = 0
-	}
-
-	applyButtonWidth = applyBaseWidth + applyPadding()
 	quitButtonWidth := quitWidth + quitLeftPad + quitRightPad
-	maxPrefixWidth := availableWidth - applyButtonWidth - quitButtonWidth - sendWidth
+	maxPrefixWidth := availableWidth - quitButtonWidth - sendWidth
 	if maxPrefixWidth < 0 {
 		maxPrefixWidth = 0
 	}
@@ -515,31 +482,25 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	prefixBuilder.WriteString(m.styles.status.Render(prefixVisible[cursor:]))
 	renderedPrefix := prefixBuilder.String()
 
-	gapWidth := availableWidth - prefixWidth - applyButtonWidth - quitButtonWidth - sendWidth
+	gapWidth := availableWidth - prefixWidth - quitButtonWidth - sendWidth
 	if gapWidth < 0 {
 		gapWidth = 0
 	}
 
-	// Apply (when shown) and Quit share the measured action cluster.
-	// Quit retains its confirmation and second-click behavior.
+	// Apply stays in the Ctrl+T shortcut hint; its hitbox is measured
+	// within the prefix, while Quit remains a separately padded button.
+	if includeApply {
+		applyStartByte := strings.Index(prefixVisible, "Apply")
+		if applyStartByte >= 0 {
+			applyStart := lipgloss.Width(prefixVisible[:applyStartByte])
+			targets.hasApply = true
+			targets.applyStart = applyStart
+			targets.applyEnd = applyStart + lipgloss.Width("Apply")
+		}
+	}
 	position := prefixWidth
 	var line strings.Builder
 	line.WriteString(renderedPrefix)
-	if includeApply {
-		if applyLeftPad > 0 {
-			line.WriteString(m.styles.status.Render(strings.Repeat(" ", applyLeftPad)))
-			position += applyLeftPad
-		}
-		targets.hasApply = true
-		targets.applyStart = position
-		targets.applyEnd = position + applyWidth
-		line.WriteString(m.styles.accent.Render("Apply"))
-		position += applyWidth
-		if applyRightPad > 0 {
-			line.WriteString(m.styles.status.Render(strings.Repeat(" ", applyRightPad)))
-			position += applyRightPad
-		}
-	}
 	if quitLeftPad > 0 {
 		line.WriteString(m.styles.status.Render(strings.Repeat(" ", quitLeftPad)))
 		position += quitLeftPad
