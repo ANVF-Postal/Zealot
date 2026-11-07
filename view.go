@@ -346,62 +346,84 @@ func compactFooterStatusLead(status string, maxWidth int) string {
 // renderStatusBar keeps keyboard shortcuts and Quit together on the left,
 // while anchoring the composer Send action to the right edge. Measured
 // positions supply mouse hitboxes aligned with the rendered labels.
+// renderStatusBar keeps ordinary shortcuts on the left, the Quit button
+// immediately after the Ctrl+C hint, and the composer Send action anchored
+// to the right edge. The measured layout supplies matching mouse hitboxes.
 func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTargets) {
 	availableWidth := max(1, m.width-1) // reserve one final cell as a styled blank
 	lead := " " + m.status + " • "
 	scrollLabel := "PgUp/PgDn"
-	quitText := "Quit"
-	if m.quitConfirm {
-		quitText = "Sure?"
-	}
-	scrollTail := ": Scroll • " + quitText + " • Ctrl+C: "
+	scrollTail := ": Scroll • Ctrl+C: "
 	if usersOpen || splashOpen {
-		scrollTail = ": Scroll • Esc: close • " + quitText + " • Ctrl+C: "
+		// Keep the secondary views' keyboard shortcut wording consistent.
+		scrollTail = ": Scroll • Esc: close • Ctrl+C: "
 	}
 	if m.themesOpen {
 		switch {
 		case m.themeEditField != "":
-			scrollTail = ": Enter: confirm • Esc: cancel • " + quitText + " • Ctrl+C: "
+			scrollTail = ": Enter: confirm • Esc: cancel • Ctrl+C: "
 		case m.themeDirty:
-			scrollTail = ": Ctrl+S: save • Ctrl+T: Apply after save • Esc: back • " + quitText + " • Ctrl+C: "
+			scrollTail = ": Ctrl+S: save • Ctrl+T: Apply after save • Esc: back • Ctrl+C: "
 		default:
-			scrollTail = ": Ctrl+T: Apply • Esc: back • " + quitText + " • Ctrl+C: "
+			scrollTail = ": Ctrl+T: Apply • Esc: back • Ctrl+C: "
 		}
 	}
 	prefix := lead + scrollLabel + scrollTail
 
-	sendText := "[Send]"
-	sendPrefix := "Enter: "
+	quitText := "Quit"
+	if m.quitConfirm {
+		quitText = "Sure?"
+	}
+
+	targets := footerTargets{}
 	includeSend := !usersOpen && (!splashOpen || m.themesOpen)
-	includeApply := m.themesOpen && m.themeError == "" && m.themeEditField == ""
+	sendPrefix := "Enter: "
+	sendText := "[Send]"
+	quitWidth := lipgloss.Width(quitText)
+	fullSendWidth := lipgloss.Width(sendPrefix + sendText)
+	shortSendWidth := lipgloss.Width(sendText)
+	quitLeftPad := 1
+	quitRightPad := 1
 
-	sendTextWidth := lipgloss.Width(sendText)
+	// Resize priority is deliberate and regression-tested:
+	// 1. Remove "Enter: " before sacrificing either clickable action.
+	// 2. Keep Quit and Send; reduce Quit's left padding, then right padding,
+	//    only when the two buttons themselves cannot fit.
+	// 3. Drop Send only if Quit plus [Send] still cannot fit without padding.
+	// 4. Compress the left shortcut prefix (tail first, then status text).
+	if includeSend && lipgloss.Width(prefix)+quitWidth+2+fullSendWidth > availableWidth {
+		sendPrefix = ""
+	}
 
-	actionWidth := func() int {
-		width := 0
-		if includeSend {
-			width += lipgloss.Width(sendPrefix) + sendTextWidth
+	sendWidth := 0
+	if includeSend {
+		sendWidth = lipgloss.Width(sendPrefix) + shortSendWidth
+		for availableWidth < quitWidth+sendWidth+quitLeftPad+quitRightPad {
+			if quitLeftPad > 0 {
+				quitLeftPad = 0
+				continue
+			}
+			if quitRightPad > 0 {
+				quitRightPad = 0
+				continue
+			}
+			break
 		}
-		return width
+		if availableWidth < quitWidth+sendWidth {
+			includeSend = false
+			sendPrefix = ""
+			sendWidth = 0
+		}
 	}
 
-	// Keep the composer action on the right; Quit stays beside Ctrl+C in
-	// the shortcut text so the two keyboard hints remain together.
-	if includeSend && lipgloss.Width(prefix)+actionWidth() > availableWidth {
-		sendPrefix = ""
-	}
-	if actionWidth() > availableWidth && includeSend {
-		includeSend = false
-		sendPrefix = ""
+	quitButtonWidth := quitWidth + quitLeftPad + quitRightPad
+	maxPrefixWidth := availableWidth - quitButtonWidth - sendWidth
+	if maxPrefixWidth < 0 {
+		maxPrefixWidth = 0
 	}
 
-	rightActionsWidth := actionWidth()
-	maxPrefixWidth := max(0, availableWidth-rightActionsWidth)
 	pageLabelWidth := lipgloss.Width(scrollLabel)
-
 	if !usersOpen && (!splashOpen || m.themesOpen) {
-		// Keep the page controls visible where possible. Compress the
-		// explanatory tail first, then the connection status.
 		if lipgloss.Width(prefix) > maxPrefixWidth {
 			tailBudget := maxPrefixWidth - lipgloss.Width(lead) - pageLabelWidth
 			if tailBudget >= 0 {
@@ -413,6 +435,7 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 				statusBudget := maxPrefixWidth - pageLabelWidth
 				prefix = compactFooterStatusLead(m.status, statusBudget) + scrollLabel
 			} else {
+				// Never show a partial page label as though it were clickable.
 				prefix = ""
 			}
 		}
@@ -443,26 +466,32 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 			footerHighlight{start: pageStartByte, end: pgUpEndByte, rendered: m.styles.accent.Render("PgUp")},
 			footerHighlight{start: pgDnStartByte, end: pgDnEndByte, rendered: m.styles.accent.Render("PgDn")},
 		)
+		targets.hasPageScroll = true
+		pageStart := lipgloss.Width(prefixVisible[:pageStartByte])
+		targets.pgUpStart = pageStart
+		targets.pgUpEnd = pageStart + lipgloss.Width("PgUp")
+		targets.pgDnStart = pageStart + lipgloss.Width("PgUp/")
+		targets.pgDnEnd = targets.pgDnStart + lipgloss.Width("PgDn")
 	}
+
+	// In the theme browser, Apply is part of the shortcut text but remains
+	// independently clickable. Calculate its target only after prefix sizing.
+	includeApply := m.themesOpen && m.themeError == "" && m.themeEditField == ""
 	applyStartByte := -1
 	if includeApply {
 		applyStartByte = strings.Index(prefixVisible, "Apply")
 		if applyStartByte >= 0 {
 			highlights = append(highlights, footerHighlight{
-				start: applyStartByte, end: applyStartByte + len("Apply"), rendered: m.styles.accent.Render("Apply"),
+				start: applyStartByte,
+				end: applyStartByte + len("Apply"),
+				rendered: m.styles.accent.Render("Apply"),
 			})
+			targets.hasApply = true
+			targets.applyStart = lipgloss.Width(prefixVisible[:applyStartByte])
+			targets.applyEnd = targets.applyStart + lipgloss.Width("Apply")
 		}
 	}
-	quitStartByte := -1
-	// The shortcut tail can be truncated before the full Ctrl+C label fits.
-	// Find the visible Quit/Sure? label itself so its click target remains
-	// valid even when only part of the following hint is shown.
-	quitStartByte = strings.LastIndex(prefixVisible, quitText)
-	if quitStartByte >= 0 {
-		highlights = append(highlights, footerHighlight{
-			start: quitStartByte, end: quitStartByte + len(quitText), rendered: m.styles.accent.Render(quitText),
-		})
-	}
+
 	sort.Slice(highlights, func(i, j int) bool { return highlights[i].start < highlights[j].start })
 	var prefixBuilder strings.Builder
 	cursor := 0
@@ -477,38 +506,33 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	prefixBuilder.WriteString(m.styles.status.Render(prefixVisible[cursor:]))
 	renderedPrefix := prefixBuilder.String()
 
-	gapWidth := max(0, availableWidth-prefixWidth-rightActionsWidth)
-	var targets footerTargets
-	if pageStartByte >= 0 {
-		pageStart := lipgloss.Width(prefixVisible[:pageStartByte])
-		targets.hasPageScroll = true
-		targets.pgUpStart = pageStart
-		targets.pgUpEnd = pageStart + lipgloss.Width("PgUp")
-		targets.pgDnStart = pageStart + lipgloss.Width("PgUp/")
-		targets.pgDnEnd = targets.pgDnStart + lipgloss.Width("PgDn")
+	gapWidth := availableWidth - prefixWidth - quitButtonWidth - sendWidth
+	if gapWidth < 0 {
+		gapWidth = 0
 	}
-	if applyStartByte >= 0 {
-		targets.hasApply = true
-		targets.applyStart = lipgloss.Width(prefixVisible[:applyStartByte])
-		targets.applyEnd = targets.applyStart + lipgloss.Width("Apply")
-	}
-	if quitStartByte >= 0 {
-		targets.quitStart = lipgloss.Width(prefixVisible[:quitStartByte])
-		targets.quitEnd = targets.quitStart + lipgloss.Width(quitText)
-	}
+
+	// Quit is a real button, not merely decoration in the Ctrl+C hint. Keep
+	// its measured hitbox directly after the prefix so mouse confirmation,
+	// second-click quit, and the Sure? confirmation label continue to work.
+	targets.quitStart = prefixWidth + quitLeftPad
+	targets.quitEnd = targets.quitStart + quitWidth
 
 	var line strings.Builder
 	line.WriteString(renderedPrefix)
-	if gapWidth > 0 {
-		line.WriteString(m.styles.status.Render(strings.Repeat("⠀", gapWidth)))
+	if quitLeftPad > 0 {
+		line.WriteString(m.styles.status.Render(strings.Repeat(" ", quitLeftPad)))
 	}
-	position := prefixWidth + gapWidth
+	line.WriteString(m.styles.accent.Render(quitText))
+	if quitRightPad > 0 {
+		line.WriteString(m.styles.status.Render(strings.Repeat(" ", quitRightPad)))
+	}
+	// Styled braille blanks force repainting when the footer changes length.
+	line.WriteString(m.styles.status.Render(strings.Repeat("⠀", gapWidth)))
 
 	if includeSend {
-		sendPrefixWidth := lipgloss.Width(sendPrefix)
 		targets.hasSend = true
-		targets.sendStart = position + sendPrefixWidth
-		targets.sendEnd = targets.sendStart + sendTextWidth
+		targets.sendStart = availableWidth - shortSendWidth
+		targets.sendEnd = availableWidth
 		if sendPrefix != "" {
 			line.WriteString(m.styles.status.Render(sendPrefix))
 		}
@@ -519,8 +543,7 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		}
 	}
 
-	// Keep the final inset cell painted while the composer action remains
-	// anchored to the right edge across terminal resizes.
+	// Paint the final inset cell while keeping [Send] one cell from the edge.
 	line.WriteString(m.styles.status.Render("⠀"))
 	return line.String(), targets
 }
