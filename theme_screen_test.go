@@ -311,6 +311,61 @@ func TestThemeBrowserAllowsComposerTyping(t *testing.T) {
 	}
 }
 
+func TestFooterRestoresQuitAndSendResizePriority(t *testing.T) {
+	m := newMessageInteractionTestModel(100)
+	m.status = "Connected"
+
+	line, targets := m.renderStatusBar(false, false)
+	plain := stripANSISequences(line)
+	if !strings.Contains(plain, "Connected • PgUp/PgDn: Scroll • Ctrl+C: Quit") {
+		t.Fatalf("normal footer does not place Quit immediately after Ctrl+C: %q", plain)
+	}
+	if !strings.Contains(plain, "Enter: [Send]") {
+		t.Fatalf("normal footer is missing the Enter send hint: %q", plain)
+	}
+	if !targets.hasSend || targets.sendStart != 93 || targets.sendEnd != 99 {
+		t.Fatalf("wide footer did not anchor [Send] against the right inset: %+v", targets)
+	}
+
+	// The original resize contract: remove Enter first; retain Quit and Send;
+	// compact Quit padding only at the physical limit; drop Send only when
+	// Quit plus [Send] no longer fit. Left shortcut text is compressed last.
+	for _, width := range []int{100, 72, 44, 28, 20, 16, 12, 10} {
+		m.width = width
+		line, targets = m.renderStatusBar(false, false)
+		plain = stripANSISequences(line)
+		if got := len([]rune(plain)); got != width {
+			t.Fatalf("width %d produced footer width %d: %q", width, got, plain)
+		}
+		if targets.quitEnd <= targets.quitStart {
+			t.Fatalf("width %d lost the Quit hitbox: %+v; footer=%q", width, targets, plain)
+		}
+		runes := []rune(plain)
+		if targets.quitEnd > len(runes) || string(runes[targets.quitStart:targets.quitEnd]) != "Quit" {
+			t.Fatalf("width %d: Quit hitbox does not cover its button: %+v; footer=%q", width, targets, plain)
+		}
+		if targets.hasSend {
+			if targets.sendEnd != width-1 || targets.sendStart >= targets.sendEnd {
+				t.Fatalf("width %d: [Send] is no longer anchored at the right inset: %+v; footer=%q", width, targets, plain)
+			}
+			if targets.quitEnd > targets.sendStart {
+				t.Fatalf("width %d: Quit overlaps [Send]: %+v; footer=%q", width, targets, plain)
+			}
+		} else if width > 10 {
+			t.Fatalf("width %d dropped [Send] before the minimum physical width: %q", width, plain)
+		}
+		if width == 44 && (strings.Contains(plain, "Enter: ") || !targets.hasSend) {
+			t.Fatalf("width 44 should sacrifice Enter: before [Send]: targets=%+v footer=%q", targets, plain)
+		}
+		if width == 12 && (!targets.hasSend || targets.quitStart != 0) {
+			t.Fatalf("width 12 should preserve both buttons with Quit padding compacted: targets=%+v footer=%q", targets, plain)
+		}
+		if width == 10 && targets.hasSend {
+			t.Fatalf("width 10 should drop [Send] only after Quit padding is exhausted: %+v; footer=%q", targets, plain)
+		}
+	}
+}
+
 func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
 	m := newMessageInteractionTestModel(100)
 	m.width, m.height = 100, 30
@@ -318,7 +373,7 @@ func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
 	m.themesOpen = true
 	line, targets := m.renderStatusBar(false, false)
 	plain := stripANSISequences(line)
-	for _, want := range []string{"PgUp", "PgDn", "Ctrl+T: Apply • Esc: back • Quit • Ctrl+C:", "[Send]"} {
+	for _, want := range []string{"PgUp", "PgDn", "Ctrl+T: Apply • Esc: back • Ctrl+C: Quit", "[Send]"} {
 		if !strings.Contains(plain, want) {
 			t.Errorf("theme footer is missing %q: %s", want, plain)
 		}
@@ -349,8 +404,8 @@ func TestThemeBrowserFooterQuitClickOpensConfirmation(t *testing.T) {
 	m.themesOpen = true
 	line, targets := m.renderStatusBar(false, false)
 	plain := stripANSISequences(line)
-	if !strings.Contains(plain, "Quit • Ctrl+C") || strings.Contains(plain, "Ctrl+C:") {
-		t.Fatalf("test setup did not produce a truncated Ctrl+C hint: %q", plain)
+	if !strings.Contains(plain, "Ctrl+C: Quit") {
+		t.Fatalf("test setup did not preserve Quit immediately after the Ctrl+C hint: %q", plain)
 	}
 	if targets.quitEnd <= targets.quitStart {
 		t.Fatal("footer did not expose a clickable Quit action when the Ctrl+C hint is truncated")
@@ -400,8 +455,9 @@ func TestThemeFooterApplyStaysInShortcutHintAcrossWidths(t *testing.T) {
 				t.Fatalf("width %d: Quit hitbox does not cover the shortcut label: %+v; footer=%q", width, targets, plain)
 			}
 			quitIndex := strings.LastIndex(plain, "Quit")
-			if !strings.HasPrefix(plain[quitIndex+len("Quit"):], " • Ctrl+C") {
-				t.Fatalf("width %d: Quit is not directly before the Ctrl+C hint: %q", width, plain)
+			prefixBeforeQuit := strings.TrimRight(plain[:quitIndex], " ")
+			if strings.Contains(plain, "Ctrl+C:") && !strings.HasSuffix(prefixBeforeQuit, "Ctrl+C:") {
+				t.Fatalf("width %d: Quit is not immediately after the Ctrl+C hint: %q", width, plain)
 			}
 		}
 		if targets.hasSend && targets.quitEnd > targets.sendStart {
