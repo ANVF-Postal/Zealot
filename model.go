@@ -37,6 +37,9 @@ type model struct {
 	themeSavedPreset                 ThemePreset
 	themeEditField                   string
 	themeComposerBackup              string
+	themePacking                     bool
+	themePackNaming                  bool
+	themePackSelected                map[string]bool
 	themeLeftWidth                   int
 	themeDividerDragging             bool
 	splashScroll                     int
