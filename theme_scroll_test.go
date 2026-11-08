@@ -188,3 +188,75 @@ func TestThemeDetailsLongDescriptionCanScrollToLastRow(t *testing.T) {
 		t.Fatalf("Apply button hitbox is not reachable after scrolling to end at (%d,%d)",x,y)
 	}
 }
+
+func TestThemeScrollbarsDragThumbLikeChat(t *testing.T) {
+	m := newThemeEditorTestModel(t)
+	m.height = 14
+	for _, pane := range []themeScrollPane{themeListPane,themeDetailsPane} {
+		top,thumb,track := m.themeScrollbarGeometry(pane)
+		if track <= thumb {t.Fatalf("pane %d has no draggable range",pane)}
+		x := m.themeBrowserContentStartX()
+		topY := 4
+		if pane == themeListPane {
+			left,_ := m.themeBrowserColumnWidths()
+			x += left-1
+		} else {
+			_,right := m.themeBrowserColumnWidths()
+			x = m.themeBrowserDividerX()+right
+			topY = 2
+		}
+		// Mouse down on the visible thumb, drag to the bottom and release.
+		updated,_ := m.Update(tea.MouseClickMsg{X:x,Y:topY+1+top,Button:tea.MouseLeft})
+		m = updated.(model)
+		if pane==themeListPane && !m.themeListScrollDragging ||
+			pane==themeDetailsPane && !m.themeDetailsScrollDragging {
+			t.Fatalf("pane %d did not grab its thumb",pane)
+		}
+		m.applyMouseMotion(x,topY+track)
+		visible,total,_ := m.themeScrollbarDimensions(pane)
+		end := max(0,total-visible)
+		offset := m.themeScroll
+		if pane==themeDetailsPane {offset=m.themeDetailsScroll}
+		if offset!=end {
+			t.Fatalf("pane %d drag did not reach bottom: offset=%d want=%d",pane,offset,end)
+		}
+		updated,_ = m.Update(tea.MouseReleaseMsg{X:x,Y:topY+track,Button:tea.MouseLeft})
+		m = updated.(model)
+		if m.themeListScrollDragging || m.themeDetailsScrollDragging {
+			t.Fatal("thumb drag remained active after release")
+		}
+		// Reset to the top before testing the other pane.
+		m.setThemeScrollFromThumbTop(pane,0)
+	}
+}
+
+func TestThemeScrollbarArrowHoldRepeatsAndReleaseStops(t *testing.T) {
+	m := newThemeEditorTestModel(t)
+	m.height = 14
+	left,_ := m.themeBrowserColumnWidths()
+	x := m.themeBrowserContentStartX()+left-1
+	bottom := 4+m.themeVisibleRows()-1
+	updated,cmd := m.Update(tea.MouseClickMsg{X:x,Y:bottom,Button:tea.MouseLeft})
+	m = updated.(model)
+	if cmd==nil || m.themeListScroll<=0 || m.themeListScrollbarHoldDirection!=1 {
+		t.Fatalf("bottom arrow did not initiate scroll and hold: offset=%d hold=%d",m.themeScroll,m.themeListScrollbarHoldDirection)
+	}
+	generation := m.themeListScrollbarHoldGeneration
+	before := m.themeScroll
+	updated,_ = m.Update(themeScrollbarHoldMsg{pane:themeListPane,generation:generation})
+	m = updated.(model)
+	if m.themeScroll<=before {
+		t.Fatal("held scrollbar arrow did not repeat")
+	}
+	updated,_ = m.Update(tea.MouseReleaseMsg{X:x,Y:bottom,Button:tea.MouseLeft})
+	m = updated.(model)
+	if m.themeListScrollbarHoldDirection!=0 {
+		t.Fatal("release did not stop the scrollbar arrow")
+	}
+	before=m.themeScroll
+	updated,_ = m.Update(themeScrollbarHoldMsg{pane:themeListPane,generation:generation})
+	m = updated.(model)
+	if m.themeScroll!=before {
+		t.Fatal("stale hold message scrolled after release")
+	}
+}
