@@ -158,8 +158,8 @@ func TestLoadConfigCreatesDefaultThemePack(t *testing.T) {
 	if pack.PackName != "Zealot defaults" {
 		t.Fatalf("pack name = %q, want Zealot defaults", pack.PackName)
 	}
-	if len(pack.Themes) != 6 {
-		t.Fatalf("default pack contains %d themes, want Zealot, Autumn, Limetime, Green Phosphor, FBI, and PuTTY Classic", len(pack.Themes))
+	if len(pack.Themes) != 8 {
+		t.Fatalf("default pack contains %d themes, want 8 including Darkroom and Blackout", len(pack.Themes))
 	}
 	if pack.Themes[0].ID != "zealot" || pack.Themes[0].Name != "Zealot" {
 		t.Fatalf("default theme identity = (%q, %q), want (zealot, Zealot)", pack.Themes[0].ID, pack.Themes[0].Name)
@@ -246,6 +246,47 @@ func TestLoadConfigCreatesDefaultThemePack(t *testing.T) {
 	}
 	if putty.Colors != wantPuTTY {
 		t.Fatalf("PuTTY Classic palette = %+v, want %+v", putty.Colors, wantPuTTY)
+	}
+	for _, test := range []struct {
+		index int
+		id string
+		name string
+		description string
+		colors Theme
+	}{
+		{
+			index: 6, id: "darkroom", name: "Darkroom",
+			description: "Dim red-on-red tones inspired by photographic darkrooms under a safelight.",
+			colors: Theme{
+				Background: "#120506",
+				TextColor: "#D68A8A",
+				BorderColor: "#542024",
+				AccentColor: "#FF5555",
+				HoverTextColor: "#FF9A9A",
+				MutedTextColor: "#955054",
+				MentionBackgroundColor: "#2D0C10",
+				SelectionBackgroundColor: "#71252A",
+			},
+		},
+		{
+			index: 7, id: "blackout", name: "Blackout",
+			description: "Pure black with uncompromising red interface highlights, a high-contrast companion to Darkroom.",
+			colors: Theme{
+				Background: "#000000",
+				TextColor: "#DA6B6B",
+				BorderColor: "#481111",
+				AccentColor: "#FF3030",
+				HoverTextColor: "#FF7070",
+				MutedTextColor: "#8F3838",
+				MentionBackgroundColor: "#240000",
+				SelectionBackgroundColor: "#690909",
+			},
+		},
+	} {
+		preset := pack.Themes[test.index]
+		if preset.ID != test.id || preset.Name != test.name || preset.Description != test.description || preset.Colors != test.colors {
+			t.Errorf("%s built-in preset differs from expected: %+v", test.name, preset)
+		}
 	}
 	if pack.Themes[0].Colors != cfg.Theme {
 		t.Fatalf("default pack colors do not match the active default palette: got %+v, want %+v", pack.Themes[0].Colors, cfg.Theme)
@@ -588,8 +629,8 @@ func TestExistingDefaultPackGainsNewBuiltInsWithoutChangingExistingPresets(t *te
 	if _, err := toml.Decode(string(got), &pack); err != nil {
 		t.Fatalf("decode updated default pack: %v", err)
 	}
-	if len(pack.Themes) != 6 || pack.Themes[2].ID != "limetime" || pack.Themes[3].ID != "green-phosphor" || pack.Themes[4].ID != "fbi" || pack.Themes[5].ID != "putty-classic" {
-		t.Fatalf("new Limetime, Green Phosphor, FBI, and PuTTY Classic presets not appended: %+v", pack.Themes)
+	if len(pack.Themes) != 8 || pack.Themes[2].ID != "limetime" || pack.Themes[3].ID != "green-phosphor" || pack.Themes[4].ID != "fbi" || pack.Themes[5].ID != "putty-classic" || pack.Themes[6].ID != "darkroom" || pack.Themes[7].ID != "blackout" {
+		t.Fatalf("missing new built-in presets after migration: %+v", pack.Themes)
 	}
 	if pack.Themes[0].Colors.AccentColor != "#123ABC" {
 		t.Fatal("customized Zealot preset was overwritten")
