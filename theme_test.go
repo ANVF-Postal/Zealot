@@ -158,8 +158,8 @@ func TestLoadConfigCreatesDefaultThemePack(t *testing.T) {
 	if pack.PackName != "Zealot defaults" {
 		t.Fatalf("pack name = %q, want Zealot defaults", pack.PackName)
 	}
-	if len(pack.Themes) != 11 {
-		t.Fatalf("default pack contains %d themes, want 11 including Orchid and Arcade", len(pack.Themes))
+	if len(pack.Themes) != 12 {
+		t.Fatalf("default pack contains %d themes, want 12 including Noir", len(pack.Themes))
 	}
 	if pack.Themes[0].ID != "zealot" || pack.Themes[0].Name != "Zealot" {
 		t.Fatalf("default theme identity = (%q, %q), want (zealot, Zealot)", pack.Themes[0].ID, pack.Themes[0].Name)
@@ -313,6 +313,20 @@ func TestLoadConfigCreatesDefaultThemePack(t *testing.T) {
 				MutedTextColor: "#AE7BFF",
 				MentionBackgroundColor: "#7E1D68",
 				SelectionBackgroundColor: "#208D3C",
+			},
+		},
+		{
+			index: 11, id: "noir", name: "Noir",
+			description: "Black-and-white cinema in terminal form: charcoal, silver, graphite, and stark monochrome highlights.",
+			colors: Theme{
+				Background: "#111111",
+				TextColor: "#D6D6D6",
+				BorderColor: "#505050",
+				AccentColor: "#F2F2F2",
+				HoverTextColor: "#FFFFFF",
+				MutedTextColor: "#858585",
+				MentionBackgroundColor: "#292929",
+				SelectionBackgroundColor: "#626262",
 			},
 		},
 	} {
@@ -662,7 +676,7 @@ func TestExistingDefaultPackGainsNewBuiltInsWithoutChangingExistingPresets(t *te
 	if _, err := toml.Decode(string(got), &pack); err != nil {
 		t.Fatalf("decode updated default pack: %v", err)
 	}
-	if len(pack.Themes) != 11 || pack.Themes[2].ID != "limetime" || pack.Themes[3].ID != "green-phosphor" || pack.Themes[4].ID != "fbi" || pack.Themes[5].ID != "putty-classic" || pack.Themes[6].ID != "darkroom" || pack.Themes[7].ID != "blackout" || pack.Themes[8].ID != "glados" || pack.Themes[9].ID != "orchid" || pack.Themes[10].ID != "arcade-neon" {
+	if len(pack.Themes) != 12 || pack.Themes[2].ID != "limetime" || pack.Themes[3].ID != "green-phosphor" || pack.Themes[4].ID != "fbi" || pack.Themes[5].ID != "putty-classic" || pack.Themes[6].ID != "darkroom" || pack.Themes[7].ID != "blackout" || pack.Themes[8].ID != "glados" || pack.Themes[9].ID != "orchid" || pack.Themes[10].ID != "arcade-neon" || pack.Themes[11].ID != "noir" {
 		t.Fatalf("missing new built-in presets after migration: %+v", pack.Themes)
 	}
 	if pack.Themes[0].Colors.AccentColor != "#123ABC" {
