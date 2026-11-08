@@ -231,6 +231,21 @@ func defaultThemePack() ThemePack {
 					SelectionBackgroundColor: "#566A47",
 				},
 			},
+			{
+				ID:          "maximus",
+				Name:        "Maximus",
+				Description: "Zealot theme inspired by the UI colors of the multiband compressor Maximus",
+				Colors: Theme{
+					Background:               "#303A40",
+					TextColor:                "#E0E8E9",
+					BorderColor:              "#596A72",
+					AccentColor:              "#C184F3",
+					HoverTextColor:           "#A4F075",
+					MutedTextColor:           "#93A3AC",
+					MentionBackgroundColor:   "#B87635",
+					SelectionBackgroundColor: "#B4A947",
+				},
+			},
 		},
 	}
 }
