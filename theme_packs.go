@@ -186,6 +186,21 @@ func defaultThemePack() ThemePack {
 					SelectionBackgroundColor: "#208D3C",
 				},
 			},
+			{
+				ID:          "noir",
+				Name:        "Noir",
+				Description: "Black-and-white cinema in terminal form: charcoal, silver, graphite, and stark monochrome highlights.",
+				Colors: Theme{
+					Background:               "#111111",
+					TextColor:                "#D6D6D6",
+					BorderColor:              "#505050",
+					AccentColor:              "#F2F2F2",
+					HoverTextColor:           "#FFFFFF",
+					MutedTextColor:           "#858585",
+					MentionBackgroundColor:   "#292929",
+					SelectionBackgroundColor: "#626262",
+				},
+			},
 		},
 	}
 }
