@@ -158,14 +158,34 @@ func TestLoadConfigCreatesDefaultThemePack(t *testing.T) {
 	if pack.PackName != "Zealot defaults" {
 		t.Fatalf("pack name = %q, want Zealot defaults", pack.PackName)
 	}
-	if len(pack.Themes) != 2 {
-		t.Fatalf("default pack contains %d themes, want Zealot and Autumn", len(pack.Themes))
+	if len(pack.Themes) != 3 {
+		t.Fatalf("default pack contains %d themes, want Zealot, Autumn, and Limetime", len(pack.Themes))
 	}
 	if pack.Themes[0].ID != "zealot" || pack.Themes[0].Name != "Zealot" {
 		t.Fatalf("default theme identity = (%q, %q), want (zealot, Zealot)", pack.Themes[0].ID, pack.Themes[0].Name)
 	}
 	if pack.Themes[1].ID != "autumn" || pack.Themes[1].Name != "Autumn" {
 		t.Fatalf("second default theme identity = (%q, %q), want (autumn, Autumn)", pack.Themes[1].ID, pack.Themes[1].Name)
+	}
+	if pack.Themes[2].ID != "limetime" || pack.Themes[2].Name != "Limetime" {
+		t.Fatalf("third default theme identity = (%q, %q), want (limetime, Limetime)", pack.Themes[2].ID, pack.Themes[2].Name)
+	}
+	limetime := pack.Themes[2]
+	if limetime.Description != "Heavy and high contrast. Based around the accent color #AEFF00" {
+		t.Fatalf("Limetime description changed: %q", limetime.Description)
+	}
+	wantLimetime := Theme{
+		Background: "#0E1009",
+		TextColor: "#E6E6E6",
+		BorderColor: "#2A3416",
+		AccentColor: "#AEFF00",
+		HoverTextColor: "#F9F871",
+		MutedTextColor: "#869763",
+		MentionBackgroundColor: "#191D0F",
+		SelectionBackgroundColor: "#007000",
+	}
+	if limetime.Colors != wantLimetime {
+		t.Fatalf("Limetime colors = %+v, want %+v", limetime.Colors, wantLimetime)
 	}
 	if pack.Themes[0].Colors != cfg.Theme {
 		t.Fatalf("default pack colors do not match the active default palette: got %+v, want %+v", pack.Themes[0].Colors, cfg.Theme)
@@ -475,5 +495,53 @@ func TestIdentityConfigSavesOnlyChangeRequestedValue(t *testing.T) {
 	wantAfterColor := "# User's formatting\nname   = \"New\" # name comment\nuser_color = \"#ABCDEF\" # bare ANSI color\nadaptive_height = true # do not touch\nbackground = \"#111318\" # theme note\ncustom_setting = \"keep\"\n"
 	if string(data) != wantAfterColor {
 		t.Fatalf("color command changed unrelated config content:\n--- got ---\n%s\n--- want ---\n%s", data, wantAfterColor)
+	}
+}
+
+func TestExistingDefaultPackGainsLimetimeWithoutChangingExistingPresets(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := os.MkdirAll(themesDir(), 0700); err != nil {
+		t.Fatalf("create themes directory: %v", err)
+	}
+	legacy := defaultThemePack()
+	legacy.Themes = legacy.Themes[:2]
+	legacy.Themes[0].Colors.AccentColor = "#123ABC"
+	data, err := encodeThemePack(legacy)
+	if err != nil {
+		t.Fatalf("encode existing default pack: %v", err)
+	}
+	data = append([]byte("# preserve this comment\n"), data...)
+	if err := os.WriteFile(defaultThemePackPath(), data, 0600); err != nil {
+		t.Fatalf("write existing default pack: %v", err)
+	}
+	if err := ensureThemeLibrary(); err != nil {
+		t.Fatalf("append missing built-in: %v", err)
+	}
+	got, err := os.ReadFile(defaultThemePackPath())
+	if err != nil {
+		t.Fatalf("read migrated default pack: %v", err)
+	}
+	if !strings.HasPrefix(string(got), string(data)) {
+		t.Fatal("existing default themes content changed instead of appending")
+	}
+	var pack ThemePack
+	if _, err := toml.Decode(string(got), &pack); err != nil {
+		t.Fatalf("decode updated default pack: %v", err)
+	}
+	if len(pack.Themes) != 3 || pack.Themes[2].ID != "limetime" {
+		t.Fatalf("new Limetime preset not appended: %+v", pack.Themes)
+	}
+	if pack.Themes[0].Colors.AccentColor != "#123ABC" {
+		t.Fatal("customized Zealot preset was overwritten")
+	}
+	if err := ensureThemeLibrary(); err != nil {
+		t.Fatalf("repeat theme migration: %v", err)
+	}
+	again, err := os.ReadFile(defaultThemePackPath())
+	if err != nil {
+		t.Fatalf("reread default pack: %v", err)
+	}
+	if string(again) != string(got) {
+		t.Fatal("repeated migration appended duplicate themes or changed existing file")
 	}
 }
