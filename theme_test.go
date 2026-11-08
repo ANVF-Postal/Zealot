@@ -158,8 +158,8 @@ func TestLoadConfigCreatesDefaultThemePack(t *testing.T) {
 	if pack.PackName != "Zealot defaults" {
 		t.Fatalf("pack name = %q, want Zealot defaults", pack.PackName)
 	}
-	if len(pack.Themes) != 4 {
-		t.Fatalf("default pack contains %d themes, want Zealot, Autumn, Limetime, and Green Phosphor", len(pack.Themes))
+	if len(pack.Themes) != 5 {
+		t.Fatalf("default pack contains %d themes, want Zealot, Autumn, Limetime, Green Phosphor, and FBI", len(pack.Themes))
 	}
 	if pack.Themes[0].ID != "zealot" || pack.Themes[0].Name != "Zealot" {
 		t.Fatalf("default theme identity = (%q, %q), want (zealot, Zealot)", pack.Themes[0].ID, pack.Themes[0].Name)
@@ -206,6 +206,26 @@ func TestLoadConfigCreatesDefaultThemePack(t *testing.T) {
 	}
 	if phosphor.Colors != wantPhosphor {
 		t.Fatalf("Green Phosphor palette = %+v, want %+v", phosphor.Colors, wantPhosphor)
+	}
+	fbi := pack.Themes[4]
+	if fbi.ID != "fbi" || fbi.Name != "FBI" {
+		t.Fatalf("fifth built-in theme = (%q, %q), want FBI", fbi.ID, fbi.Name)
+	}
+	if fbi.Description != "Deep federal blue, seal-inspired gold, and ceremonial red and green accents." {
+		t.Fatalf("FBI description changed: %q", fbi.Description)
+	}
+	wantFBI := Theme{
+		Background: "#07366B",
+		TextColor: "#F5F3E9",
+		BorderColor: "#AC9150",
+		AccentColor: "#FFD348",
+		HoverTextColor: "#FF8580",
+		MutedTextColor: "#B5C9DF",
+		MentionBackgroundColor: "#723B47",
+		SelectionBackgroundColor: "#27654C",
+	}
+	if fbi.Colors != wantFBI {
+		t.Fatalf("FBI palette = %+v, want %+v", fbi.Colors, wantFBI)
 	}
 	if pack.Themes[0].Colors != cfg.Theme {
 		t.Fatalf("default pack colors do not match the active default palette: got %+v, want %+v", pack.Themes[0].Colors, cfg.Theme)
@@ -548,8 +568,8 @@ func TestExistingDefaultPackGainsNewBuiltInsWithoutChangingExistingPresets(t *te
 	if _, err := toml.Decode(string(got), &pack); err != nil {
 		t.Fatalf("decode updated default pack: %v", err)
 	}
-	if len(pack.Themes) != 4 || pack.Themes[2].ID != "limetime" || pack.Themes[3].ID != "green-phosphor" {
-		t.Fatalf("new Limetime and Green Phosphor presets not appended: %+v", pack.Themes)
+	if len(pack.Themes) != 5 || pack.Themes[2].ID != "limetime" || pack.Themes[3].ID != "green-phosphor" || pack.Themes[4].ID != "fbi" {
+		t.Fatalf("new Limetime, Green Phosphor, and FBI presets not appended: %+v", pack.Themes)
 	}
 	if pack.Themes[0].Colors.AccentColor != "#123ABC" {
 		t.Fatal("customized Zealot preset was overwritten")
