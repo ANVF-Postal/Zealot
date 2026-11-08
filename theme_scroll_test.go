@@ -146,11 +146,11 @@ func TestThemePackButtonWorksWithDetailsScrollbar(t *testing.T) {
 		t.Fatal("short terminal should show details scrollbar")
 	}
 	_, width := m.themeBrowserColumnWidths()
-	x := m.themeBrowserDividerX()+width-len(themePackButtonLabel)
-	if m.themePackButtonContains(x,2) {
+	barX := m.themeBrowserDividerX()+width
+	if m.themePackButtonContains(barX,2) {
 		t.Fatal("scrollbar column must not be mistaken for Pack")
 	}
-	x-- // The scrollbar occupies the last column of the right pane.
+	x := barX-len(themePackButtonLabel)
 	if !m.themePackButtonContains(x,2) {
 		t.Fatalf("Pack hitbox missing beside details scrollbar at x=%d",x)
 	}
