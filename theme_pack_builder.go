@@ -247,6 +247,7 @@ func (m *model) beginThemePacking() {
 		return
 	}
 	m.themePacking = true
+	m.themeDetailsScroll = 0
 	m.themePackNaming = false
 	m.themePackSelected = map[string]bool{themePackSelectionKey(entry): true}
 	m.themeEditError = ""
@@ -278,6 +279,7 @@ func (m *model) beginThemePackNaming() {
 		return
 	}
 	m.themePackNaming = true
+	m.themeDetailsScroll = 0
 	m.themeComposerBackup = m.input.Value()
 	m.input.SetValue("")
 	m.input.Placeholder = "Pack name · Enter to save · Esc to cancel"
@@ -290,6 +292,7 @@ func (m *model) cancelThemePackNaming() {
 	m.themeComposerBackup = ""
 	m.input.Placeholder = defaultComposerPlaceholder
 	m.themePackNaming = false
+	m.themeDetailsScroll = 0
 	m.themeEditError = ""
 }
 
@@ -319,6 +322,7 @@ func (m *model) finishThemePacking() {
 	filename, id, err := createPackedThemeFile(m.input.Value(), selected)
 	if err != nil {
 		m.themeEditError = packCreationError(err)
+		m.themeDetailsScroll = m.maxThemeDetailsScroll()
 		return
 	}
 	m.cancelThemePackNaming()
