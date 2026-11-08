@@ -168,6 +168,12 @@ func TestPackModeFooterRetainsClickTargetsDuringResize(t *testing.T) {
 			if targets.hasApply || strings.Contains(plain,"Apply") {
 				t.Fatalf("pack mode footer offers Apply: %q",plain)
 			}
+			if naming && targets.hasPageScroll {
+				t.Fatalf("pack naming incorrectly exposes PgUp/PgDn click targets: %+v %q",targets,plain)
+			}
+			if targets.hasSend {
+				t.Fatalf("pack mode should not expose chat Send: %+v %q",targets,plain)
+			}
 			if targets.quitEnd>len(cells) || string(cells[targets.quitStart:targets.quitEnd])!="Quit" {
 				t.Fatalf("width %d: Quit hitbox mismatch: %+v %q",width,targets,plain)
 			}
