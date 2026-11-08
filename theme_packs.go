@@ -352,9 +352,9 @@ func renameOriginalArcadePreset(content string) (string, bool) {
 			end += pos + len(table)
 		}
 		block := content[pos:end]
-		if strings.Contains(block, "\nid = \"arcade\"\n") &&
-			strings.Contains(block, "\nname = \"Arcade\"\n") &&
-			strings.Contains(block, "\ndescription = \"Vibrant 90's arcade colors complete with glowsticks!\"\n") {
+		if strings.Contains(block, "id = \"arcade\"") &&
+			strings.Contains(block, "name = \"Arcade\"") &&
+			strings.Contains(block, "description = \"Vibrant 90's arcade colors complete with glowsticks!\"") {
 			block = strings.Replace(block, "id = \"arcade\"", "id = \"orchid\"", 1)
 			block = strings.Replace(block, "name = \"Arcade\"", "name = \"Orchid\"", 1)
 			block = strings.Replace(block,
