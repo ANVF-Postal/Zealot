@@ -137,3 +137,51 @@ func TestThemeDetailsDoNotShowScrollbarWhenRoomy(t *testing.T) {
 		t.Fatal("details scroll offset escaped bounds without overflow")
 	}
 }
+
+func TestThemePackButtonWorksWithDetailsScrollbar(t *testing.T) {
+	m := newThemeEditorTestModel(t)
+	m.cloneSelectedTheme()
+	m.height = 14
+	if !m.themeDetailsOverflow() {
+		t.Fatal("short terminal should show details scrollbar")
+	}
+	_, width := m.themeBrowserColumnWidths()
+	x := m.themeBrowserDividerX()+width-len(themePackButtonLabel)
+	if m.themePackButtonContains(x,2) {
+		t.Fatal("scrollbar column must not be mistaken for Pack")
+	}
+	x-- // The scrollbar occupies the last column of the right pane.
+	if !m.themePackButtonContains(x,2) {
+		t.Fatalf("Pack hitbox missing beside details scrollbar at x=%d",x)
+	}
+	updated,_ := m.Update(tea.MouseClickMsg{X:x,Y:2,Button:tea.MouseLeft})
+	m = updated.(model)
+	if !m.themePacking || len(m.themePackSelected)!=1 {
+		t.Fatal("Pack button failed in narrow-height layout")
+	}
+}
+
+func TestThemeDetailsLongDescriptionCanScrollToLastRow(t *testing.T) {
+	m := newThemeEditorTestModel(t)
+	m.cloneSelectedTheme()
+	entry,ok := m.selectedThemeEntry()
+	if !ok {t.Fatal("missing custom theme")}
+	entry.Preset.Description = strings.Repeat("The long description should wrap across the details viewport. ",20)
+	m.themeEntries[m.themeSelected] = entry
+	m.height = 16
+	if !m.themeDetailsOverflow() {t.Fatal("long description did not overflow")}
+	m.themeDetailsScroll = m.maxThemeDetailsScroll()
+	_,rightWidth := m.themeBrowserColumnWidths()
+	width := rightWidth-1
+	actionRow := m.themeActionButtonRowForWidth(width)
+	y := 2+actionRow-m.themeDetailsScroll
+	if y < 2 || y >= 2+m.messageHeight() {
+		t.Fatalf("last action row is still inaccessible: y=%d",y)
+	}
+	start,end,ok := themeActionButtonBounds(width,themeApplyButtonLabel,false)
+	if !ok {t.Fatal("missing Apply action")}
+	x := m.themeBrowserDividerX()+1+(start+end)/2
+	if !m.themeApplyButtonContains(x,y) {
+		t.Fatalf("Apply button hitbox is not reachable after scrolling to end at (%d,%d)",x,y)
+	}
+}
