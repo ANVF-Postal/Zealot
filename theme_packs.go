@@ -165,6 +165,21 @@ func defaultThemePack() ThemePack {
 					SelectionBackgroundColor: "#713706",
 				},
 			},
+			{
+				ID:          "arcade",
+				Name:        "Arcade",
+				Description: "Vibrant 90's arcade colors complete with glowsticks!",
+				Colors: Theme{
+					Background:               "#0B061A",
+					TextColor:                "#E3DCFF",
+					BorderColor:              "#8438D6",
+					AccentColor:              "#FF39B8",
+					HoverTextColor:           "#36F5FF",
+					MutedTextColor:           "#9178B5",
+					MentionBackgroundColor:   "#391152",
+					SelectionBackgroundColor: "#287A39",
+				},
+			},
 		},
 	}
 }
