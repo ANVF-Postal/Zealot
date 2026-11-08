@@ -501,7 +501,7 @@ func (m model) renderThemeShortcutFooter() (string, footerTargets) {
 // immediately after the Ctrl+C hint, and the composer Send action anchored
 // to the right edge. The measured layout supplies matching mouse hitboxes.
 func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTargets) {
-	if m.themesOpen && m.themeError == "" && m.themeEditField == "" && !m.themeDirty && m.width >= 12 {
+	if m.themesOpen && m.themeError == "" && m.themeEditField == "" && !m.themeDirty && !m.themePacking && m.width >= 12 {
 		return m.renderThemeShortcutFooter()
 	}
 	availableWidth := max(1, m.width-1) // reserve one final cell as a styled blank
@@ -512,9 +512,13 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		// Keep the secondary views' keyboard shortcut wording consistent.
 		scrollTail = ": Scroll • Esc: close • Ctrl+C: "
 	}
-	includeApply := m.themesOpen && m.themeError == "" && m.themeEditField == "" && !m.themeDirty
+	includeApply := m.themesOpen && m.themeError == "" && m.themeEditField == "" && !m.themeDirty && !m.themePacking
 	if m.themesOpen {
 		switch {
+		case m.themePackNaming:
+			scrollTail = ": Enter: save pack • Esc: cancel • Ctrl+C: "
+		case m.themePacking:
+			scrollTail = ": Space: select • Enter: confirm • Esc: cancel • Ctrl+C: "
 		case m.themeEditField != "":
 			scrollTail = ": Enter: confirm • Esc: cancel • Ctrl+C: "
 		case m.themeDirty:
