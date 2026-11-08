@@ -30,6 +30,8 @@ Zealot was designed to solve a very specific problem of direct messaging between
 
 -Mouse support
 
+-An entire theme system
+
 -And more
 
 # Usage warning ⚠️
