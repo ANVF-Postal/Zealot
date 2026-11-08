@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"image/color"
 	"strings"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
 
 	"charm.land/lipgloss/v2"
 )
@@ -180,7 +183,7 @@ func (m model) themeBrowserListIndexAt(x, y int) (int, bool) {
 	leftStartX := m.themeBrowserContentStartX()
 	firstRowY := 4 // header, outer frame, title, separator
 	if x < leftStartX || x >= leftStartX+leftWidth || y < firstRowY ||
-		(m.themeListOverflow() && x == leftStartX+leftWidth-1) {
+		x == leftStartX+leftWidth-1 {
 		return 0, false
 	}
 	index := m.themeScroll + y - firstRowY
@@ -215,38 +218,122 @@ func (m model) themeListOverflow() bool {
 	return len(m.themeEntries) > m.themeVisibleRows()
 }
 
-// themeScrollbarRow keeps exactly one rightmost column for the scrollbar.
-func (m model) themeScrollbarRow(content string, width, row, visible, total, offset int) string {
-	track := "│"
-	if total > visible {
-		thumbSize := max(1, visible*visible/total)
-		thumbStart := 0
-		if total > visible && visible > thumbSize {
-			thumbStart = offset*(visible-thumbSize)/(total-visible)
-		}
-		if row >= thumbStart && row < thumbStart+thumbSize {
-			track = "█"
-		}
+// The theme panes use the same arrow, thumb and track geometry as the
+// chat/splash scrollbars. The rail stays visible even when scrolling is not
+// necessary; the thumb appears only when content exceeds the viewport.
+type themeScrollPane int
+
+const (
+	themeListPane themeScrollPane = iota
+	themeDetailsPane
+)
+
+type themeScrollbarHoldMsg struct {
+	pane themeScrollPane
+	generation int
+}
+
+func (m model) themeScrollbarGeometry(pane themeScrollPane) (top, thumbHeight, trackHeight int) {
+	visible, total, offset := m.themeScrollbarDimensions(pane)
+	trackHeight = max(1, visible-2)
+	if total <= visible {
+		return 0, trackHeight, trackHeight
 	}
+	thumbHeight = min(trackHeight,max(1,visible*trackHeight/total))
+	maxTop := trackHeight-thumbHeight
+	top = scaleScrollbarPosition(offset,max(0,total-visible),maxTop)
+	return
+}
+
+func (m model) themeScrollbarDimensions(pane themeScrollPane) (visible,total,offset int) {
+	if pane == themeListPane {
+		return m.themeVisibleRows(),len(m.themeEntries),m.themeScroll
+	}
+	_,width := m.themeBrowserColumnWidths()
+	return max(1,m.messageHeight()),len(m.themeDetailsRows(max(1,width-1))),m.themeDetailsScroll
+}
+
+func (m *model) setThemeScrollFromThumbTop(pane themeScrollPane, top int) {
+	_,thumbHeight,trackHeight := m.themeScrollbarGeometry(pane)
+	maxTop := max(0,trackHeight-thumbHeight)
+	top = min(max(0,top),maxTop)
+	visible,total,_ := m.themeScrollbarDimensions(pane)
+	scroll := 0
+	if maxTop > 0 {
+		scroll = scaleScrollbarPosition(top,maxTop,max(0,total-visible))
+	}
+	if pane == themeListPane {
+		m.themeScroll = scroll
+		m.themeScroll = min(max(0,m.themeScroll),max(0,len(m.themeEntries)-m.themeVisibleRows()))
+		// The list remains navigable independently of the active entry.
+		// Clicking on a visible row still chooses the theme.
+		return
+	}
+	m.themeDetailsScroll = scroll
+	m.clampThemeDetailsScroll()
+}
+
+func (m *model) setThemeScrollFromTrack(pane themeScrollPane, trackPosition int) {
+	_,thumbHeight,trackHeight := m.themeScrollbarGeometry(pane)
+	trackPosition = min(max(0,trackPosition),max(0,trackHeight-1))
+	m.setThemeScrollFromThumbTop(pane,trackPosition-thumbHeight/2)
+}
+
+func (m model) themeScrollbarHoldCmd(pane themeScrollPane, generation int) tea.Cmd {
+	return tea.Tick(120*time.Millisecond,func(time.Time) tea.Msg {
+		return themeScrollbarHoldMsg{pane:pane,generation:generation}
+	})
+}
+
+func (m *model) scrollThemeList(delta int) {
+	m.themeScroll = min(max(0,m.themeScroll+delta),max(0,len(m.themeEntries)-m.themeVisibleRows()))
+}
+
+func (m *model) scrollThemePane(pane themeScrollPane,delta int) {
+	if pane == themeListPane {
+		m.scrollThemeList(delta)
+	} else {
+		m.scrollThemeDetails(delta)
+	}
+}
+
+func (m model) themeScrollbarGlyph(pane themeScrollPane,row int) string {
+	visible,total,_ := m.themeScrollbarDimensions(pane)
+	if row == 0 {
+		return "^"
+	}
+	if row == visible-1 {
+		return "v"
+	}
+	thumbTop,thumbHeight,trackHeight := m.themeScrollbarGeometry(pane)
+	pos := row-1
+	if pos >= trackHeight {
+		return " "
+	}
+	if total > visible && pos >= thumbTop && pos < thumbTop+thumbHeight {
+		return "█"
+	}
+	return "│"
+}
+
+func (m model) themeScrollbarRow(content string,width int,pane themeScrollPane,row int) string {
 	bg := lipgloss.Color(m.cfg.Theme.Background)
-	bar := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.BorderColor)).Background(bg)
-	if track == "█" {
-		bar = lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).Background(bg)
-	}
-	return fitThemeRowWithBackground(content, max(0,width-1), bg)+bar.Render(track)
+	glyph := m.themeScrollbarGlyph(pane,row)
+	style := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.cfg.Theme.BorderColor)).
+		Background(bg)
+	return fitThemeRowWithBackground(content,max(0,width-1),bg)+style.Render(glyph)
 }
 
 func (m model) themeListScrollbarContains(x,y int) bool {
 	left,_ := m.themeBrowserColumnWidths()
-	return m.themesOpen && m.themeListOverflow() &&
-		x == m.themeBrowserContentStartX()+left-1 &&
+	return m.themesOpen && x == m.themeBrowserContentStartX()+left-1 &&
 		y >= 4 && y < 4+m.themeVisibleRows()
 }
 
 func (m model) themeDetailsScrollbarContains(x,y int) bool {
 	_,right := m.themeBrowserColumnWidths()
-	return m.themesOpen && m.themeDetailsOverflow() &&
-		x == m.themeBrowserDividerX()+right &&
+	return m.themesOpen && x == m.themeBrowserDividerX()+right &&
 		y >= 2 && y < 2+max(1,m.messageHeight())
 }
 
@@ -313,26 +400,16 @@ func (m model) renderThemeBrowser() string {
 		}
 	}
 	leftRows = fitThemeRows(leftRows, contentHeight, leftWidth, bg)
-	if m.themeListOverflow() {
-		for row := 2; row < len(leftRows); row++ {
-			leftRows[row] = m.themeScrollbarRow(leftRows[row], leftWidth, row-2,
-				visible, len(m.themeEntries), m.themeScroll)
-		}
+	for row := 2; row < len(leftRows); row++ {
+		leftRows[row] = m.themeScrollbarRow(leftRows[row],leftWidth,themeListPane,row-2)
 	}
 
-	detailWidth := rightWidth
-	if m.themeDetailsOverflow() {
-		detailWidth = max(1, rightWidth-1)
-	}
+	detailWidth := max(1,rightWidth-1)
 	details := m.themeDetailsRows(detailWidth)
-	maxDetailsScroll := max(0, len(details)-contentHeight)
-	detailsScroll := min(max(0, m.themeDetailsScroll), maxDetailsScroll)
-	rightRows := fitThemeRows(details[detailsScroll:], contentHeight, rightWidth, bg)
-	if maxDetailsScroll > 0 {
-		for row := range rightRows {
-			rightRows[row] = m.themeScrollbarRow(rightRows[row], rightWidth, row,
-				contentHeight, len(details), detailsScroll)
-		}
+	detailsScroll := min(max(0,m.themeDetailsScroll),max(0,len(details)-contentHeight))
+	rightRows := fitThemeRows(details[detailsScroll:],contentHeight,rightWidth,bg)
+	for row := range rightRows {
+		rightRows[row] = m.themeScrollbarRow(rightRows[row],rightWidth,themeDetailsPane,row)
 	}
 
 	dividerStyle := lipgloss.NewStyle().Foreground(border).Background(bg)
@@ -436,9 +513,7 @@ func themeApplyButtonRow() int { return themeActionButtonRow() }
 
 func (m model) themeApplyButtonRowIndex() int {
 	_, rightWidth := m.themeBrowserColumnWidths()
-	if m.themeDetailsOverflow() {
-		rightWidth--
-	}
+	rightWidth--
 	return m.themeActionButtonRowForWidth(rightWidth)-m.themeDetailsScroll
 }
 
@@ -523,9 +598,7 @@ func (m model) themeActionButtonContains(label string, x, y int) bool {
 		return false
 	}
 	leftWidth, rightWidth := m.themeBrowserColumnWidths()
-	if m.themeDetailsOverflow() {
-		rightWidth--
-	}
+	rightWidth--
 	actionRow := m.themeActionButtonRowForWidth(rightWidth)
 	if y != 2+actionRow-m.themeDetailsScroll || y < 2 || y >= 2+max(1, m.messageHeight()) {
 		return false
@@ -572,9 +645,7 @@ func (m model) themePackButtonContains(x, y int) bool {
 		}
 	}
 	_, rightWidth := m.themeBrowserColumnWidths()
-	if m.themeDetailsOverflow() {
-		rightWidth--
-	}
+	rightWidth--
 	label := themePackButtonLabel
 	if m.themePacking {
 		label = themePackConfirmLabel
@@ -596,9 +667,7 @@ func (m model) themeNameContains(x, y int) bool {
 		return false
 	}
 	leftWidth, rightWidth := m.themeBrowserColumnWidths()
-	if m.themeDetailsOverflow() {
-		rightWidth--
-	}
+	rightWidth--
 	rightStartX := m.themeBrowserContentStartX() + leftWidth + 1
 	titleWidth := lipgloss.Width(entry.Preset.Name + "  ✎")
 	titleWidth = min(titleWidth, rightWidth)
@@ -612,16 +681,14 @@ func (m model) themeDescriptionContains(x, y int) bool {
 	leftWidth, rightWidth := m.themeBrowserColumnWidths()
 	rightStartX := m.themeBrowserContentStartX() + leftWidth + 1
 	if x < rightStartX || x >= rightStartX+rightWidth ||
-		(m.themeDetailsOverflow() && x == rightStartX+rightWidth-1) {
+		x == rightStartX+rightWidth-1 {
 		return false
 	}
 	if y < 2 || y >= 2+max(1,m.messageHeight()) {
 		return false
 	}
 	row := y - 2 + m.themeDetailsScroll
-	if m.themeDetailsOverflow() {
-		rightWidth--
-	}
+	rightWidth--
 	return row >= m.themeDescriptionHeaderRow() &&
 		row < m.themeDescriptionTextStartRow()+len(m.themeDescriptionLines(rightWidth))
 }
