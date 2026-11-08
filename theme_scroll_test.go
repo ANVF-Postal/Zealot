@@ -74,8 +74,8 @@ func TestThemePaneScrollbarsTrackOverflowAndUseSeparateHitboxes(t *testing.T) {
 	}
 	updated, _ = m.Update(tea.MouseClickMsg{X:detailBarX,Y:2+m.messageHeight()-1,Button:tea.MouseLeft})
 	m = updated.(model)
-	if m.themeDetailsScroll != 1 {
-		t.Fatalf("details bottom arrow should move one line: scroll=%d",m.themeDetailsScroll)
+	if m.themeDetailsScroll != min(3,m.maxThemeDetailsScroll()) {
+		t.Fatalf("details bottom arrow should use the chat scrollbar step: scroll=%d",m.themeDetailsScroll)
 	}
 }
 
