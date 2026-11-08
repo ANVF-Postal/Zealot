@@ -431,6 +431,54 @@ func TestThemeBrowserFooterKeepsComposerActions(t *testing.T) {
 	}
 }
 
+func TestThemeFooterEditingAndUnsavedModesHideApply(t *testing.T) {
+	for _, state := range []struct {
+		name      string
+		editField string
+		dirty     bool
+		wantHint  string
+	}{
+		{name: "editing name", editField: "name", wantHint: "Enter: confirm • Esc: cancel"},
+		{name: "editing description", editField: "description", wantHint: "Enter: confirm • Esc: cancel"},
+		{name: "unsaved cloned theme", dirty: true, wantHint: "Ctrl+S: save • Esc: back"},
+	} {
+		t.Run(state.name, func(t *testing.T) {
+			m := newMessageInteractionTestModel(100)
+			m.themesOpen = true
+			m.splashOpen = true
+			m.status = "Connected"
+			m.themeEditField = state.editField
+			m.themeDirty = state.dirty
+
+			for _, width := range []int{100, 72, 44, 28, 20, 16, 12} {
+				m.width = width
+				line, targets := m.renderStatusBar(false, false)
+				plain := stripANSISequences(line)
+				cells := []rune(plain)
+				if len(cells) != width {
+					t.Fatalf("width %d: footer has %d cells: %q", width, len(cells), plain)
+				}
+				if strings.Contains(plain, "Apply") || targets.hasApply ||
+					strings.Contains(plain, "Ctrl+T after save") {
+					t.Fatalf("width %d: editing footer shows disabled apply action: %+v %q", width, targets, plain)
+				}
+				if width == 100 && !strings.Contains(plain, state.wantHint) {
+					t.Fatalf("wide footer missing editing shortcuts %q: %q", state.wantHint, plain)
+				}
+				if targets.quitEnd > len(cells) ||
+					string(cells[targets.quitStart:targets.quitEnd]) != "Quit" {
+					t.Fatalf("width %d: Quit hitbox mismatch: %+v %q", width, targets, plain)
+				}
+				if targets.hasSend && (targets.sendEnd != width-1 ||
+					targets.quitEnd > targets.sendStart ||
+					string(cells[targets.sendStart:targets.sendEnd]) != "[Send]") {
+					t.Fatalf("width %d: Send hitbox mismatch: %+v %q", width, targets, plain)
+				}
+			}
+		})
+	}
+}
+
 func TestThemeBrowserFooterQuitClickOpensConfirmation(t *testing.T) {
 	m := newMessageInteractionTestModel(100)
 	m.width, m.height = 72, 30
