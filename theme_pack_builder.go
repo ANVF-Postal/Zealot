@@ -14,8 +14,9 @@ import (
 // packFileOps lets tests simulate write/rename failures without needing a full
 // disk or privileged filesystem. Production operations use the OS directly.
 type packFileOps struct {
-	write  func(string, []byte) error
-	rename func(string, string) error
+	write   func(string, []byte) error
+	rename  func(string, string) error
+	restore func(string, string) error
 }
 
 func defaultPackFileOps() packFileOps {
@@ -23,7 +24,8 @@ func defaultPackFileOps() packFileOps {
 		write: func(path string, data []byte) error {
 			return os.WriteFile(path, data, 0600)
 		},
-		rename: os.Rename,
+		rename:  os.Rename,
+		restore: os.Rename,
 	}
 }
 
@@ -204,7 +206,7 @@ func createPackedThemeFileWithOps(name string, selected []themeListEntry, ops pa
 					continue
 				}
 			}
-			if err := os.Rename(archived, live); err != nil {
+			if err := ops.restore(archived, live); err != nil {
 				recoveryErrors = append(recoveryErrors, fmt.Errorf("restore %q from packed/%s: %w", src.filename, src.archive, err))
 			}
 		}
