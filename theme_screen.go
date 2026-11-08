@@ -373,12 +373,12 @@ func (m *model) handleThemeScrollbarClick(pane themeScrollPane,y int) tea.Cmd {
 		if pane == themeListPane {
 			m.themeListScrollbarHoldDirection = direction
 			m.themeListScrollbarHoldGeneration++
-			m.scrollThemePane(pane,direction)
+			m.scrollThemePane(pane,direction*3)
 			return m.themeScrollbarHoldCmd(pane,m.themeListScrollbarHoldGeneration)
 		}
 		m.themeDetailsScrollbarHoldDirection = direction
 		m.themeDetailsScrollbarHoldGeneration++
-		m.scrollThemePane(pane,direction)
+		m.scrollThemePane(pane,direction*3)
 		return m.themeScrollbarHoldCmd(pane,m.themeDetailsScrollbarHoldGeneration)
 	default:
 		top,thumbHeight,_ := m.themeScrollbarGeometry(pane)
