@@ -216,6 +216,21 @@ func defaultThemePack() ThemePack {
 					SelectionBackgroundColor: "#5FA35B",
 				},
 			},
+			{
+				ID:          "woodland",
+				Name:        "Woodland",
+				Description: "An earthy theme inspired by military woodland camo. Over n' out.",
+				Colors: Theme{
+					Background:               "#273A2B",
+					TextColor:                "#DCD6BA",
+					BorderColor:              "#657850",
+					AccentColor:              "#C3B48A",
+					HoverTextColor:           "#E6D5A9",
+					MutedTextColor:           "#98A88D",
+					MentionBackgroundColor:   "#40583D",
+					SelectionBackgroundColor: "#566A47",
+				},
+			},
 		},
 	}
 }
