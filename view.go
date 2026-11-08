@@ -516,6 +516,7 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	if m.themesOpen {
 		switch {
 		case m.themePackNaming:
+			scrollLabel = "Pack"
 			scrollTail = ": Enter: save pack • Esc: cancel • Ctrl+C: "
 		case m.themePacking:
 			scrollTail = ": Space: select • Enter: confirm • Esc: cancel • Ctrl+C: "
@@ -535,7 +536,7 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	}
 
 	targets := footerTargets{}
-	includeSend := !usersOpen && (!splashOpen || m.themesOpen)
+	includeSend := !m.themePacking && !usersOpen && (!splashOpen || m.themesOpen)
 	sendPrefix := "Enter: "
 	sendText := "[Send]"
 	quitWidth := lipgloss.Width(quitText)
