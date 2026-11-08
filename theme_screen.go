@@ -50,6 +50,7 @@ func (m *model) openThemeBrowser() {
 	m.themeEntries = nil
 	m.themeSelected = 0
 	m.themeScroll = 0
+	m.themeDetailsScroll = 0
 	m.themePacking = false
 	m.themePackNaming = false
 	m.themePackSelected = nil
@@ -107,6 +108,7 @@ func (m *model) moveThemeSelection(delta int) {
 	}
 	m.themeSelected += delta
 	m.clampThemeSelection()
+	m.themeDetailsScroll = 0
 	if len(m.themeEntries) > 0 {
 		m.themeSavedPreset = m.themeEntries[m.themeSelected].Preset
 	}
@@ -168,6 +170,7 @@ func (m *model) setThemeBrowserDivider(x int) {
 	columns := max(1, chatInnerWidth(m.width)-1)
 	minLeft, maxLeft := themeBrowserLeftBounds(columns)
 	m.themeLeftWidth = min(max(x-m.themeBrowserContentStartX(), minLeft), maxLeft)
+	m.clampThemeDetailsScroll()
 }
 
 // themeBrowserListIndexAt maps a click in the left column to its selected
@@ -176,7 +179,8 @@ func (m model) themeBrowserListIndexAt(x, y int) (int, bool) {
 	leftWidth, _ := m.themeBrowserColumnWidths()
 	leftStartX := m.themeBrowserContentStartX()
 	firstRowY := 4 // header, outer frame, title, separator
-	if x < leftStartX || x >= leftStartX+leftWidth || y < firstRowY {
+	if x < leftStartX || x >= leftStartX+leftWidth || y < firstRowY ||
+		(m.themeListOverflow() && x == leftStartX+leftWidth-1) {
 		return 0, false
 	}
 	index := m.themeScroll + y - firstRowY
@@ -184,6 +188,71 @@ func (m model) themeBrowserListIndexAt(x, y int) (int, bool) {
 		return 0, false
 	}
 	return index, true
+}
+
+// Details scrolling is independent of theme selection. A scrollbar is only
+// rendered if content does not fit the available height.
+func (m model) themeDetailsOverflow() bool {
+	_, width := m.themeBrowserColumnWidths()
+	height := max(1, m.messageHeight())
+	// Measure using the scrollbar width so wrapping is stable once visible.
+	return len(m.themeDetailsRows(max(1,width-1))) > height
+}
+
+func (m model) maxThemeDetailsScroll() int {
+	_, width := m.themeBrowserColumnWidths()
+	if !m.themeDetailsOverflow() {
+		return 0
+	}
+	return max(0, len(m.themeDetailsRows(max(1,width-1)))-max(1,m.messageHeight()))
+}
+
+func (m *model) clampThemeDetailsScroll() {
+	m.themeDetailsScroll = min(max(0,m.themeDetailsScroll),m.maxThemeDetailsScroll())
+}
+
+func (m model) themeListOverflow() bool {
+	return len(m.themeEntries) > m.themeVisibleRows()
+}
+
+// themeScrollbarRow keeps exactly one rightmost column for the scrollbar.
+func (m model) themeScrollbarRow(content string, width, row, visible, total, offset int) string {
+	track := "│"
+	if total > visible {
+		thumbSize := max(1, visible*visible/total)
+		thumbStart := 0
+		if total > visible && visible > thumbSize {
+			thumbStart = offset*(visible-thumbSize)/(total-visible)
+		}
+		if row >= thumbStart && row < thumbStart+thumbSize {
+			track = "█"
+		}
+	}
+	bg := lipgloss.Color(m.cfg.Theme.Background)
+	bar := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.BorderColor)).Background(bg)
+	if track == "█" {
+		bar = lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).Background(bg)
+	}
+	return fitThemeRowWithBackground(content, max(0,width-1), bg)+bar.Render(track)
+}
+
+func (m model) themeListScrollbarContains(x,y int) bool {
+	left,_ := m.themeBrowserColumnWidths()
+	return m.themesOpen && m.themeListOverflow() &&
+		x == m.themeBrowserContentStartX()+left-1 &&
+		y >= 4 && y < 4+m.themeVisibleRows()
+}
+
+func (m model) themeDetailsScrollbarContains(x,y int) bool {
+	_,right := m.themeBrowserColumnWidths()
+	return m.themesOpen && m.themeDetailsOverflow() &&
+		x == m.themeBrowserDividerX()+right &&
+		y >= 2 && y < 2+max(1,m.messageHeight())
+}
+
+func (m *model) scrollThemeDetails(delta int) {
+	m.themeDetailsScroll += delta
+	m.clampThemeDetailsScroll()
 }
 
 // renderThemeBrowser uses the chat frame as its only border. The two columns
@@ -244,9 +313,27 @@ func (m model) renderThemeBrowser() string {
 		}
 	}
 	leftRows = fitThemeRows(leftRows, contentHeight, leftWidth, bg)
+	if m.themeListOverflow() {
+		for row := 2; row < len(leftRows); row++ {
+			leftRows[row] = m.themeScrollbarRow(leftRows[row], leftWidth, row-2,
+				visible, len(m.themeEntries), m.themeScroll)
+		}
+	}
 
-	rightRows := m.themeDetailsRows(rightWidth)
-	rightRows = fitThemeRows(rightRows, contentHeight, rightWidth, bg)
+	detailWidth := rightWidth
+	if m.themeDetailsOverflow() {
+		detailWidth = max(1, rightWidth-1)
+	}
+	details := m.themeDetailsRows(detailWidth)
+	maxDetailsScroll := max(0, len(details)-contentHeight)
+	detailsScroll := min(max(0, m.themeDetailsScroll), maxDetailsScroll)
+	rightRows := fitThemeRows(details[detailsScroll:], contentHeight, rightWidth, bg)
+	if maxDetailsScroll > 0 {
+		for row := range rightRows {
+			rightRows[row] = m.themeScrollbarRow(rightRows[row], rightWidth, row,
+				contentHeight, len(details), detailsScroll)
+		}
+	}
 
 	dividerStyle := lipgloss.NewStyle().Foreground(border).Background(bg)
 	dividerRows := make([]string, contentHeight)
@@ -434,7 +521,7 @@ func (m model) themeActionButtonContains(label string, x, y int) bool {
 	}
 	leftWidth, rightWidth := m.themeBrowserColumnWidths()
 	actionRow := m.themeActionButtonRowForWidth(rightWidth)
-	if y != 2+actionRow || actionRow >= max(1, m.messageHeight()) {
+	if y != 2+actionRow-m.themeDetailsScroll || y < 2 || y >= 2+max(1, m.messageHeight()) {
 		return false
 	}
 	rightStartX := m.themeBrowserContentStartX() + leftWidth + 1
@@ -442,7 +529,8 @@ func (m model) themeActionButtonContains(label string, x, y int) bool {
 	if !ok {
 		return false
 	}
-	return x >= rightStartX+start && x < rightStartX+end
+	return x >= rightStartX+start && x < rightStartX+end &&
+		(!m.themeDetailsOverflow() || x < rightStartX+rightWidth-1)
 }
 
 func (m model) themeApplyButtonContains(x, y int) bool {
@@ -469,7 +557,7 @@ func (m model) themeCreateButtonContains(x, y int) bool {
 
 func (m model) themePackButtonContains(x, y int) bool {
 	if !m.themesOpen || m.themeError != "" || m.themeDirty || m.themeEditField != "" ||
-		m.themePackNaming || y != 2 {
+		m.themePackNaming || y != 2-m.themeDetailsScroll {
 		return false
 	}
 	if !m.themePacking {
@@ -488,11 +576,13 @@ func (m model) themePackButtonContains(x, y int) bool {
 	}
 	leftWidth, _ := m.themeBrowserColumnWidths()
 	rightStart := m.themeBrowserContentStartX() + leftWidth + 1
-	return x >= rightStart+rightWidth-lipgloss.Width(label) && x < rightStart+rightWidth
+	return x >= rightStart+rightWidth-lipgloss.Width(label) &&
+		x < rightStart+rightWidth &&
+		(!m.themeDetailsOverflow() || x < rightStart+rightWidth-1)
 }
 
 func (m model) themeNameContains(x, y int) bool {
-	if !m.themesOpen || m.themePacking || m.themeError != "" || len(m.themeEntries) == 0 || y != 2 {
+	if !m.themesOpen || m.themePacking || m.themeError != "" || len(m.themeEntries) == 0 || y != 2-m.themeDetailsScroll {
 		return false
 	}
 	entry := m.themeEntries[min(max(0, m.themeSelected), len(m.themeEntries)-1)]
@@ -503,7 +593,8 @@ func (m model) themeNameContains(x, y int) bool {
 	rightStartX := m.themeBrowserContentStartX() + leftWidth + 1
 	titleWidth := lipgloss.Width(entry.Preset.Name + "  ✎")
 	titleWidth = min(titleWidth, rightWidth)
-	return x >= rightStartX && x < rightStartX+titleWidth
+	return x >= rightStartX && x < rightStartX+titleWidth &&
+		(!m.themeDetailsOverflow() || x < rightStartX+rightWidth-1)
 }
 
 func (m model) themeDescriptionContains(x, y int) bool {
@@ -512,10 +603,11 @@ func (m model) themeDescriptionContains(x, y int) bool {
 	}
 	leftWidth, rightWidth := m.themeBrowserColumnWidths()
 	rightStartX := m.themeBrowserContentStartX() + leftWidth + 1
-	if x < rightStartX || x >= rightStartX+rightWidth {
+	if x < rightStartX || x >= rightStartX+rightWidth ||
+		(m.themeDetailsOverflow() && x == rightStartX+rightWidth-1) {
 		return false
 	}
-	row := y - 2
+	row := y - 2 + m.themeDetailsScroll
 	return row >= m.themeDescriptionHeaderRow() &&
 		row < m.themeDescriptionTextStartRow()+len(m.themeDescriptionLines(rightWidth))
 }
@@ -526,10 +618,11 @@ func (m model) themeColorFieldAt(x, y int) (string, bool) {
 	}
 	leftWidth, rightWidth := m.themeBrowserColumnWidths()
 	rightStartX := m.themeBrowserContentStartX() + leftWidth + 1
-	if x < rightStartX || x >= rightStartX+rightWidth {
+	if x < rightStartX || x >= rightStartX+rightWidth ||
+		(m.themeDetailsOverflow() && x == rightStartX+rightWidth-1) {
 		return "", false
 	}
-	colorIndex := y - 2 - themePaletteFirstRow
+	colorIndex := y - 2 + m.themeDetailsScroll - themePaletteFirstRow
 	if colorIndex < 0 || colorIndex >= themePaletteColorCount {
 		return "", false
 	}
