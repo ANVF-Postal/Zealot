@@ -158,8 +158,8 @@ func TestLoadConfigCreatesDefaultThemePack(t *testing.T) {
 	if pack.PackName != "Zealot defaults" {
 		t.Fatalf("pack name = %q, want Zealot defaults", pack.PackName)
 	}
-	if len(pack.Themes) != 3 {
-		t.Fatalf("default pack contains %d themes, want Zealot, Autumn, and Limetime", len(pack.Themes))
+	if len(pack.Themes) != 4 {
+		t.Fatalf("default pack contains %d themes, want Zealot, Autumn, Limetime, and Green Phosphor", len(pack.Themes))
 	}
 	if pack.Themes[0].ID != "zealot" || pack.Themes[0].Name != "Zealot" {
 		t.Fatalf("default theme identity = (%q, %q), want (zealot, Zealot)", pack.Themes[0].ID, pack.Themes[0].Name)
@@ -186,6 +186,26 @@ func TestLoadConfigCreatesDefaultThemePack(t *testing.T) {
 	}
 	if limetime.Colors != wantLimetime {
 		t.Fatalf("Limetime colors = %+v, want %+v", limetime.Colors, wantLimetime)
+	}
+	phosphor := pack.Themes[3]
+	if phosphor.ID != "green-phosphor" || phosphor.Name != "Green Phosphor" {
+		t.Fatalf("fourth built-in theme = (%q, %q), want Green Phosphor", phosphor.ID, phosphor.Name)
+	}
+	if phosphor.Description != "Classic monochrome CRT terminal glow, with every interface color rendered in shades of phosphor green." {
+		t.Fatalf("Green Phosphor description changed: %q", phosphor.Description)
+	}
+	wantPhosphor := Theme{
+		Background: "#061009",
+		TextColor: "#8CFF9A",
+		BorderColor: "#245C32",
+		AccentColor: "#39FF14",
+		HoverTextColor: "#B8FFB8",
+		MutedTextColor: "#559B64",
+		MentionBackgroundColor: "#12381C",
+		SelectionBackgroundColor: "#237A37",
+	}
+	if phosphor.Colors != wantPhosphor {
+		t.Fatalf("Green Phosphor palette = %+v, want %+v", phosphor.Colors, wantPhosphor)
 	}
 	if pack.Themes[0].Colors != cfg.Theme {
 		t.Fatalf("default pack colors do not match the active default palette: got %+v, want %+v", pack.Themes[0].Colors, cfg.Theme)
