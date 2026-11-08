@@ -75,6 +75,21 @@ func defaultThemePack() ThemePack {
 					SelectionBackgroundColor: "#007000",
 				},
 			},
+			{
+				ID:          "green-phosphor",
+				Name:        "Green Phosphor",
+				Description: "Classic monochrome CRT terminal glow, with every interface color rendered in shades of phosphor green.",
+				Colors: Theme{
+					Background:               "#061009",
+					TextColor:                "#8CFF9A",
+					BorderColor:              "#245C32",
+					AccentColor:              "#39FF14",
+					HoverTextColor:           "#B8FFB8",
+					MutedTextColor:           "#559B64",
+					MentionBackgroundColor:   "#12381C",
+					SelectionBackgroundColor: "#237A37",
+				},
+			},
 		},
 	}
 }
