@@ -365,10 +365,10 @@ func TestLoadConfigCreatesDefaultThemePack(t *testing.T) {
 				TextColor: "#D7D8CB",
 				BorderColor: "#576267",
 				AccentColor: "#7DC053",
-				HoverTextColor: "#B7C154",
-				MutedTextColor: "#393C37",
+				HoverTextColor: "#C0CB46",
+				MutedTextColor: "#89988B",
 				MentionBackgroundColor: "#314237",
-				SelectionBackgroundColor: "#384237",
+				SelectionBackgroundColor: "#C94E46",
 			},
 		},
 	} {
