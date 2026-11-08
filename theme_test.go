@@ -518,7 +518,7 @@ func TestIdentityConfigSavesOnlyChangeRequestedValue(t *testing.T) {
 	}
 }
 
-func TestExistingDefaultPackGainsLimetimeWithoutChangingExistingPresets(t *testing.T) {
+func TestExistingDefaultPackGainsNewBuiltInsWithoutChangingExistingPresets(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	if err := os.MkdirAll(themesDir(), 0700); err != nil {
 		t.Fatalf("create themes directory: %v", err)
@@ -548,8 +548,8 @@ func TestExistingDefaultPackGainsLimetimeWithoutChangingExistingPresets(t *testi
 	if _, err := toml.Decode(string(got), &pack); err != nil {
 		t.Fatalf("decode updated default pack: %v", err)
 	}
-	if len(pack.Themes) != 3 || pack.Themes[2].ID != "limetime" {
-		t.Fatalf("new Limetime preset not appended: %+v", pack.Themes)
+	if len(pack.Themes) != 4 || pack.Themes[2].ID != "limetime" || pack.Themes[3].ID != "green-phosphor" {
+		t.Fatalf("new Limetime and Green Phosphor presets not appended: %+v", pack.Themes)
 	}
 	if pack.Themes[0].Colors.AccentColor != "#123ABC" {
 		t.Fatal("customized Zealot preset was overwritten")
