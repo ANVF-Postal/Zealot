@@ -105,6 +105,21 @@ func defaultThemePack() ThemePack {
 					SelectionBackgroundColor: "#27654C",
 				},
 			},
+			{
+				ID:          "putty-classic",
+				Name:        "PuTTY Classic",
+				Description: "A traditional black terminal with PuTTY-style gray text and classic ANSI green, cyan, and blue highlights.",
+				Colors: Theme{
+					Background:               "#000000",
+					TextColor:                "#BBBBBB",
+					BorderColor:              "#555555",
+					AccentColor:              "#55FF55",
+					HoverTextColor:           "#55FFFF",
+					MutedTextColor:           "#777777",
+					MentionBackgroundColor:   "#003300",
+					SelectionBackgroundColor: "#0000BB",
+				},
+			},
 		},
 	}
 }
