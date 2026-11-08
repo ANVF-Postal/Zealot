@@ -436,7 +436,10 @@ func themeApplyButtonRow() int { return themeActionButtonRow() }
 
 func (m model) themeApplyButtonRowIndex() int {
 	_, rightWidth := m.themeBrowserColumnWidths()
-	return m.themeActionButtonRowForWidth(rightWidth)
+	if m.themeDetailsOverflow() {
+		rightWidth--
+	}
+	return m.themeActionButtonRowForWidth(rightWidth)-m.themeDetailsScroll
 }
 
 type themeActionBounds struct {
