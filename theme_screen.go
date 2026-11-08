@@ -581,7 +581,11 @@ func (m model) themeDetailsRows(width int) []string {
 			rows = append(rows, "", m.styles.accent.Render("Select custom themes; click [CONFIRM] to name and save."), m.styles.system.Render("Esc: cancel packing"))
 		}
 		if m.themeEditError != "" {
-			rows = append(rows, "", m.styles.system.Render(m.themeEditError))
+			rows = append(rows, "", m.styles.accent.Render("PACKING ERROR"))
+			for _, line := range wrapThemeDescription(m.themeEditError, width) {
+				rows = append(rows, m.styles.system.Render(line))
+			}
+			rows = append(rows, m.styles.system.Render("Correct the issue and press Enter to retry, or Esc to cancel."))
 		}
 		return rows
 	}
