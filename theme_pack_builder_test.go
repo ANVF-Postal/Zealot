@@ -448,3 +448,32 @@ func TestPackFailureAppearsInThemePackingPane(t *testing.T) {
 		t.Fatalf("missing actionable permission error: %q",got)
 	}
 }
+
+func TestPackSaveFailureLeavesNamingAndOriginalsIntact(t *testing.T) {
+	m := newThemeEditorTestModel(t)
+	m.cloneSelectedTheme()
+	entry, ok := m.selectedThemeEntry()
+	if !ok {t.Fatal("missing custom entry")}
+	if err := saveThemePack("pack-duplicate.toml", ThemePack{
+		SchemaVersion:themePackSchemaVersion,
+		PackName:"Already Exists",
+		Themes:[]ThemePreset{{ID:"existing",Name:"Existing",Colors:defaultTheme()}},
+	}); err != nil {t.Fatal(err)}
+	m.beginThemePacking()
+	m.beginThemePackNaming()
+	m.input.SetValue("duplicate")
+	m.finishThemePacking()
+	if !m.themePacking || !m.themePackNaming || m.input.Value()!="duplicate" {
+		t.Fatal("pack save failure lost the naming state or proposed pack name")
+	}
+	if !strings.Contains(m.themeEditError,"Couldn't complete packing") {
+		t.Fatalf("pack save error not surfaced: %q",m.themeEditError)
+	}
+	if _, err := os.Stat(filepath.Join(themesDir(),entry.FileName)); err != nil {
+		t.Fatalf("source file disappeared after save error: %v",err)
+	}
+	_, width := m.themeBrowserColumnWidths()
+	if !strings.Contains(stripANSISequences(strings.Join(m.themeDetailsRows(width),"\n")),"PACKING ERROR") {
+		t.Fatal("pack save error is missing from packing pane")
+	}
+}
