@@ -481,12 +481,7 @@ func (m model) themePackButtonContains(x, y int) bool {
 	if m.themePacking {
 		label = themePackConfirmLabel
 	}
-	heading := "CREATE PACK"
-	if !m.themePacking {
-		entry, _ := m.selectedThemeEntry()
-		heading = entry.Preset.Name + "  ✎"
-	}
-	if rightWidth < lipgloss.Width(heading)+lipgloss.Width(label)+1 {
+if rightWidth < lipgloss.Width(label)+2 {
 		return false
 	}
 	leftWidth, _ := m.themeBrowserColumnWidths()
@@ -551,11 +546,12 @@ func (m model) themeColorFieldAt(x, y int) (string, bool) {
 
 func (m model) themeDetailsTitleRow(width int, title, button string) string {
 	bg := lipgloss.Color(m.cfg.Theme.Background)
-	if button == "" || lipgloss.Width(title)+lipgloss.Width(button)+1 > width {
+	if button == "" || lipgloss.Width(button)+2 > width {
 		return m.styles.accent.Render(truncateANSI(title, width))
 	}
-	gap := width-lipgloss.Width(title)-lipgloss.Width(button)
-	return m.styles.accent.Render(title)+
+	displayTitle := truncateANSI(title, width-lipgloss.Width(button)-1)
+	gap := width-lipgloss.Width(displayTitle)-lipgloss.Width(button)
+	return m.styles.accent.Render(displayTitle)+
 		lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", gap))+
 		m.styles.accent.Render(button)
 }
