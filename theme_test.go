@@ -195,14 +195,14 @@ func TestLoadConfigCreatesDefaultThemePack(t *testing.T) {
 		t.Fatalf("Green Phosphor description changed: %q", phosphor.Description)
 	}
 	wantPhosphor := Theme{
-		Background: "#061009",
-		TextColor: "#8CFF9A",
-		BorderColor: "#245C32",
-		AccentColor: "#39FF14",
-		HoverTextColor: "#B8FFB8",
-		MutedTextColor: "#559B64",
-		MentionBackgroundColor: "#12381C",
-		SelectionBackgroundColor: "#237A37",
+		Background: "#030703",
+		TextColor: "#79DC4B",
+		BorderColor: "#173C1A",
+		AccentColor: "#69F02E",
+		HoverTextColor: "#A0F569",
+		MutedTextColor: "#3F8041",
+		MentionBackgroundColor: "#0A230D",
+		SelectionBackgroundColor: "#1C5B22",
 	}
 	if phosphor.Colors != wantPhosphor {
 		t.Fatalf("Green Phosphor palette = %+v, want %+v", phosphor.Colors, wantPhosphor)
