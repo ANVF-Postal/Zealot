@@ -158,8 +158,8 @@ func TestLoadConfigCreatesDefaultThemePack(t *testing.T) {
 	if pack.PackName != "Zealot defaults" {
 		t.Fatalf("pack name = %q, want Zealot defaults", pack.PackName)
 	}
-	if len(pack.Themes) != 10 {
-		t.Fatalf("default pack contains %d themes, want 10 including Arcade", len(pack.Themes))
+	if len(pack.Themes) != 11 {
+		t.Fatalf("default pack contains %d themes, want 11 including Orchid and Arcade", len(pack.Themes))
 	}
 	if pack.Themes[0].ID != "zealot" || pack.Themes[0].Name != "Zealot" {
 		t.Fatalf("default theme identity = (%q, %q), want (zealot, Zealot)", pack.Themes[0].ID, pack.Themes[0].Name)
@@ -297,17 +297,22 @@ func TestLoadConfigCreatesDefaultThemePack(t *testing.T) {
 			},
 		},
 		{
-			index: 9, id: "arcade", name: "Arcade",
+			index: 9, id: "orchid", name: "Orchid",
+			description: "Electric orchid and hot pink neon against deep violet, with bright cyan highlights.",
+			colors: originalArcadeColors(),
+		},
+		{
+			index: 10, id: "arcade-neon", name: "Arcade",
 			description: "Vibrant 90's arcade colors complete with glowsticks!",
 			colors: Theme{
-				Background: "#0B061A",
-				TextColor: "#E3DCFF",
-				BorderColor: "#8438D6",
-				AccentColor: "#FF39B8",
-				HoverTextColor: "#36F5FF",
-				MutedTextColor: "#9178B5",
-				MentionBackgroundColor: "#391152",
-				SelectionBackgroundColor: "#287A39",
+				Background: "#090A18",
+				TextColor: "#F7F2DE",
+				BorderColor: "#28DBFF",
+				AccentColor: "#FFE600",
+				HoverTextColor: "#FF6B21",
+				MutedTextColor: "#AE7BFF",
+				MentionBackgroundColor: "#7E1D68",
+				SelectionBackgroundColor: "#208D3C",
 			},
 		},
 	} {
@@ -657,7 +662,7 @@ func TestExistingDefaultPackGainsNewBuiltInsWithoutChangingExistingPresets(t *te
 	if _, err := toml.Decode(string(got), &pack); err != nil {
 		t.Fatalf("decode updated default pack: %v", err)
 	}
-	if len(pack.Themes) != 10 || pack.Themes[2].ID != "limetime" || pack.Themes[3].ID != "green-phosphor" || pack.Themes[4].ID != "fbi" || pack.Themes[5].ID != "putty-classic" || pack.Themes[6].ID != "darkroom" || pack.Themes[7].ID != "blackout" || pack.Themes[8].ID != "glados" || pack.Themes[9].ID != "arcade" {
+	if len(pack.Themes) != 11 || pack.Themes[2].ID != "limetime" || pack.Themes[3].ID != "green-phosphor" || pack.Themes[4].ID != "fbi" || pack.Themes[5].ID != "putty-classic" || pack.Themes[6].ID != "darkroom" || pack.Themes[7].ID != "blackout" || pack.Themes[8].ID != "glados" || pack.Themes[9].ID != "orchid" || pack.Themes[10].ID != "arcade-neon" {
 		t.Fatalf("missing new built-in presets after migration: %+v", pack.Themes)
 	}
 	if pack.Themes[0].Colors.AccentColor != "#123ABC" {
