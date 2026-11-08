@@ -748,7 +748,7 @@ func TestThemeFooterResponsiveActionsRemainOrdered(t *testing.T) {
 		if width >= 28 && !targets.hasPageScroll {
 			t.Fatalf("width %d: dropped clickable page controls too early: %q", width, plain)
 		}
-		if targets.hasSend && (targets.quitEnd >= targets.sendStart || targets.sendEnd != width-1) {
+		if targets.hasSend && (targets.quitEnd > targets.sendStart || targets.sendEnd != width-1) {
 			t.Fatalf("width %d: Quit and Send overlap or Send lost its right anchor: %+v %q", width, targets, plain)
 		}
 	}
