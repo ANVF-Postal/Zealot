@@ -158,8 +158,8 @@ func TestLoadConfigCreatesDefaultThemePack(t *testing.T) {
 	if pack.PackName != "Zealot defaults" {
 		t.Fatalf("pack name = %q, want Zealot defaults", pack.PackName)
 	}
-	if len(pack.Themes) != 8 {
-		t.Fatalf("default pack contains %d themes, want 8 including Darkroom and Blackout", len(pack.Themes))
+	if len(pack.Themes) != 9 {
+		t.Fatalf("default pack contains %d themes, want 9 including GladOS", len(pack.Themes))
 	}
 	if pack.Themes[0].ID != "zealot" || pack.Themes[0].Name != "Zealot" {
 		t.Fatalf("default theme identity = (%q, %q), want (zealot, Zealot)", pack.Themes[0].ID, pack.Themes[0].Name)
@@ -280,6 +280,20 @@ func TestLoadConfigCreatesDefaultThemePack(t *testing.T) {
 				MutedTextColor: "#8F3838",
 				MentionBackgroundColor: "#240000",
 				SelectionBackgroundColor: "#690909",
+			},
+		},
+		{
+			index: 8, id: "glados", name: "GladOS",
+			description: "Amber-orange phosphor on near-black, inspired by GLaDOS's retro computer terminal credits in Portal.",
+			colors: Theme{
+				Background: "#080502",
+				TextColor: "#E9A54D",
+				BorderColor: "#713F13",
+				AccentColor: "#FF9900",
+				HoverTextColor: "#FFD079",
+				MutedTextColor: "#945822",
+				MentionBackgroundColor: "#261305",
+				SelectionBackgroundColor: "#713706",
 			},
 		},
 	} {
@@ -629,7 +643,7 @@ func TestExistingDefaultPackGainsNewBuiltInsWithoutChangingExistingPresets(t *te
 	if _, err := toml.Decode(string(got), &pack); err != nil {
 		t.Fatalf("decode updated default pack: %v", err)
 	}
-	if len(pack.Themes) != 8 || pack.Themes[2].ID != "limetime" || pack.Themes[3].ID != "green-phosphor" || pack.Themes[4].ID != "fbi" || pack.Themes[5].ID != "putty-classic" || pack.Themes[6].ID != "darkroom" || pack.Themes[7].ID != "blackout" {
+	if len(pack.Themes) != 9 || pack.Themes[2].ID != "limetime" || pack.Themes[3].ID != "green-phosphor" || pack.Themes[4].ID != "fbi" || pack.Themes[5].ID != "putty-classic" || pack.Themes[6].ID != "darkroom" || pack.Themes[7].ID != "blackout" || pack.Themes[8].ID != "glados" {
 		t.Fatalf("missing new built-in presets after migration: %+v", pack.Themes)
 	}
 	if pack.Themes[0].Colors.AccentColor != "#123ABC" {
