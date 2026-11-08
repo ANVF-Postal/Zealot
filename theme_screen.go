@@ -50,6 +50,9 @@ func (m *model) openThemeBrowser() {
 	m.themeEntries = nil
 	m.themeSelected = 0
 	m.themeScroll = 0
+	m.themePacking = false
+	m.themePackNaming = false
+	m.themePackSelected = nil
 	if err != nil {
 		m.themeError = err.Error()
 		return
@@ -63,9 +66,6 @@ func (m *model) openThemeBrowser() {
 	}
 	m.themeDirty = false
 	m.themeEditField = ""
-	m.themePacking = false
-	m.themePackNaming = false
-	m.themePackSelected = nil
 	m.themeEditError = ""
 	if len(m.themeEntries) > 0 {
 		m.themeSavedPreset = m.themeEntries[m.themeSelected].Preset
@@ -199,7 +199,9 @@ func (m model) renderThemeBrowser() string {
 	leftRows := make([]string, 0, contentHeight)
 	header := m.styles.accent.Render("THEMES")
 	createLabel := themeCreateButtonLabel
-	if m.themePacking { createLabel = "" }
+	if m.themePacking {
+		createLabel = ""
+	}
 	create := m.styles.accent.Render(createLabel)
 	headerGap := max(1, leftWidth-lipgloss.Width(header)-lipgloss.Width(create))
 	headerFill := lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", headerGap))
@@ -481,7 +483,7 @@ func (m model) themePackButtonContains(x, y int) bool {
 	if m.themePacking {
 		label = themePackConfirmLabel
 	}
-if rightWidth < lipgloss.Width(label)+2 {
+	if rightWidth < lipgloss.Width(label)+2 {
 		return false
 	}
 	leftWidth, _ := m.themeBrowserColumnWidths()
