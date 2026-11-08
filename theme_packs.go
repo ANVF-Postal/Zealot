@@ -120,6 +120,36 @@ func defaultThemePack() ThemePack {
 					SelectionBackgroundColor: "#BB0000",
 				},
 			},
+			{
+				ID:          "darkroom",
+				Name:        "Darkroom",
+				Description: "Dim red-on-red tones inspired by photographic darkrooms under a safelight.",
+				Colors: Theme{
+					Background:               "#120506",
+					TextColor:                "#D68A8A",
+					BorderColor:              "#542024",
+					AccentColor:              "#FF5555",
+					HoverTextColor:           "#FF9A9A",
+					MutedTextColor:           "#955054",
+					MentionBackgroundColor:   "#2D0C10",
+					SelectionBackgroundColor: "#71252A",
+				},
+			},
+			{
+				ID:          "blackout",
+				Name:        "Blackout",
+				Description: "Pure black with uncompromising red interface highlights, a high-contrast companion to Darkroom.",
+				Colors: Theme{
+					Background:               "#000000",
+					TextColor:                "#DA6B6B",
+					BorderColor:              "#481111",
+					AccentColor:              "#FF3030",
+					HoverTextColor:           "#FF7070",
+					MutedTextColor:           "#8F3838",
+					MentionBackgroundColor:   "#240000",
+					SelectionBackgroundColor: "#690909",
+				},
+			},
 		},
 	}
 }
