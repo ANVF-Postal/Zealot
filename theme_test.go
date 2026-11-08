@@ -679,3 +679,104 @@ func TestExistingDefaultPackGainsNewBuiltInsWithoutChangingExistingPresets(t *te
 		t.Fatal("repeated migration appended duplicate themes or changed existing file")
 	}
 }
+
+func TestOriginalArcadeMigratesToOrchidWithoutLosingColors(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := os.MkdirAll(themesDir(), 0700); err != nil {
+		t.Fatalf("create themes directory: %v", err)
+	}
+	legacy := defaultThemePack()
+	legacy.Themes = legacy.Themes[:9]
+	legacy.Themes = append(legacy.Themes, ThemePreset{
+		ID: "arcade", Name: "Arcade",
+		Description: "Vibrant 90's arcade colors complete with glowsticks!",
+		Colors: originalArcadeColors(),
+	})
+	data, err := encodeThemePack(legacy)
+	if err != nil {
+		t.Fatalf("encode legacy pack: %v", err)
+	}
+	data = append([]byte("# original user comment\n"), data...)
+	if err := os.WriteFile(defaultThemePackPath(), data, 0600); err != nil {
+		t.Fatalf("write legacy pack: %v", err)
+	}
+	if err := ensureThemeLibrary(); err != nil {
+		t.Fatalf("migrate original Arcade: %v", err)
+	}
+	updated, err := os.ReadFile(defaultThemePackPath())
+	if err != nil {
+		t.Fatalf("read updated pack: %v", err)
+	}
+	if !strings.HasPrefix(string(updated), "# original user comment\n") {
+		t.Fatal("migration removed user comments")
+	}
+	var migrated ThemePack
+	if _, err := toml.Decode(string(updated), &migrated); err != nil {
+		t.Fatalf("decode updated pack: %v", err)
+	}
+	if len(migrated.Themes) != 11 {
+		t.Fatalf("got %d presets, want 11", len(migrated.Themes))
+	}
+	if orchid := migrated.Themes[9]; orchid.ID != "orchid" || orchid.Name != "Orchid" || orchid.Colors != originalArcadeColors() {
+		t.Fatalf("original Arcade was not preserved as Orchid: %+v", orchid)
+	}
+	if arcade := migrated.Themes[10]; arcade.ID != "arcade-neon" || arcade.Name != "Arcade" {
+		t.Fatalf("new Arcade was not appended: %+v", arcade)
+	}
+	if err := ensureThemeLibrary(); err != nil {
+		t.Fatalf("migrate again: %v", err)
+	}
+	again, err := os.ReadFile(defaultThemePackPath())
+	if err != nil {
+		t.Fatalf("read pack again: %v", err)
+	}
+	if string(again) != string(updated) {
+		t.Fatal("migration changed already-updated theme pack")
+	}
+}
+
+func TestCustomArcadePaletteRemainsUntouchedDuringMigration(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := os.MkdirAll(themesDir(), 0700); err != nil {
+		t.Fatalf("create themes directory: %v", err)
+	}
+	legacy := defaultThemePack()
+	legacy.Themes = legacy.Themes[:9]
+	custom := originalArcadeColors()
+	custom.AccentColor = "#123ABC"
+	legacy.Themes = append(legacy.Themes, ThemePreset{
+		ID: "arcade", Name: "Arcade",
+		Description: "Vibrant 90's arcade colors complete with glowsticks!",
+		Colors: custom,
+	})
+	data, err := encodeThemePack(legacy)
+	if err != nil {
+		t.Fatalf("encode custom pack: %v", err)
+	}
+	if err := os.WriteFile(defaultThemePackPath(), data, 0600); err != nil {
+		t.Fatalf("write custom pack: %v", err)
+	}
+	if err := ensureThemeLibrary(); err != nil {
+		t.Fatalf("migrate custom Arcade: %v", err)
+	}
+	updated, err := os.ReadFile(defaultThemePackPath())
+	if err != nil {
+		t.Fatalf("read migrated pack: %v", err)
+	}
+	if !strings.HasPrefix(string(updated), string(data)) {
+		t.Fatal("custom Arcade was rewritten during migration")
+	}
+	var migrated ThemePack
+	if _, err := toml.Decode(string(updated), &migrated); err != nil {
+		t.Fatalf("decode migrated pack: %v", err)
+	}
+	if len(migrated.Themes) != 12 {
+		t.Fatalf("got %d presets, want 12 including preserved custom Arcade", len(migrated.Themes))
+	}
+	if old := migrated.Themes[9]; old.ID != "arcade" || old.Colors != custom {
+		t.Fatalf("custom Arcade was modified: %+v", old)
+	}
+	if migrated.Themes[10].ID != "orchid" || migrated.Themes[11].ID != "arcade-neon" {
+		t.Fatalf("new themes were not appended: %+v", migrated.Themes[10:])
+	}
+}
