@@ -64,6 +64,8 @@ func (m model) Update(
 		// when the window is expanded again.
 		m.clampUsersScroll()
 		m.clampSplashScroll()
+		m.clampThemeSelection()
+		m.clampThemeDetailsScroll()
 		m.splashScrollDragging = false
 		m.splashScrollbarHoldDirection = 0
 		m.splashScrollbarHoldGeneration++
@@ -311,6 +313,19 @@ func (m model) Update(
 		if mouse.Button == tea.MouseLeft && m.themeBrowserDividerContains(mouse.X, mouse.Y) {
 			m.themeDividerDragging = true
 			m.setThemeBrowserDivider(mouse.X)
+			return m, nil
+		}
+		if mouse.Button == tea.MouseLeft && m.themeListScrollbarContains(mouse.X, mouse.Y) {
+			visible := m.themeVisibleRows()
+			track := max(1, visible-1)
+			target := (mouse.Y-4)*max(0,len(m.themeEntries)-visible)/track
+			m.selectThemeEntry(min(len(m.themeEntries)-1,target))
+			return m, nil
+		}
+		if mouse.Button == tea.MouseLeft && m.themeDetailsScrollbarContains(mouse.X, mouse.Y) {
+			track := max(1, m.messageHeight()-1)
+			m.themeDetailsScroll = (mouse.Y-2)*m.maxThemeDetailsScroll()/track
+			m.clampThemeDetailsScroll()
 			return m, nil
 		}
 
@@ -682,11 +697,17 @@ func (m model) Update(
 
 	if mouseMsg, ok := msg.(tea.MouseWheelMsg); ok {
 		if m.themesOpen {
+			delta := 0
 			switch mouseMsg.Button {
 			case tea.MouseWheelUp:
-				m.moveThemeSelection(-3)
+				delta = -1
 			case tea.MouseWheelDown:
-				m.moveThemeSelection(3)
+				delta = 1
+			}
+			if mouseMsg.X > m.themeBrowserDividerX() {
+				m.scrollThemeDetails(delta)
+			} else if delta != 0 {
+				m.moveThemeSelection(delta)
 			}
 			return m, nil
 		}
