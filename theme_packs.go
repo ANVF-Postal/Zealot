@@ -166,21 +166,42 @@ func defaultThemePack() ThemePack {
 				},
 			},
 			{
-				ID:          "arcade",
+				ID:          "orchid",
+				Name:        "Orchid",
+				Description: "Electric orchid and hot pink neon against deep violet, with bright cyan highlights.",
+				Colors: originalArcadeColors(),
+			},
+			{
+				ID:          "arcade-neon",
 				Name:        "Arcade",
 				Description: "Vibrant 90's arcade colors complete with glowsticks!",
 				Colors: Theme{
-					Background:               "#0B061A",
-					TextColor:                "#E3DCFF",
-					BorderColor:              "#8438D6",
-					AccentColor:              "#FF39B8",
-					HoverTextColor:           "#36F5FF",
-					MutedTextColor:           "#9178B5",
-					MentionBackgroundColor:   "#391152",
-					SelectionBackgroundColor: "#287A39",
+					Background:               "#090A18",
+					TextColor:                "#F7F2DE",
+					BorderColor:              "#28DBFF",
+					AccentColor:              "#FFE600",
+					HoverTextColor:           "#FF6B21",
+					MutedTextColor:           "#AE7BFF",
+					MentionBackgroundColor:   "#7E1D68",
+					SelectionBackgroundColor: "#208D3C",
 				},
 			},
 		},
+	}
+}
+
+// originalArcadeColors is the original violet-and-pink Arcade palette, now
+// named Orchid. It also lets migration identify an unmodified old preset.
+func originalArcadeColors() Theme {
+	return Theme{
+		Background:               "#0B061A",
+		TextColor:                "#E3DCFF",
+		BorderColor:              "#8438D6",
+		AccentColor:              "#FF39B8",
+		HoverTextColor:           "#36F5FF",
+		MutedTextColor:           "#9178B5",
+		MentionBackgroundColor:   "#391152",
+		SelectionBackgroundColor: "#287A39",
 	}
 }
 
