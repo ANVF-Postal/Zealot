@@ -238,7 +238,7 @@ func TestThemeScrollbarArrowHoldRepeatsAndReleaseStops(t *testing.T) {
 	bottom := 4+m.themeVisibleRows()-1
 	updated,cmd := m.Update(tea.MouseClickMsg{X:x,Y:bottom,Button:tea.MouseLeft})
 	m = updated.(model)
-	if cmd==nil || m.themeListScroll<=0 || m.themeListScrollbarHoldDirection!=1 {
+	if cmd==nil || m.themeScroll<=0 || m.themeListScrollbarHoldDirection!=1 {
 		t.Fatalf("bottom arrow did not initiate scroll and hold: offset=%d hold=%d",m.themeScroll,m.themeListScrollbarHoldDirection)
 	}
 	generation := m.themeListScrollbarHoldGeneration
