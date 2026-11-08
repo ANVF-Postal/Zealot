@@ -728,14 +728,17 @@ func TestOriginalArcadeMigratesToOrchidWithoutLosingColors(t *testing.T) {
 	if _, err := toml.Decode(string(updated), &migrated); err != nil {
 		t.Fatalf("decode updated pack: %v", err)
 	}
-	if len(migrated.Themes) != 11 {
-		t.Fatalf("got %d presets, want 11", len(migrated.Themes))
+	if len(migrated.Themes) != 12 {
+		t.Fatalf("got %d presets, want 12", len(migrated.Themes))
 	}
 	if orchid := migrated.Themes[9]; orchid.ID != "orchid" || orchid.Name != "Orchid" || orchid.Colors != originalArcadeColors() {
 		t.Fatalf("original Arcade was not preserved as Orchid: %+v", orchid)
 	}
 	if arcade := migrated.Themes[10]; arcade.ID != "arcade-neon" || arcade.Name != "Arcade" {
 		t.Fatalf("new Arcade was not appended: %+v", arcade)
+	}
+	if noir := migrated.Themes[11]; noir.ID != "noir" || noir.Name != "Noir" {
+		t.Fatalf("Noir was not appended: %+v", noir)
 	}
 	if err := ensureThemeLibrary(); err != nil {
 		t.Fatalf("migrate again: %v", err)
@@ -784,13 +787,13 @@ func TestCustomArcadePaletteRemainsUntouchedDuringMigration(t *testing.T) {
 	if _, err := toml.Decode(string(updated), &migrated); err != nil {
 		t.Fatalf("decode migrated pack: %v", err)
 	}
-	if len(migrated.Themes) != 12 {
-		t.Fatalf("got %d presets, want 12 including preserved custom Arcade", len(migrated.Themes))
+	if len(migrated.Themes) != 13 {
+		t.Fatalf("got %d presets, want 13 including preserved custom Arcade", len(migrated.Themes))
 	}
 	if old := migrated.Themes[9]; old.ID != "arcade" || old.Colors != custom {
 		t.Fatalf("custom Arcade was modified: %+v", old)
 	}
-	if migrated.Themes[10].ID != "orchid" || migrated.Themes[11].ID != "arcade-neon" {
+	if migrated.Themes[10].ID != "orchid" || migrated.Themes[11].ID != "arcade-neon" || migrated.Themes[12].ID != "noir" {
 		t.Fatalf("new themes were not appended: %+v", migrated.Themes[10:])
 	}
 }
