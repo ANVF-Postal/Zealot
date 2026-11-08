@@ -622,7 +622,7 @@ func (m model) themeDetailsRows(width int) []string {
 		descriptionHeader += " · click to edit"
 	}
 	packRow := ""
-	if entry.ThemeCount > 1 {
+	if entry.ThemeCount > 1 || strings.HasPrefix(strings.ToLower(entry.FileName), "pack-") {
 		packRow = m.styles.system.Render("Pack: " + entry.PackName)
 	}
 	headerButton := ""
