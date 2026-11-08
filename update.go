@@ -53,6 +53,7 @@ func (m model) Update(
 			m.inputSelecting = false
 		}
 		m.themeDividerDragging = false
+		m.stopThemeScrollbarInteractions()
 		m.resizeInput()
 		if oldWidth != m.width || !m.renderCacheValid {
 			m.rebuildMessageCache()
@@ -316,19 +317,11 @@ func (m model) Update(
 			return m, nil
 		}
 		if mouse.Button == tea.MouseLeft && m.themeListScrollbarContains(mouse.X, mouse.Y) {
-			visible := m.themeVisibleRows()
-			track := max(1, visible-1)
-			target := (mouse.Y-4)*max(0,len(m.themeEntries)-visible)/track
-			m.selectThemeEntry(min(len(m.themeEntries)-1,target))
-			return m, nil
+			return m,m.handleThemeScrollbarClick(themeListPane,mouse.Y)
 		}
 		if mouse.Button == tea.MouseLeft && m.themeDetailsScrollbarContains(mouse.X, mouse.Y) {
-			track := max(1, m.messageHeight()-1)
-			m.themeDetailsScroll = (mouse.Y-2)*m.maxThemeDetailsScroll()/track
-			m.clampThemeDetailsScroll()
-			return m, nil
+			return m,m.handleThemeScrollbarClick(themeDetailsPane,mouse.Y)
 		}
-
 		if mouse.Button == tea.MouseLeft && m.themeEditField == "" && m.themeApplyButtonContains(mouse.X, mouse.Y) {
 			m.applySelectedTheme()
 			return m, nil
@@ -645,6 +638,7 @@ func (m model) Update(
 			m.inputSelecting = false
 		}
 		m.themeDividerDragging = false
+		m.stopThemeScrollbarInteractions()
 		m.splashScrollDragging = false
 		m.splashScrollbarHoldDirection = 0
 		m.splashScrollbarHoldGeneration++
@@ -656,6 +650,35 @@ func (m model) Update(
 		m.usersScrollbarHoldGeneration++
 		return m, nil
 
+	case themeScrollbarHoldMsg:
+		if !m.themesOpen {
+			return m,nil
+		}
+		var direction,generation int
+		if mouse.pane == themeListPane {
+			direction = m.themeListScrollbarHoldDirection
+			generation = m.themeListScrollbarHoldGeneration
+		} else {
+			direction = m.themeDetailsScrollbarHoldDirection
+			generation = m.themeDetailsScrollbarHoldGeneration
+		}
+		if generation != mouse.generation || direction == 0 {
+			return m,nil
+		}
+		before := m.themeScroll
+		if mouse.pane == themeDetailsPane {
+			before = m.themeDetailsScroll
+		}
+		m.scrollThemePane(mouse.pane,direction)
+		after := m.themeScroll
+		if mouse.pane == themeDetailsPane {
+			after = m.themeDetailsScroll
+		}
+		if after == before {
+			m.stopThemeScrollbarHold(mouse.pane)
+			return m,nil
+		}
+		return m,m.themeScrollbarHoldCmd(mouse.pane,mouse.generation)
 	case usersScrollbarHoldMsg:
 		if m.usersOpen && mouse.generation == m.usersScrollbarHoldGeneration && m.usersScrollbarHoldDirection != 0 {
 			m.usersScroll += m.usersScrollbarHoldDirection * 3
@@ -1038,6 +1061,18 @@ func (m *model) applyMouseMotion(x, y int) {
 
 	if m.themesOpen && m.themeDividerDragging {
 		m.setThemeBrowserDivider(x)
+		return
+	}
+	if m.themesOpen && m.themeListScrollDragging {
+		_,thumbHeight,trackHeight := m.themeScrollbarGeometry(themeListPane)
+		top := y - 5 - m.themeListScrollDragOffset
+		m.setThemeScrollFromThumbTop(themeListPane,min(max(0,top),max(0,trackHeight-thumbHeight)))
+		return
+	}
+	if m.themesOpen && m.themeDetailsScrollDragging {
+		_,thumbHeight,trackHeight := m.themeScrollbarGeometry(themeDetailsPane)
+		top := y - 3 - m.themeDetailsScrollDragOffset
+		m.setThemeScrollFromThumbTop(themeDetailsPane,min(max(0,top),max(0,trackHeight-thumbHeight)))
 		return
 	}
 	if m.inputSelecting {
