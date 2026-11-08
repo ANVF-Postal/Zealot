@@ -520,6 +520,9 @@ func (m model) themeActionButtonContains(label string, x, y int) bool {
 		return false
 	}
 	leftWidth, rightWidth := m.themeBrowserColumnWidths()
+	if m.themeDetailsOverflow() {
+		rightWidth--
+	}
 	actionRow := m.themeActionButtonRowForWidth(rightWidth)
 	if y != 2+actionRow-m.themeDetailsScroll || y < 2 || y >= 2+max(1, m.messageHeight()) {
 		return false
@@ -529,8 +532,7 @@ func (m model) themeActionButtonContains(label string, x, y int) bool {
 	if !ok {
 		return false
 	}
-	return x >= rightStartX+start && x < rightStartX+end &&
-		(!m.themeDetailsOverflow() || x < rightStartX+rightWidth-1)
+	return x >= rightStartX+start && x < rightStartX+end
 }
 
 func (m model) themeApplyButtonContains(x, y int) bool {
@@ -567,6 +569,9 @@ func (m model) themePackButtonContains(x, y int) bool {
 		}
 	}
 	_, rightWidth := m.themeBrowserColumnWidths()
+	if m.themeDetailsOverflow() {
+		rightWidth--
+	}
 	label := themePackButtonLabel
 	if m.themePacking {
 		label = themePackConfirmLabel
@@ -576,9 +581,7 @@ func (m model) themePackButtonContains(x, y int) bool {
 	}
 	leftWidth, _ := m.themeBrowserColumnWidths()
 	rightStart := m.themeBrowserContentStartX() + leftWidth + 1
-	return x >= rightStart+rightWidth-lipgloss.Width(label) &&
-		x < rightStart+rightWidth &&
-		(!m.themeDetailsOverflow() || x < rightStart+rightWidth-1)
+	return x >= rightStart+rightWidth-lipgloss.Width(label) && x < rightStart+rightWidth
 }
 
 func (m model) themeNameContains(x, y int) bool {
@@ -590,11 +593,13 @@ func (m model) themeNameContains(x, y int) bool {
 		return false
 	}
 	leftWidth, rightWidth := m.themeBrowserColumnWidths()
+	if m.themeDetailsOverflow() {
+		rightWidth--
+	}
 	rightStartX := m.themeBrowserContentStartX() + leftWidth + 1
 	titleWidth := lipgloss.Width(entry.Preset.Name + "  ✎")
 	titleWidth = min(titleWidth, rightWidth)
-	return x >= rightStartX && x < rightStartX+titleWidth &&
-		(!m.themeDetailsOverflow() || x < rightStartX+rightWidth-1)
+	return x >= rightStartX && x < rightStartX+titleWidth
 }
 
 func (m model) themeDescriptionContains(x, y int) bool {
@@ -607,7 +612,13 @@ func (m model) themeDescriptionContains(x, y int) bool {
 		(m.themeDetailsOverflow() && x == rightStartX+rightWidth-1) {
 		return false
 	}
+	if y < 2 || y >= 2+max(1,m.messageHeight()) {
+		return false
+	}
 	row := y - 2 + m.themeDetailsScroll
+	if m.themeDetailsOverflow() {
+		rightWidth--
+	}
 	return row >= m.themeDescriptionHeaderRow() &&
 		row < m.themeDescriptionTextStartRow()+len(m.themeDescriptionLines(rightWidth))
 }
@@ -620,6 +631,9 @@ func (m model) themeColorFieldAt(x, y int) (string, bool) {
 	rightStartX := m.themeBrowserContentStartX() + leftWidth + 1
 	if x < rightStartX || x >= rightStartX+rightWidth ||
 		(m.themeDetailsOverflow() && x == rightStartX+rightWidth-1) {
+		return "", false
+	}
+	if y < 2 || y >= 2+max(1,m.messageHeight()) {
 		return "", false
 	}
 	colorIndex := y - 2 + m.themeDetailsScroll - themePaletteFirstRow
