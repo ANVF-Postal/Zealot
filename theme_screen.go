@@ -533,6 +533,12 @@ func (m model) themeDetailsRows(width int) []string {
 	if m.themeEditError != "" {
 		state = truncateANSI(m.themeEditError, width)
 	}
+	paletteHeader := "COLOR PALETTE"
+	descriptionHeader := "DESCRIPTION"
+	if editable {
+		paletteHeader += " · click a row to edit"
+		descriptionHeader += " · click to edit"
+	}
 	packRow := ""
 	if entry.ThemeCount > 1 {
 		packRow = m.styles.system.Render("Pack: " + entry.PackName)
@@ -542,7 +548,7 @@ func (m model) themeDetailsRows(width int) []string {
 		packRow,
 		m.styles.system.Render(state),
 		"",
-		m.styles.accent.Render("COLOR PALETTE · click a row to edit"),
+		m.styles.accent.Render(paletteHeader),
 	}
 	colors := []struct{ field, label, value string }{
 		{"background", "Background", preset.Colors.Background},
@@ -566,7 +572,7 @@ func (m model) themeDetailsRows(width int) []string {
 		rows = append(rows, swatch+paletteText)
 	}
 	rows = append(rows, "")
-	rows = append(rows, m.styles.accent.Render("DESCRIPTION · click to edit"))
+	rows = append(rows, m.styles.accent.Render(descriptionHeader))
 	for _, line := range wrapThemeDescription(preset.Description, width) {
 		rows = append(rows, m.styles.system.Render(line))
 	}
