@@ -211,7 +211,7 @@ func createPackedThemeFileWithOps(name string, selected []themeListEntry, ops pa
 			}
 		}
 		if len(recoveryErrors) != 0 {
-			return "", "", fmt.Errorf("%w; automatic recovery was incomplete (%v). Original files are retained in themes/packed/; restore them before trying again", cause, errors.Join(recoveryErrors...))
+			return "", "", fmt.Errorf("%w; automatic recovery was incomplete. Original files are retained in themes/packed/; restore them before trying again", errors.Join(cause, errors.Join(recoveryErrors...)))
 		}
 		return "", "", cause
 	}
