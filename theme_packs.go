@@ -150,6 +150,21 @@ func defaultThemePack() ThemePack {
 					SelectionBackgroundColor: "#690909",
 				},
 			},
+			{
+				ID:          "glados",
+				Name:        "GladOS",
+				Description: "Amber-orange phosphor on near-black, inspired by GLaDOS's retro computer terminal credits in Portal.",
+				Colors: Theme{
+					Background:               "#080502",
+					TextColor:                "#E9A54D",
+					BorderColor:              "#713F13",
+					AccentColor:              "#FF9900",
+					HoverTextColor:           "#FFD079",
+					MutedTextColor:           "#945822",
+					MentionBackgroundColor:   "#261305",
+					SelectionBackgroundColor: "#713706",
+				},
+			},
 		},
 	}
 }
