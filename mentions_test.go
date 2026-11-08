@@ -2,6 +2,7 @@ package main
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -53,6 +54,63 @@ func TestComposerMentionStylingPreservesVisibleText(t *testing.T) {
 		Bold(true))
 	if got := stripANSISequences(rendered); got != "say @Alice hello" {
 		t.Fatalf("composer visible text = %q, want %q", got, "say @Alice hello")
+	}
+}
+
+func TestComposerMentionRestoresThemeColorsAfterHighlightedName(t *testing.T) {
+	for _, theme := range []Theme{
+		defaultTheme(),
+		{
+			Background: "#07366B", TextColor: "#F5F3E9",
+			AccentColor: "#FFD348",
+		},
+	} {
+		base := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(theme.TextColor)).
+			Background(lipgloss.Color(theme.Background))
+		highlight := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(theme.AccentColor)).
+			Background(lipgloss.Color(theme.Background)).
+			Bold(true)
+
+		source := base.Render("say @Alice and @Bob done")
+		rendered := styleANSIVisibleMentions(source, []string{"Alice", "Bob"}, highlight)
+		if got := stripANSISequences(rendered); got != "say @Alice and @Bob done" {
+			t.Fatalf("mention text changed: %q", got)
+		}
+		// The original textarea's SGR colors must be restored between
+		// mentions and after the final one, not left at terminal defaults.
+		originalSGR := ansiSGRStateBefore(source, strings.Index(source, "@Alice"))
+		if originalSGR == "" {
+			t.Fatal("test source had no ANSI theme colors")
+		}
+		for _, fragment := range []string{" and ", " done"} {
+			previous := "@Alice"
+			if fragment == " done" {
+				previous = "@Bob"
+			}
+			at := strings.Index(rendered, previous)
+			if at < 0 {
+				t.Fatalf("missing mention %q", previous)
+			}
+			following := rendered[at+len(previous):]
+			next := strings.Index(following, fragment)
+			if next < 0 || !strings.Contains(following[:next], originalSGR) {
+				t.Fatalf("composer colors were not restored after %s: %q", previous, following)
+			}
+		}
+	}
+}
+
+func TestComposerMentionRestoresSelectionSGR(t *testing.T) {
+	source := "\x1b[48;2;35;122;55m\x1b[38;2;245;243;233m@Alice selected"
+	highlight := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#FFD348")).
+		Background(lipgloss.Color("#07366B"))
+	rendered := styleANSIVisibleMentions(source, []string{"Alice"}, highlight)
+	restored := ansiSGRStateBefore(source, strings.Index(source, "@Alice"))
+	if !strings.Contains(rendered, "@Alice") || !strings.Contains(rendered, restored+" selected") {
+		t.Fatalf("selection styling was not restored after mention: %q", rendered)
 	}
 }
 
