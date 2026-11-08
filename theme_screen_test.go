@@ -713,6 +713,51 @@ func TestBrowsingThemeOnlyPreviewsUntilExplicitApply(t *testing.T) {
 }
 
 
+func TestThemeFooterProgressiveShortcutClipping(t *testing.T) {
+	m := newMessageInteractionTestModel(100)
+	m.themesOpen = true
+	m.splashOpen = true
+	m.status = "Connected"
+
+	// The optional Enter hint yields before any shortcut text.
+	m.width = 100
+	wide, _ := m.renderStatusBar(false, false)
+	if got := stripANSISequences(wide); !strings.Contains(got, "Ctrl+T: Apply • Esc: back • Ctrl+C: Quit") ||
+		!strings.Contains(got, "Enter: [Send]") {
+		t.Fatalf("wide theme footer lost its full hints: %q", got)
+	}
+
+	m.width = 44
+	medium, mediumTargets := m.renderStatusBar(false, false)
+	if got := stripANSISequences(medium); !strings.Contains(got, "PgUp/PgDn:") ||
+		!strings.Contains(got, "Apply Quit [Send]") ||
+		strings.Contains(got, "Enter:") {
+		t.Fatalf("medium footer should clip Ctrl+T hint before button labels: %q", got)
+	}
+	if !mediumTargets.hasPageScroll || !mediumTargets.hasApply || !mediumTargets.hasSend {
+		t.Fatal("medium footer lost a clickable button prematurely")
+	}
+
+	m.width = 28
+	narrow, narrowTargets := m.renderStatusBar(false, false)
+	if got := stripANSISequences(narrow); !strings.Contains(got, "PgUp/PgDn Apply Quit [Send]") {
+		t.Fatalf("narrow footer must keep the full page buttons: %q", got)
+	}
+	if !narrowTargets.hasPageScroll {
+		t.Fatal("page control hitboxes disappeared while the labels fit")
+	}
+
+	m.width = 20
+	tiny, tinyTargets := m.renderStatusBar(false, false)
+	if got := stripANSISequences(tiny); strings.Contains(got, "PgUp") ||
+		!strings.Contains(got, "Apply Quit [Send]") {
+		t.Fatalf("tiny footer must drop page controls before action buttons: %q", got)
+	}
+	if tinyTargets.hasPageScroll || !tinyTargets.hasApply || !tinyTargets.hasSend {
+		t.Fatal("tiny footer did not preserve the remaining clickable actions")
+	}
+}
+
 func TestThemeFooterResponsiveActionsRemainOrdered(t *testing.T) {
 	m := newMessageInteractionTestModel(100)
 	m.themesOpen = true
