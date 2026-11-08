@@ -60,6 +60,21 @@ func defaultThemePack() ThemePack {
 					SelectionBackgroundColor: "#92451F",
 				},
 			},
+			{
+				ID:          "limetime",
+				Name:        "Limetime",
+				Description: "Heavy and high contrast. Based around the accent color #AEFF00",
+				Colors: Theme{
+					Background:               "#0E1009",
+					TextColor:                "#E6E6E6",
+					BorderColor:              "#2A3416",
+					AccentColor:              "#AEFF00",
+					HoverTextColor:           "#F9F871",
+					MutedTextColor:           "#869763",
+					MentionBackgroundColor:   "#191D0F",
+					SelectionBackgroundColor: "#007000",
+				},
+			},
 		},
 	}
 }
