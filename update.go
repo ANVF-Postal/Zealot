@@ -297,7 +297,7 @@ func (m model) Update(
 
 		// A field edit owns the composer until Enter or Escape completes it.
 		// Keep other panel clicks from closing the screen or firing actions.
-		if m.themesOpen && m.themeEditField != "" && !m.inputSelectionContains(mouse.X, mouse.Y) {
+		if m.themesOpen && (m.themeEditField != "" || m.themePackNaming) && !m.inputSelectionContains(mouse.X, mouse.Y) {
 			return m, nil
 		}
 		if m.themesOpen && m.themeDirty && mouse.Button == tea.MouseLeft && mouse.Y == 0 {
@@ -434,6 +434,21 @@ func (m model) Update(
 			return m, nil
 		}
 		if m.themesOpen && mouse.Button == tea.MouseLeft {
+			if m.themePacking {
+				if m.themePackButtonContains(mouse.X, mouse.Y) {
+					m.beginThemePackNaming()
+					return m, nil
+				}
+				if index, ok := m.themeBrowserListIndexAt(mouse.X, mouse.Y); ok {
+					m.selectThemeEntry(index)
+					m.toggleThemePacking(index)
+				}
+				return m, nil
+			}
+			if m.themePackButtonContains(mouse.X, mouse.Y) {
+				m.beginThemePacking()
+				return m, nil
+			}
 			// While a theme field is being edited, keep clicks from changing
 			// selection or triggering actions before the edit is confirmed.
 			if m.themeEditField != "" {
@@ -715,16 +730,72 @@ func (m model) Update(
 
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		if m.themesOpen {
-			if m.themeEditField == "" && isThemeApplyShortcut(keyMsg) {
+			if m.themePacking {
+				if m.themePackNaming {
+					switch keyMsg.Keystroke() {
+					case "enter":
+						m.finishThemePacking()
+						return m, nil
+					case "esc", "escape":
+						m.cancelThemePackNaming()
+						return m, nil
+					}
+				} else {
+					switch keyMsg.Keystroke() {
+					case "esc", "escape":
+						m.cancelThemePacking()
+						return m, nil
+					case "enter":
+						m.beginThemePackNaming()
+						return m, nil
+					case "space":
+						m.toggleThemePacking(m.themeSelected)
+						return m, nil
+					case "up":
+						m.moveThemeSelection(-1)
+						return m, nil
+					case "down":
+						m.moveThemeSelection(1)
+						return m, nil
+					case "pgup":
+						m.moveThemeSelection(-m.themeVisibleRows())
+						return m, nil
+					case "pgdown":
+						m.moveThemeSelection(m.themeVisibleRows())
+						return m, nil
+					case "home":
+						m.selectThemeEntry(0)
+						return m, nil
+					case "end":
+						m.selectThemeEntry(len(m.themeEntries)-1)
+						return m, nil
+					}
+					if keyMsg.Text == " " {
+						m.toggleThemePacking(m.themeSelected)
+						return m, nil
+					}
+				}
+				// Pack naming uses the composer, but never lets normal
+				// theme shortcuts apply or save a different theme.
+				if keyMsg.Keystroke() == "ctrl+c" || keyMsg.Keystroke() == "ctrl+q" {
+					m.sendTyping(false)
+					m.quitting = true
+					return m, tea.Quit
+				}
+				if !m.themePackNaming {
+					return m, nil
+				}
+			} else if m.themeEditField == "" && isThemeApplyShortcut(keyMsg) {
 				m.applySelectedTheme()
 				return m, nil
 			}
-			if isThemeSaveShortcut(keyMsg) {
+			if !m.themePacking && isThemeSaveShortcut(keyMsg) {
 				if m.themeEditField == "" {
 					m.saveSelectedThemeEdits()
 				}
 				return m, nil
 			}
+			if !m.themePacking {
 			switch keyMsg.Keystroke() {
 			case "enter":
 				if m.themeEditField != "" {
@@ -790,6 +861,7 @@ func (m model) Update(
 			default:
 				// Ordinary text and composer editing keys continue to the
 				// textarea. Enter confirms a field edit and otherwise sends.
+			}
 			}
 		}
 		switch keyMsg.String() {
@@ -903,7 +975,7 @@ func (m model) Update(
 	// -------------------------------------------------------------------------
 
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
-		if m.connected && isTextInputKey(keyMsg) && m.themeEditField == "" {
+		if m.connected && isTextInputKey(keyMsg) && m.themeEditField == "" && !m.themePackNaming {
 
 			// Start blinking only when there is actual text.
 			blinkCmd := m.startCursorBlink()
