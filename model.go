@@ -31,6 +31,7 @@ type model struct {
 	themeEntries                     []themeListEntry
 	themeSelected                    int
 	themeScroll                      int
+	themeDetailsScroll               int
 	themeError                       string
 	themeEditError                   string
 	themeDirty                       bool
