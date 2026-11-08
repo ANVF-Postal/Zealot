@@ -711,3 +711,45 @@ func TestBrowsingThemeOnlyPreviewsUntilExplicitApply(t *testing.T) {
 		t.Fatalf("browsing a preset persisted it before explicit apply")
 	}
 }
+
+
+func TestThemeFooterResponsiveActionsRemainOrdered(t *testing.T) {
+	m := newMessageInteractionTestModel(100)
+	m.themesOpen = true
+	m.splashOpen = true
+	m.status = "Connected"
+
+	for _, width := range []int{100, 72, 44, 28, 20, 16, 12} {
+		m.width = width
+		line, targets := m.renderStatusBar(false, false)
+		plain := stripANSISequences(line)
+		cells := []rune(plain)
+		if len(cells) != width {
+			t.Fatalf("width %d: rendered %d cells: %q", width, len(cells), plain)
+		}
+		if targets.hasApply {
+			if targets.applyStart < 0 || targets.applyEnd > width ||
+				string(cells[targets.applyStart:targets.applyEnd]) != "Apply" {
+				t.Fatalf("width %d: Apply text and mouse target disagree: %+v %q", width, targets, plain)
+			}
+			if targets.hasPageScroll && targets.pgDnEnd >= targets.applyStart {
+				t.Fatalf("width %d: page controls collide with Apply: %+v %q", width, targets, plain)
+			}
+			if targets.applyEnd >= targets.quitStart {
+				t.Fatalf("width %d: Apply must stay before Quit: %+v %q", width, targets, plain)
+			}
+		}
+		if targets.hasPageScroll {
+			if string(cells[targets.pgUpStart:targets.pgUpEnd]) != "PgUp" ||
+				string(cells[targets.pgDnStart:targets.pgDnEnd]) != "PgDn" {
+				t.Fatalf("width %d: page button text and hitboxes disagree: %+v %q", width, targets, plain)
+			}
+		}
+		if width >= 28 && !targets.hasPageScroll {
+			t.Fatalf("width %d: dropped clickable page controls too early: %q", width, plain)
+		}
+		if targets.hasSend && (targets.quitEnd >= targets.sendStart || targets.sendEnd != width-1) {
+			t.Fatalf("width %d: Quit and Send overlap or Send lost its right anchor: %+v %q", width, targets, plain)
+		}
+	}
+}
