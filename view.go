@@ -343,111 +343,140 @@ func compactFooterStatusLead(status string, maxWidth int) string {
 	return " " + shortStatus + separator
 }
 
-// renderThemeShortcutFooter measures each visible action exactly once. In
-// particular, Apply is never both an inline insertion and a reserved button:
-// its rendered position and clickable hitbox come from the same cursor.
+// renderThemeShortcutFooter follows the ordinary footer's compression order:
+// remove Enter:, clip non-button shortcuts from the right, shorten the status
+// while preserving complete PgUp/PgDn buttons, and only then drop page scroll.
+// All mouse targets are derived from the same rendered cursor positions.
 func (m model) renderThemeShortcutFooter() (string, footerTargets) {
-	available := max(1, m.width-1)
+	available := max(1, m.width-1) // one final styled inset cell
 	const page = "PgUp/PgDn"
-	const core = page + ": Ctrl+T:"
+	const hint = ": Ctrl+T:"
+	const tail = " • Esc: back • Ctrl+C:"
 	const apply = " Apply"
 	const send = "[Send]"
-	const longTail = " • Esc: back • Ctrl+C:"
-	const shortTail = " • Ctrl+C:"
 
 	targets := footerTargets{}
 	quitText := "Quit"
 	if m.quitConfirm {
 		quitText = "Sure?"
 	}
-	quitAction := " " + quitText
-	applyVisible := available >= lipgloss.Width(apply)+lipgloss.Width(quitAction)
-	applyAction := ""
-	if applyVisible {
-		applyAction = apply
-	}
+	lead := " " + m.status + " • "
+	fullPrefix := lead + page + hint
+	quitLeftPad, quitRightPad := 1, 1
+	applyVisible := true
+	sendVisible := true
 
-	// Send is the first action to yield at physical widths where the entire
-	// action cluster cannot fit. Its right-hand inset never changes.
-	showSend := available >= lipgloss.Width(applyAction+quitAction+send)
-	if !showSend && available < lipgloss.Width(apply+quitAction) {
+	// At the physical limit, retain the right-hand action cluster as long
+	// as possible. The normal-width padding is compressed only when needed.
+	minButtons := lipgloss.Width(apply) + lipgloss.Width(quitText) + lipgloss.Width(send)
+	if available < minButtons+quitLeftPad+quitRightPad {
+		quitRightPad = 0
+	}
+	if available < minButtons+quitLeftPad+quitRightPad {
+		quitLeftPad = 0
+	}
+	if available < minButtons {
+		sendVisible = false
+	}
+	if available < lipgloss.Width(apply)+lipgloss.Width(quitText) {
 		applyVisible = false
-		applyAction = ""
+	}
+	if available < lipgloss.Width(quitText) {
+		// Very small terminals can only show a clipped Quit label.
+		quitText = truncateANSI(quitText, available)
+	}
+	applyText := ""
+	if applyVisible {
+		applyText = apply
 	}
 	sendWidth := 0
-	if showSend {
+	if sendVisible {
 		sendWidth = lipgloss.Width(send)
 	}
-	room := max(0, available-lipgloss.Width(applyAction+quitAction)-sendWidth)
 
-	// Preserve complete clickable page labels before less essential hints.
-	pre := ""
-	if room >= lipgloss.Width(core) {
-		pre = core
-	} else if room >= lipgloss.Width(page) {
-		pre = page
-	} else if room >= lipgloss.Width("Ctrl+T:") {
-		pre = "Ctrl+T:"
-	}
-
-	// Shortcuts may shrink, but never leave partial instructions behind.
-	tail := ""
-	left := room - lipgloss.Width(pre)
-	if left >= lipgloss.Width(longTail) {
-		tail = longTail
-	} else if left >= lipgloss.Width(shortTail) {
-		tail = shortTail
-	}
-	left -= lipgloss.Width(tail)
-	if pre == core {
-		pre = compactFooterStatusLead(m.status, left) + pre
-	}
-	// "Enter:" is optional; the Send button always stays at the right edge.
+	// Once Enter: is removed, Send remains anchored at the right edge.
+	// The space between Quit and Send is not a shortcut and is protected.
+	fullWidth := lipgloss.Width(fullPrefix+apply+tail) +
+		quitLeftPad + lipgloss.Width(quitText) + quitRightPad +
+		lipgloss.Width("Enter: "+send)
 	sendPrefix := ""
-	used := lipgloss.Width(pre+applyAction+tail+quitAction) + sendWidth
-	if showSend && available-used >= lipgloss.Width("Enter: ") {
+	if sendVisible && available >= fullWidth {
 		sendPrefix = "Enter: "
 	}
+	budget := max(0, available-lipgloss.Width(applyText)-
+		quitLeftPad-lipgloss.Width(quitText)-quitRightPad-
+		sendWidth-lipgloss.Width(sendPrefix))
+
+	// The right-side hint is clipped first, from its end. Next the
+	// Ctrl+T label shrinks, followed by the Connected status. Never clip
+	// the clickable page labels themselves: either show both or neither.
+	prefix := ""
+	tailText := ""
+	if budget >= lipgloss.Width(fullPrefix) {
+		prefix = fullPrefix
+		tailText = truncateANSI(tail, budget-lipgloss.Width(prefix))
+	} else if budget >= lipgloss.Width(lead+page) {
+		prefix = lead + page + truncateANSI(hint, budget-lipgloss.Width(lead+page))
+	} else if budget >= lipgloss.Width(page) {
+		prefix = compactFooterStatusLead(m.status, budget-lipgloss.Width(page)) + page
+	}
+	prefix = strings.TrimSuffix(prefix, "\x1b[0m")
+	tailText = strings.TrimSuffix(tailText, "\x1b[0m")
 
 	var line strings.Builder
 	cursor := 0
-	pageAt := strings.Index(pre, page)
-	if pageAt >= 0 {
-		line.WriteString(m.styles.status.Render(pre[:pageAt]))
+	pageIndex := strings.Index(prefix, page)
+	if pageIndex >= 0 {
+		beforePage := prefix[:pageIndex]
+		line.WriteString(m.styles.status.Render(beforePage))
+		cursor += lipgloss.Width(beforePage)
 		targets.hasPageScroll = true
-		targets.pgUpStart = lipgloss.Width(pre[:pageAt])
-		targets.pgUpEnd = targets.pgUpStart + lipgloss.Width("PgUp")
+		targets.pgUpStart = cursor
+		targets.pgUpEnd = cursor + lipgloss.Width("PgUp")
 		targets.pgDnStart = targets.pgUpEnd + 1
 		targets.pgDnEnd = targets.pgDnStart + lipgloss.Width("PgDn")
 		line.WriteString(m.styles.accent.Render("PgUp"))
 		line.WriteString(m.styles.status.Render("/"))
 		line.WriteString(m.styles.accent.Render("PgDn"))
-		line.WriteString(m.styles.status.Render(pre[pageAt+len(page):]))
+		cursor += lipgloss.Width(page)
+		line.WriteString(m.styles.status.Render(prefix[pageIndex+len(page):]))
+		cursor = lipgloss.Width(prefix)
 	} else {
-		line.WriteString(m.styles.status.Render(pre))
+		line.WriteString(m.styles.status.Render(prefix))
+		cursor = lipgloss.Width(prefix)
 	}
-	cursor = lipgloss.Width(pre)
+
 	if applyVisible {
 		line.WriteString(m.styles.status.Render(" "))
+		cursor++
 		targets.hasApply = true
-		targets.applyStart = cursor+1
-		targets.applyEnd = targets.applyStart+lipgloss.Width("Apply")
+		targets.applyStart = cursor
+		targets.applyEnd = cursor + lipgloss.Width("Apply")
 		line.WriteString(m.styles.accent.Render("Apply"))
-		cursor += lipgloss.Width(applyAction)
+		cursor = targets.applyEnd
 	}
-	line.WriteString(m.styles.status.Render(tail+" "))
-	cursor += lipgloss.Width(tail)+1
+	line.WriteString(m.styles.status.Render(tailText))
+	cursor += lipgloss.Width(tailText)
+	if quitLeftPad > 0 {
+		line.WriteString(m.styles.status.Render(strings.Repeat(" ", quitLeftPad)))
+		cursor += quitLeftPad
+	}
 	targets.quitStart = cursor
-	targets.quitEnd = cursor+lipgloss.Width(quitText)
+	targets.quitEnd = cursor + lipgloss.Width(quitText)
 	line.WriteString(m.styles.accent.Render(quitText))
 	cursor = targets.quitEnd
+	if quitRightPad > 0 {
+		line.WriteString(m.styles.status.Render(strings.Repeat(" ", quitRightPad)))
+		cursor += quitRightPad
+	}
+
 	gap := max(0, available-cursor-lipgloss.Width(sendPrefix)-sendWidth)
 	line.WriteString(m.styles.status.Render(strings.Repeat("⠀", gap)))
-	if showSend {
+	if sendVisible {
+		line.WriteString(m.styles.status.Render(sendPrefix))
 		targets.hasSend = true
 		targets.sendStart = available-lipgloss.Width(send)
 		targets.sendEnd = available
-		line.WriteString(m.styles.status.Render(sendPrefix))
 		if m.sendFeedback {
 			line.WriteString(m.styles.status.Render(send))
 		} else {
