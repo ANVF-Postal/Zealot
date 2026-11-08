@@ -512,13 +512,13 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 		// Keep the secondary views' keyboard shortcut wording consistent.
 		scrollTail = ": Scroll • Esc: close • Ctrl+C: "
 	}
-	includeApply := m.themesOpen && m.themeError == "" && m.themeEditField == ""
+	includeApply := m.themesOpen && m.themeError == "" && m.themeEditField == "" && !m.themeDirty
 	if m.themesOpen {
 		switch {
 		case m.themeEditField != "":
 			scrollTail = ": Enter: confirm • Esc: cancel • Ctrl+C: "
 		case m.themeDirty:
-			scrollTail = ": Ctrl+S: save • Ctrl+T after save • Esc: back • Ctrl+C: "
+			scrollTail = ": Ctrl+S: save • Esc: back • Ctrl+C: "
 		default:
 			scrollTail = ": Ctrl+T: • Esc: back • Ctrl+C: "
 		}
