@@ -47,6 +47,7 @@ func (m *model) selectThemeEntry(index int) {
 		return
 	}
 	m.themeSelected = index
+	m.themeDetailsScroll = 0
 	m.themeSavedPreset = m.themeEntries[index].Preset
 	m.themeDirty = false
 	m.themeEditError = ""
@@ -207,6 +208,7 @@ func (m *model) reloadThemeEntries(selectFile, selectID string) {
 	}
 	m.themeEntries = flattenThemePacks(packs)
 	m.themeSelected = 0
+	m.themeDetailsScroll = 0
 	for i, entry := range m.themeEntries {
 		if entry.FileName == selectFile && entry.Preset.ID == selectID {
 			m.themeSelected = i
