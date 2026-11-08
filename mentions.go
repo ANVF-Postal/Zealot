@@ -247,10 +247,37 @@ func styleANSIVisibleMentions(line string, usernames []string, style lipgloss.St
 		}
 		out.WriteString(line[sourcePosition:sourceStart])
 		out.WriteString(styleANSIChunk(line[sourceStart:sourceEnd], style))
+		// Lipgloss resets SGR attributes at the end of the mention. Restore
+		// the textarea's active colors before rendering the following text.
+		// This also respects selection/cursor styles already present in the row.
+		out.WriteString(ansiSGRStateBefore(line, sourceStart))
 		sourcePosition = sourceEnd
 	}
 	out.WriteString(line[sourcePosition:])
 	return out.String()
+}
+
+// ansiSGRStateBefore replays the original row's SGR controls up to a
+// position. Mention styling ends with an SGR reset, so replaying the source
+// controls restores the textarea's foreground/background (and selection
+// attributes) without hardcoding any active theme colors.
+func ansiSGRStateBefore(line string, limit int) string {
+	var state strings.Builder
+	for pos := 0; pos < limit; {
+		if line[pos] != 0x1b {
+			pos++
+			continue
+		}
+		end := ansiSequenceEnd(line, pos)
+		if end > limit {
+			break
+		}
+		if end > pos+1 && line[pos+1] == '[' && line[end-1] == 'm' {
+			state.WriteString(line[pos:end])
+		}
+		pos = end
+	}
+	return state.String()
 }
 
 func styleANSIChunk(chunk string, style lipgloss.Style) string {
