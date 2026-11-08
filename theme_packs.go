@@ -241,7 +241,7 @@ func defaultThemePack() ThemePack {
 					BorderColor:              "#576267",
 					AccentColor:              "#7DC053",
 					HoverTextColor:           "#B7C154",
-					MutedTextColor:           "#272C2E",
+					MutedTextColor:           "#393C37",
 					MentionBackgroundColor:   "#314237",
 					SelectionBackgroundColor: "#384237",
 				},
