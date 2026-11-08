@@ -522,6 +522,36 @@ func themeBrowserSelectAutumn(t *testing.T, m *model) Theme {
 	return Theme{}
 }
 
+
+func TestThemeDetailsEditHintsOnlyForCustomThemes(t *testing.T) {
+	m := newThemeEditorTestModel(t)
+	_, width := m.themeBrowserColumnWidths()
+
+	// Built-in pack entries are read-only and must not invite editing.
+	builtIn := m.themeEntries[m.themeSelected]
+	if builtIn.FileName != defaultThemePackFilename {
+		t.Fatalf("expected default-pack entry, got %q", builtIn.FileName)
+	}
+	rows := m.themeDetailsRows(width)
+	palette := stripANSISequences(rows[themePaletteFirstRow-1])
+	description := stripANSISequences(rows[m.themeDescriptionHeaderRow()])
+	if palette != "COLOR PALETTE" || description != "DESCRIPTION" {
+		t.Fatalf("built-in theme shows editing hints: palette=%q description=%q", palette, description)
+	}
+
+	// A separate pack is editable, so both hints should reappear.
+	custom := builtIn
+	custom.FileName = "personal.toml"
+	m.themeEntries = append(m.themeEntries, custom)
+	m.themeSelected = len(m.themeEntries) - 1
+	rows = m.themeDetailsRows(width)
+	palette = stripANSISequences(rows[themePaletteFirstRow-1])
+	description = stripANSISequences(rows[m.themeDescriptionHeaderRow()])
+	if palette != "COLOR PALETTE · click a row to edit" || description != "DESCRIPTION · click to edit" {
+		t.Fatalf("custom theme lost editing hints: palette=%q description=%q", palette, description)
+	}
+}
+
 func TestThemeBrowserActionsShareOneHorizontalRow(t *testing.T) {
 	m := newThemeEditorTestModel(t)
 	_, rightWidth := m.themeBrowserColumnWidths()
