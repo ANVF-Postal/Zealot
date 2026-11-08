@@ -669,7 +669,7 @@ func (m model) Update(
 		if mouse.pane == themeDetailsPane {
 			before = m.themeDetailsScroll
 		}
-		m.scrollThemePane(mouse.pane,direction)
+		m.scrollThemePane(mouse.pane,direction*3)
 		after := m.themeScroll
 		if mouse.pane == themeDetailsPane {
 			after = m.themeDetailsScroll
