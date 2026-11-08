@@ -400,19 +400,31 @@ func TestPackCreationReportsIncompleteRollbackAndKeepsArchive(t *testing.T) {
 	ops := defaultPackFileOps()
 	ops.rename = func(from,to string) error {
 		count++
-		if count == 2 { return syscall.ENOSPC } // Fail final publish after archive.
+		if count == 2 {return syscall.ENOSPC} // Fail final publish after archiving.
 		return os.Rename(from,to)
 	}
-	// Make the rollback restore fail to simulate a permissions error.
-	// Recovery's direct os.Rename is blocked by replacing the archived
-	// directory permission, which is unreliable as root. Instead test that
-	// a commit-stage failure preserves the original using normal restoration.
-	_, _, err = createPackedThemeFileWithOps("Recovery Test Pack",[]themeListEntry{entry},ops)
-	if !errors.Is(err,syscall.ENOSPC) {
-		t.Fatalf("expected simulated publish error, got %v",err)
+	ops.restore = func(from,to string) error {
+		return os.ErrPermission // Simulate unsuccessful rollback.
 	}
-	if _, err := os.Stat(filepath.Join(themesDir(),entry.FileName)); err != nil {
-		t.Fatalf("failed publication lost the original theme: %v",err)
+	_, _, err = createPackedThemeFileWithOps("Recovery Test Pack",[]themeListEntry{entry},ops)
+	if !errors.Is(err,syscall.ENOSPC) || !errors.Is(err,os.ErrPermission) {
+		t.Fatalf("expected both publishing and rollback errors, got %v",err)
+	}
+	if !strings.Contains(err.Error(),"automatic recovery was incomplete") ||
+		!strings.Contains(err.Error(),"themes/packed/") {
+		t.Fatalf("recovery instructions were omitted: %v",err)
+	}
+	archived := filepath.Join(themesDir(),"packed",entry.FileName)
+	if _, err := os.Stat(archived); err != nil {
+		t.Fatalf("original source was not preserved for manual recovery: %v",err)
+	}
+	if _, err := os.Stat(filepath.Join(themesDir(),"pack-recovery-test-pack.toml")); !os.IsNotExist(err) {
+		t.Fatalf("failed pack should not appear in library: %v",err)
+	}
+	// The injected restore failure must not permanently damage the test
+	// environment: confirm that the archived original can be restored.
+	if err := os.Rename(archived,filepath.Join(themesDir(),entry.FileName)); err != nil {
+		t.Fatalf("archived source is not recoverable: %v",err)
 	}
 }
 
