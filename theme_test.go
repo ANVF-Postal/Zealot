@@ -158,8 +158,8 @@ func TestLoadConfigCreatesDefaultThemePack(t *testing.T) {
 	if pack.PackName != "Zealot defaults" {
 		t.Fatalf("pack name = %q, want Zealot defaults", pack.PackName)
 	}
-	if len(pack.Themes) != 12 {
-		t.Fatalf("default pack contains %d themes, want 12 including Noir", len(pack.Themes))
+	if len(pack.Themes) != 13 {
+		t.Fatalf("default pack contains %d themes, want 13 including Commodore", len(pack.Themes))
 	}
 	if pack.Themes[0].ID != "zealot" || pack.Themes[0].Name != "Zealot" {
 		t.Fatalf("default theme identity = (%q, %q), want (zealot, Zealot)", pack.Themes[0].ID, pack.Themes[0].Name)
@@ -327,6 +327,20 @@ func TestLoadConfigCreatesDefaultThemePack(t *testing.T) {
 				MutedTextColor: "#858585",
 				MentionBackgroundColor: "#292929",
 				SelectionBackgroundColor: "#626262",
+			},
+		},
+		{
+			index: 12, id: "commodore", name: "Commodore",
+			description: "Warm vintage computer plastic with raised cream-beige borders and colorful retro hardware accents.",
+			colors: Theme{
+				Background: "#BCAA7C",
+				TextColor: "#3A3024",
+				BorderColor: "#E2D4AE",
+				AccentColor: "#2E77C9",
+				HoverTextColor: "#D94B3D",
+				MutedTextColor: "#6F614A",
+				MentionBackgroundColor: "#E6C75A",
+				SelectionBackgroundColor: "#5FA35B",
 			},
 		},
 	} {
@@ -676,7 +690,7 @@ func TestExistingDefaultPackGainsNewBuiltInsWithoutChangingExistingPresets(t *te
 	if _, err := toml.Decode(string(got), &pack); err != nil {
 		t.Fatalf("decode updated default pack: %v", err)
 	}
-	if len(pack.Themes) != 12 || pack.Themes[2].ID != "limetime" || pack.Themes[3].ID != "green-phosphor" || pack.Themes[4].ID != "fbi" || pack.Themes[5].ID != "putty-classic" || pack.Themes[6].ID != "darkroom" || pack.Themes[7].ID != "blackout" || pack.Themes[8].ID != "glados" || pack.Themes[9].ID != "orchid" || pack.Themes[10].ID != "arcade-neon" || pack.Themes[11].ID != "noir" {
+	if len(pack.Themes) != 13 || pack.Themes[2].ID != "limetime" || pack.Themes[3].ID != "green-phosphor" || pack.Themes[4].ID != "fbi" || pack.Themes[5].ID != "putty-classic" || pack.Themes[6].ID != "darkroom" || pack.Themes[7].ID != "blackout" || pack.Themes[8].ID != "glados" || pack.Themes[9].ID != "orchid" || pack.Themes[10].ID != "arcade-neon" || pack.Themes[11].ID != "noir" || pack.Themes[12].ID != "commodore" {
 		t.Fatalf("missing new built-in presets after migration: %+v", pack.Themes)
 	}
 	if pack.Themes[0].Colors.AccentColor != "#123ABC" {
@@ -728,8 +742,8 @@ func TestOriginalArcadeMigratesToOrchidWithoutLosingColors(t *testing.T) {
 	if _, err := toml.Decode(string(updated), &migrated); err != nil {
 		t.Fatalf("decode updated pack: %v", err)
 	}
-	if len(migrated.Themes) != 12 {
-		t.Fatalf("got %d presets, want 12", len(migrated.Themes))
+	if len(migrated.Themes) != 13 {
+		t.Fatalf("got %d presets, want 13", len(migrated.Themes))
 	}
 	if orchid := migrated.Themes[9]; orchid.ID != "orchid" || orchid.Name != "Orchid" || orchid.Colors != originalArcadeColors() {
 		t.Fatalf("original Arcade was not preserved as Orchid: %+v", orchid)
@@ -739,6 +753,9 @@ func TestOriginalArcadeMigratesToOrchidWithoutLosingColors(t *testing.T) {
 	}
 	if noir := migrated.Themes[11]; noir.ID != "noir" || noir.Name != "Noir" {
 		t.Fatalf("Noir was not appended: %+v", noir)
+	}
+	if commodore := migrated.Themes[12]; commodore.ID != "commodore" || commodore.Name != "Commodore" {
+		t.Fatalf("Commodore was not appended: %+v", commodore)
 	}
 	if err := ensureThemeLibrary(); err != nil {
 		t.Fatalf("migrate again: %v", err)
@@ -787,13 +804,13 @@ func TestCustomArcadePaletteRemainsUntouchedDuringMigration(t *testing.T) {
 	if _, err := toml.Decode(string(updated), &migrated); err != nil {
 		t.Fatalf("decode migrated pack: %v", err)
 	}
-	if len(migrated.Themes) != 13 {
-		t.Fatalf("got %d presets, want 13 including preserved custom Arcade", len(migrated.Themes))
+	if len(migrated.Themes) != 14 {
+		t.Fatalf("got %d presets, want 14 including preserved custom Arcade", len(migrated.Themes))
 	}
 	if old := migrated.Themes[9]; old.ID != "arcade" || old.Colors != custom {
 		t.Fatalf("custom Arcade was modified: %+v", old)
 	}
-	if migrated.Themes[10].ID != "orchid" || migrated.Themes[11].ID != "arcade-neon" || migrated.Themes[12].ID != "noir" {
+	if migrated.Themes[10].ID != "orchid" || migrated.Themes[11].ID != "arcade-neon" || migrated.Themes[12].ID != "noir" || migrated.Themes[13].ID != "commodore" {
 		t.Fatalf("new themes were not appended: %+v", migrated.Themes[10:])
 	}
 }
