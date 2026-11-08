@@ -231,18 +231,18 @@ func TestLoadConfigCreatesDefaultThemePack(t *testing.T) {
 	if putty.ID != "putty-classic" || putty.Name != "PuTTY Classic" {
 		t.Fatalf("sixth built-in theme = (%q, %q), want PuTTY Classic", putty.ID, putty.Name)
 	}
-	if putty.Description != "A traditional black terminal with PuTTY-style gray text and classic ANSI green, cyan, and blue highlights." {
+	if putty.Description != "Classic PuTTY ANSI terminal colors on black, with bright yellow, blue and green plus cyan, magenta and red." {
 		t.Fatalf("PuTTY Classic description changed: %q", putty.Description)
 	}
 	wantPuTTY := Theme{
 		Background:               "#000000",
 		TextColor:                "#BBBBBB",
-		BorderColor:              "#555555",
-		AccentColor:              "#55FF55",
-		HoverTextColor:           "#55FFFF",
-		MutedTextColor:           "#777777",
-		MentionBackgroundColor:   "#003300",
-		SelectionBackgroundColor: "#0000BB",
+		BorderColor:              "#5555FF",
+		AccentColor:              "#FFFF55",
+		HoverTextColor:           "#55FF55",
+		MutedTextColor:           "#00BBBB",
+		MentionBackgroundColor:   "#BB00BB",
+		SelectionBackgroundColor: "#BB0000",
 	}
 	if putty.Colors != wantPuTTY {
 		t.Fatalf("PuTTY Classic palette = %+v, want %+v", putty.Colors, wantPuTTY)
