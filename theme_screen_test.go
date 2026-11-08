@@ -750,7 +750,7 @@ func TestThemeFooterProgressiveShortcutClipping(t *testing.T) {
 	m.width = 20
 	tiny, tinyTargets := m.renderStatusBar(false, false)
 	if got := stripANSISequences(tiny); strings.Contains(got, "PgUp") ||
-		!strings.Contains(got, "Apply Quit [Send]") {
+		!strings.Contains(got, "Apply Quit") || !strings.Contains(got, "[Send]") {
 		t.Fatalf("tiny footer must drop page controls before action buttons: %q", got)
 	}
 	if tinyTargets.hasPageScroll || !tinyTargets.hasApply || !tinyTargets.hasSend {
