@@ -1,0 +1,139 @@
+package main
+
+import (
+	"strings"
+	"testing"
+
+	tea "charm.land/bubbletea/v2"
+)
+
+func TestThemeWheelMovesOneEntryAndScrollsOnlyHoveredPane(t *testing.T) {
+	m := newThemeEditorTestModel(t)
+	m.height = 16
+	m.clampThemeSelection()
+	if !m.themeListOverflow() {
+		t.Fatal("fixture needs more themes than visible rows")
+	}
+	if !m.themeDetailsOverflow() {
+		t.Fatal("short viewport should require details scrolling")
+	}
+	m.themeSelected = 0
+	m.themeScroll = 0
+	m.themeDetailsScroll = 0
+
+	listX := m.themeBrowserContentStartX()+1
+	updated, _ := m.Update(tea.MouseWheelMsg{X:listX,Y:5,Button:tea.MouseWheelDown})
+	m = updated.(model)
+	if m.themeSelected != 1 || m.themeDetailsScroll != 0 {
+		t.Fatalf("list wheel should move exactly one item, got selected=%d detailsScroll=%d",
+			m.themeSelected,m.themeDetailsScroll)
+	}
+	_, rightWidth := m.themeBrowserColumnWidths()
+	rightX := m.themeBrowserDividerX()+max(1,rightWidth/2)
+	updated, _ = m.Update(tea.MouseWheelMsg{X:rightX,Y:6,Button:tea.MouseWheelDown})
+	m = updated.(model)
+	if m.themeSelected != 1 || m.themeDetailsScroll != 1 {
+		t.Fatalf("details wheel must scroll independently by one: selected=%d detailsScroll=%d",
+			m.themeSelected,m.themeDetailsScroll)
+	}
+	updated, _ = m.Update(tea.MouseWheelMsg{X:rightX,Y:6,Button:tea.MouseWheelUp})
+	m = updated.(model)
+	if m.themeDetailsScroll != 0 || m.themeSelected != 1 {
+		t.Fatal("scrolling details upward changed the selected theme")
+	}
+}
+
+func TestThemePaneScrollbarsTrackOverflowAndUseSeparateHitboxes(t *testing.T) {
+	m := newThemeEditorTestModel(t)
+	m.height = 14
+	if !m.themeListOverflow() || !m.themeDetailsOverflow() {
+		t.Fatal("both panes should overflow at this height")
+	}
+	leftWidth, rightWidth := m.themeBrowserColumnWidths()
+	listBarX := m.themeBrowserContentStartX()+leftWidth-1
+	detailBarX := m.themeBrowserDividerX()+rightWidth
+	if !m.themeListScrollbarContains(listBarX,5) ||
+		!m.themeDetailsScrollbarContains(detailBarX,5) {
+		t.Fatal("scrollbar hitboxes do not match their positions")
+	}
+	if _, ok := m.themeBrowserListIndexAt(listBarX,5); ok {
+		t.Fatal("list scrollbar was treated as a theme row")
+	}
+	if field, ok := m.themeColorFieldAt(detailBarX,5); ok {
+		t.Fatalf("details scrollbar was treated as color edit %q",field)
+	}
+	panel := stripANSISequences(m.renderThemeBrowser())
+	if !strings.Contains(panel,"█") || !strings.Contains(panel,"│") {
+		t.Fatalf("scrollbar track/thumbnail not visible: %q",panel)
+	}
+	listCount := len(m.themeEntries)
+	updated, _ := m.Update(tea.MouseClickMsg{X:listBarX,Y:4+m.themeVisibleRows()-1,Button:tea.MouseLeft})
+	m = updated.(model)
+	if m.themeSelected <= 0 || m.themeSelected >= listCount {
+		t.Fatalf("scrollbar click did not navigate list: selected=%d",m.themeSelected)
+	}
+	updated, _ = m.Update(tea.MouseClickMsg{X:detailBarX,Y:2+m.messageHeight()-1,Button:tea.MouseLeft})
+	m = updated.(model)
+	if m.themeDetailsScroll != m.maxThemeDetailsScroll() {
+		t.Fatalf("details scrollbar click did not reach end: scroll=%d max=%d",
+			m.themeDetailsScroll,m.maxThemeDetailsScroll())
+	}
+}
+
+func TestThemeDetailsScrollMakesDescriptionAndActionsReachable(t *testing.T) {
+	m := newThemeEditorTestModel(t)
+	m.cloneSelectedTheme()
+	m.height = 14
+	_, rightWidth := m.themeBrowserColumnWidths()
+	if !m.themeDetailsOverflow() {
+		t.Fatal("details should overflow on short terminal")
+	}
+	m.themeDetailsScroll = m.maxThemeDetailsScroll()
+	panel := stripANSISequences(m.renderThemeBrowser())
+	if !strings.Contains(panel,"[CLONE]") || !strings.Contains(panel,"[APPLY]") {
+		t.Fatalf("scrolled details did not show action row: %q",panel)
+	}
+	detailWidth := rightWidth-1
+	row := m.themeActionButtonRowForWidth(detailWidth)
+	y := 2+row-m.themeDetailsScroll
+	start,end,ok := themeActionButtonBounds(detailWidth,themeCloneButtonLabel,false)
+	if !ok {
+		t.Fatal("missing Clone action layout")
+	}
+	x := m.themeBrowserDividerX()+1+(start+end)/2
+	if !m.themeCloneButtonContains(x,y) {
+		t.Fatalf("Clone hitbox not translated by scroll: x=%d y=%d",x,y)
+	}
+	// The color edit action must also map from visible rows to the
+	// correct underlying palette entry after scrolling.
+	m.themeDetailsScroll = min(2,m.maxThemeDetailsScroll())
+	colorY := 2+themePaletteFirstRow+3-m.themeDetailsScroll
+	field,ok := m.themeColorFieldAt(m.themeBrowserDividerX()+3,colorY)
+	if !ok || field!="accent_color" {
+		t.Fatalf("scrolled color row hitbox = %q,%v",field,ok)
+	}
+	m.themeDetailsScroll = m.maxThemeDetailsScroll()
+	m.moveThemeSelection(1)
+	if m.themeDetailsScroll!=0 {
+		t.Fatal("changing theme did not reset the details scroll")
+	}
+}
+
+func TestThemeDetailsDoNotShowScrollbarWhenRoomy(t *testing.T) {
+	m := newThemeEditorTestModel(t)
+	m.height = 70
+	if m.themeDetailsOverflow() {
+		t.Fatal("details should fit on a tall terminal")
+	}
+	if m.themeListOverflow() {
+		t.Fatal("theme list should fit on a tall terminal")
+	}
+	_,rightWidth := m.themeBrowserColumnWidths()
+	if m.themeDetailsScrollbarContains(m.themeBrowserDividerX()+rightWidth,5) {
+		t.Fatal("details exposed a scrollbar without overflow")
+	}
+	m.scrollThemeDetails(1000)
+	if m.themeDetailsScroll!=0 {
+		t.Fatal("details scroll offset escaped bounds without overflow")
+	}
+}
