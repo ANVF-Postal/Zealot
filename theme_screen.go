@@ -337,6 +337,67 @@ func (m model) themeDetailsScrollbarContains(x,y int) bool {
 		y >= 2 && y < 2+max(1,m.messageHeight())
 }
 
+func (m *model) stopThemeScrollbarHold(pane themeScrollPane) {
+	if pane == themeListPane {
+		m.themeListScrollbarHoldDirection = 0
+		m.themeListScrollbarHoldGeneration++
+	} else {
+		m.themeDetailsScrollbarHoldDirection = 0
+		m.themeDetailsScrollbarHoldGeneration++
+	}
+}
+
+func (m *model) stopThemeScrollbarInteractions() {
+	m.themeListScrollDragging = false
+	m.themeDetailsScrollDragging = false
+	m.stopThemeScrollbarHold(themeListPane)
+	m.stopThemeScrollbarHold(themeDetailsPane)
+}
+
+func (m *model) handleThemeScrollbarClick(pane themeScrollPane,y int) tea.Cmd {
+	visible,total,_ := m.themeScrollbarDimensions(pane)
+	if total <= visible {
+		return nil
+	}
+	topY := 4
+	if pane == themeDetailsPane {
+		topY = 2
+	}
+	bottomY := topY+visible-1
+	switch {
+	case y == topY, y == bottomY:
+		direction := 1
+		if y == topY {
+			direction = -1
+		}
+		if pane == themeListPane {
+			m.themeListScrollbarHoldDirection = direction
+			m.themeListScrollbarHoldGeneration++
+			m.scrollThemePane(pane,direction)
+			return m.themeScrollbarHoldCmd(pane,m.themeListScrollbarHoldGeneration)
+		}
+		m.themeDetailsScrollbarHoldDirection = direction
+		m.themeDetailsScrollbarHoldGeneration++
+		m.scrollThemePane(pane,direction)
+		return m.themeScrollbarHoldCmd(pane,m.themeDetailsScrollbarHoldGeneration)
+	default:
+		top,thumbHeight,_ := m.themeScrollbarGeometry(pane)
+		position := y-topY-1
+		if position >= top && position < top+thumbHeight {
+			if pane == themeListPane {
+				m.themeListScrollDragging = true
+				m.themeListScrollDragOffset = position-top
+			} else {
+				m.themeDetailsScrollDragging = true
+				m.themeDetailsScrollDragOffset = position-top
+			}
+			return nil
+		}
+		m.setThemeScrollFromTrack(pane,position)
+		return nil
+	}
+}
+
 func (m *model) scrollThemeDetails(delta int) {
 	m.themeDetailsScroll += delta
 	m.clampThemeDetailsScroll()
@@ -700,7 +761,7 @@ func (m model) themeColorFieldAt(x, y int) (string, bool) {
 	leftWidth, rightWidth := m.themeBrowserColumnWidths()
 	rightStartX := m.themeBrowserContentStartX() + leftWidth + 1
 	if x < rightStartX || x >= rightStartX+rightWidth ||
-		(m.themeDetailsOverflow() && x == rightStartX+rightWidth-1) {
+		x == rightStartX+rightWidth-1 {
 		return "", false
 	}
 	if y < 2 || y >= 2+max(1,m.messageHeight()) {
