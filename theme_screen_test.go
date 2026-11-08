@@ -90,10 +90,10 @@ func TestEnsureThemeLibraryAddsMissingBuiltInsWithoutReplacingPack(t *testing.T)
 	if err != nil {
 		t.Fatalf("load migrated theme packs: %v", err)
 	}
-	if len(packs) != 1 || len(packs[0].Themes) != 12 {
-		t.Fatalf("migrated pack contains %d packs and %d presets, want 1 pack and 12 presets", len(packs), len(packs[0].Themes))
+	if len(packs) != 1 || len(packs[0].Themes) != 13 {
+		t.Fatalf("migrated pack contains %d packs and %d presets, want 1 pack and 13 presets", len(packs), len(packs[0].Themes))
 	}
-	foundAutumn, foundLimetime, foundPhosphor, foundFBI, foundPuTTY, foundDarkroom, foundBlackout, foundGladOS, foundOrchid, foundArcade, foundCustom := false, false, false, false, false, false, false, false, false, false, false
+	foundAutumn, foundLimetime, foundPhosphor, foundFBI, foundPuTTY, foundDarkroom, foundBlackout, foundGladOS, foundOrchid, foundArcade, foundNoir, foundCustom := false, false, false, false, false, false, false, false, false, false, false, false
 	for _, preset := range packs[0].Themes {
 		foundAutumn = foundAutumn || preset.ID == "autumn"
 		foundLimetime = foundLimetime || preset.ID == "limetime"
@@ -105,10 +105,11 @@ func TestEnsureThemeLibraryAddsMissingBuiltInsWithoutReplacingPack(t *testing.T)
 		foundGladOS = foundGladOS || preset.ID == "glados"
 		foundOrchid = foundOrchid || preset.ID == "orchid"
 		foundArcade = foundArcade || preset.ID == "arcade-neon"
+		foundNoir = foundNoir || preset.ID == "noir"
 		foundCustom = foundCustom || preset.ID == "my-custom"
 	}
-	if !foundAutumn || !foundLimetime || !foundPhosphor || !foundFBI || !foundPuTTY || !foundDarkroom || !foundBlackout || !foundGladOS || !foundOrchid || !foundArcade || !foundCustom {
-		t.Fatalf("migration lost a custom preset or failed to add Autumn/Limetime/Green Phosphor/FBI/PuTTY Classic/Darkroom/Blackout/GladOS/Orchid/Arcade: %+v", packs[0].Themes)
+	if !foundAutumn || !foundLimetime || !foundPhosphor || !foundFBI || !foundPuTTY || !foundDarkroom || !foundBlackout || !foundGladOS || !foundOrchid || !foundArcade || !foundNoir || !foundCustom {
+		t.Fatalf("migration lost a custom preset or failed to add Autumn/Limetime/Green Phosphor/FBI/PuTTY Classic/Darkroom/Blackout/GladOS/Orchid/Arcade/Noir: %+v", packs[0].Themes)
 	}
 }
 
@@ -204,13 +205,13 @@ func TestThemeBrowserLoadsAllPackEntries(t *testing.T) {
 	}
 	m := newMessageInteractionTestModel(100)
 	m.openThemeBrowser()
-	if !m.themesOpen || len(m.themeEntries) != 12 {
-		t.Fatalf("opening theme browser returned open=%v entries=%d, want true and 12", m.themesOpen, len(m.themeEntries))
+	if !m.themesOpen || len(m.themeEntries) != 13 {
+		t.Fatalf("opening theme browser returned open=%v entries=%d, want true and 13", m.themesOpen, len(m.themeEntries))
 	}
 	if m.themeEntries[0].FileName != "default-themes.toml" || m.themeEntries[m.themeSelected].Preset.Name != "Zealot" {
 		t.Fatalf("built-in active theme was not first and initially selected: selected=%+v entries=%+v", m.themeEntries[m.themeSelected], m.themeEntries)
 	}
-	foundAutumn, foundLimetime, foundPhosphor, foundFBI, foundPuTTY, foundDarkroom, foundBlackout, foundGladOS, foundOrchid, foundArcade, foundTwilight := false, false, false, false, false, false, false, false, false, false, false
+	foundAutumn, foundLimetime, foundPhosphor, foundFBI, foundPuTTY, foundDarkroom, foundBlackout, foundGladOS, foundOrchid, foundArcade, foundNoir, foundTwilight := false, false, false, false, false, false, false, false, false, false, false, false
 	for _, entry := range m.themeEntries {
 		foundAutumn = foundAutumn || entry.Preset.ID == "autumn"
 		foundLimetime = foundLimetime || entry.Preset.ID == "limetime"
@@ -222,10 +223,11 @@ func TestThemeBrowserLoadsAllPackEntries(t *testing.T) {
 		foundGladOS = foundGladOS || entry.Preset.ID == "glados"
 		foundOrchid = foundOrchid || entry.Preset.ID == "orchid"
 		foundArcade = foundArcade || entry.Preset.ID == "arcade-neon"
+		foundNoir = foundNoir || entry.Preset.ID == "noir"
 		foundTwilight = foundTwilight || entry.Preset.ID == "twilight"
 	}
-	if !foundAutumn || !foundLimetime || !foundPhosphor || !foundFBI || !foundPuTTY || !foundDarkroom || !foundBlackout || !foundGladOS || !foundOrchid || !foundArcade || !foundTwilight {
-		t.Fatal("theme browser did not load Autumn, Limetime, Green Phosphor, FBI, PuTTY Classic, Darkroom, Blackout, GladOS, Orchid, Arcade, and Twilight")
+	if !foundAutumn || !foundLimetime || !foundPhosphor || !foundFBI || !foundPuTTY || !foundDarkroom || !foundBlackout || !foundGladOS || !foundOrchid || !foundArcade || !foundNoir || !foundTwilight {
+		t.Fatal("theme browser did not load Autumn, Limetime, Green Phosphor, FBI, PuTTY Classic, Darkroom, Blackout, GladOS, Orchid, Arcade, Noir, and Twilight")
 	}
 }
 
