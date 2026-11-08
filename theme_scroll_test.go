@@ -66,17 +66,16 @@ func TestThemePaneScrollbarsTrackOverflowAndUseSeparateHitboxes(t *testing.T) {
 	if !strings.Contains(panel,"█") || !strings.Contains(panel,"│") {
 		t.Fatalf("scrollbar track/thumbnail not visible: %q",panel)
 	}
-	listCount := len(m.themeEntries)
+	selected := m.themeSelected
 	updated, _ := m.Update(tea.MouseClickMsg{X:listBarX,Y:4+m.themeVisibleRows()-1,Button:tea.MouseLeft})
 	m = updated.(model)
-	if m.themeSelected <= 0 || m.themeSelected >= listCount {
-		t.Fatalf("scrollbar click did not navigate list: selected=%d",m.themeSelected)
+	if m.themeScroll <= 0 || m.themeSelected != selected {
+		t.Fatalf("list arrow should scroll viewport without changing selection: offset=%d selected=%d",m.themeScroll,m.themeSelected)
 	}
 	updated, _ = m.Update(tea.MouseClickMsg{X:detailBarX,Y:2+m.messageHeight()-1,Button:tea.MouseLeft})
 	m = updated.(model)
-	if m.themeDetailsScroll != m.maxThemeDetailsScroll() {
-		t.Fatalf("details scrollbar click did not reach end: scroll=%d max=%d",
-			m.themeDetailsScroll,m.maxThemeDetailsScroll())
+	if m.themeDetailsScroll != 1 {
+		t.Fatalf("details bottom arrow should move one line: scroll=%d",m.themeDetailsScroll)
 	}
 }
 
@@ -129,8 +128,12 @@ func TestThemeDetailsDoNotShowScrollbarWhenRoomy(t *testing.T) {
 		t.Fatal("theme list should fit on a tall terminal")
 	}
 	_,rightWidth := m.themeBrowserColumnWidths()
-	if m.themeDetailsScrollbarContains(m.themeBrowserDividerX()+rightWidth,5) {
-		t.Fatal("details exposed a scrollbar without overflow")
+	if !m.themeDetailsScrollbarContains(m.themeBrowserDividerX()+rightWidth,5) {
+		t.Fatal("chat-style scrollbar rail should remain visible without overflow")
+	}
+	if m.themeScrollbarGlyph(themeDetailsPane,0)!="^" ||
+		m.themeScrollbarGlyph(themeDetailsPane,m.messageHeight()-1)!="v" {
+		t.Fatal("details rail is missing chat-style arrow endpoints")
 	}
 	m.scrollThemeDetails(1000)
 	if m.themeDetailsScroll!=0 {
