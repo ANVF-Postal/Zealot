@@ -90,6 +90,21 @@ func defaultThemePack() ThemePack {
 					SelectionBackgroundColor: "#1C5B22",
 				},
 			},
+			{
+				ID:          "fbi",
+				Name:        "FBI",
+				Description: "Deep federal blue, seal-inspired gold, and ceremonial red and green accents.",
+				Colors: Theme{
+					Background:               "#07366B",
+					TextColor:                "#F5F3E9",
+					BorderColor:              "#AC9150",
+					AccentColor:              "#FFD348",
+					HoverTextColor:           "#FF8580",
+					MutedTextColor:           "#B5C9DF",
+					MentionBackgroundColor:   "#723B47",
+					SelectionBackgroundColor: "#27654C",
+				},
+			},
 		},
 	}
 }
