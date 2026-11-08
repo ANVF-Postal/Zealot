@@ -177,3 +177,61 @@ func TestPackModeFooterRetainsClickTargetsDuringResize(t *testing.T) {
 		}
 	}
 }
+
+func TestPackBuilderRenamesDuplicateIDsWithoutChangingSources(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if _, err := loadConfig(); err != nil {t.Fatal(err)}
+	first := ThemePack{SchemaVersion:themePackSchemaVersion,PackName:"One",Themes:[]ThemePreset{{ID:"shared",Name:"First",Colors:defaultTheme()}}}
+	second := ThemePack{SchemaVersion:themePackSchemaVersion,PackName:"Two",Themes:[]ThemePreset{{ID:"shared",Name:"Second",Colors:defaultTheme()}}}
+	if err := saveThemePack("one.toml",first); err != nil {t.Fatal(err)}
+	if err := saveThemePack("two.toml",second); err != nil {t.Fatal(err)}
+	selected := []themeListEntry{
+		{Preset:first.Themes[0],FileName:"one.toml"},
+		{Preset:second.Themes[0],FileName:"two.toml"},
+	}
+	filename, _, err := createPackedThemeFile("Combined",selected)
+	if err != nil {t.Fatal(err)}
+	data, err := os.ReadFile(filepath.Join(themesDir(),filename))
+	if err != nil {t.Fatal(err)}
+	pack, err := decodeThemePackBytes(data)
+	if err != nil {t.Fatal(err)}
+	if pack.Themes[0].ID!="shared" || pack.Themes[1].ID!="shared-2" {
+		t.Fatalf("duplicate IDs not reconciled: %+v",pack.Themes)
+	}
+	for _, filename := range []string{"one.toml","two.toml"} {
+		if _, err := os.Stat(filepath.Join(themesDir(),"packed",filename)); err != nil {
+			t.Fatalf("missing source backup %q: %v",filename,err)
+		}
+	}
+}
+
+func TestPackBuilderCannotIncludeBuiltinsOrOverwritePack(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if _, err := loadConfig(); err != nil {t.Fatal(err)}
+	builtin := themeListEntry{Preset:defaultThemePack().Themes[0],FileName:defaultThemePackFilename}
+	if _, _, err := createPackedThemeFile("Illegal",[]themeListEntry{builtin}); err == nil {
+		t.Fatal("default pack theme was allowed into custom pack")
+	}
+	if _, err := os.Stat(filepath.Join(themesDir(),"pack-illegal.toml")); !os.IsNotExist(err) {
+		t.Fatal("rejected built-in source nevertheless created a pack")
+	}
+}
+
+func TestPackBuilderCancelRestoresComposerAndSelection(t *testing.T) {
+	m := newThemeEditorTestModel(t)
+	m.cloneSelectedTheme()
+	m.input.SetValue("unsent chat message")
+	m.beginThemePacking()
+	if !m.themePacking {t.Fatal("could not enter pack mode")}
+	m.beginThemePackNaming()
+	if !m.themePackNaming {t.Fatal("could not enter naming mode")}
+	m.input.SetValue("temporary pack name")
+	m.cancelThemePackNaming()
+	if m.themePackNaming || m.input.Value()!="unsent chat message" {
+		t.Fatalf("cancel did not restore composer: naming=%v value=%q",m.themePackNaming,m.input.Value())
+	}
+	m.cancelThemePacking()
+	if m.themePacking || len(m.themePackSelected)!=0 {
+		t.Fatal("cancel did not discard the temporary selections")
+	}
+}
