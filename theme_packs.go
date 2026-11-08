@@ -201,6 +201,21 @@ func defaultThemePack() ThemePack {
 					SelectionBackgroundColor: "#626262",
 				},
 			},
+			{
+				ID:          "commodore",
+				Name:        "Commodore",
+				Description: "Warm vintage computer plastic with raised cream-beige borders and colorful retro hardware accents.",
+				Colors: Theme{
+					Background:               "#BCAA7C",
+					TextColor:                "#3A3024",
+					BorderColor:              "#E2D4AE",
+					AccentColor:              "#2E77C9",
+					HoverTextColor:           "#D94B3D",
+					MutedTextColor:           "#6F614A",
+					MentionBackgroundColor:   "#E6C75A",
+					SelectionBackgroundColor: "#5FA35B",
+				},
+			},
 		},
 	}
 }
