@@ -90,20 +90,22 @@ func TestEnsureThemeLibraryAddsMissingBuiltInsWithoutReplacingPack(t *testing.T)
 	if err != nil {
 		t.Fatalf("load migrated theme packs: %v", err)
 	}
-	if len(packs) != 1 || len(packs[0].Themes) != 7 {
-		t.Fatalf("migrated pack contains %d packs and %d presets, want 1 pack and 7 presets", len(packs), len(packs[0].Themes))
+	if len(packs) != 1 || len(packs[0].Themes) != 9 {
+		t.Fatalf("migrated pack contains %d packs and %d presets, want 1 pack and 9 presets", len(packs), len(packs[0].Themes))
 	}
-	foundAutumn, foundLimetime, foundPhosphor, foundFBI, foundPuTTY, foundCustom := false, false, false, false, false, false
+	foundAutumn, foundLimetime, foundPhosphor, foundFBI, foundPuTTY, foundDarkroom, foundBlackout, foundCustom := false, false, false, false, false, false, false, false
 	for _, preset := range packs[0].Themes {
 		foundAutumn = foundAutumn || preset.ID == "autumn"
 		foundLimetime = foundLimetime || preset.ID == "limetime"
 		foundPhosphor = foundPhosphor || preset.ID == "green-phosphor"
 		foundFBI = foundFBI || preset.ID == "fbi"
 		foundPuTTY = foundPuTTY || preset.ID == "putty-classic"
+		foundDarkroom = foundDarkroom || preset.ID == "darkroom"
+		foundBlackout = foundBlackout || preset.ID == "blackout"
 		foundCustom = foundCustom || preset.ID == "my-custom"
 	}
-	if !foundAutumn || !foundLimetime || !foundPhosphor || !foundFBI || !foundPuTTY || !foundCustom {
-		t.Fatalf("migration lost a custom preset or failed to add Autumn/Limetime/Green Phosphor/FBI/PuTTY Classic: %+v", packs[0].Themes)
+	if !foundAutumn || !foundLimetime || !foundPhosphor || !foundFBI || !foundPuTTY || !foundDarkroom || !foundBlackout || !foundCustom {
+		t.Fatalf("migration lost a custom preset or failed to add Autumn/Limetime/Green Phosphor/FBI/PuTTY Classic/Darkroom/Blackout: %+v", packs[0].Themes)
 	}
 }
 
@@ -199,23 +201,25 @@ func TestThemeBrowserLoadsAllPackEntries(t *testing.T) {
 	}
 	m := newMessageInteractionTestModel(100)
 	m.openThemeBrowser()
-	if !m.themesOpen || len(m.themeEntries) != 7 {
-		t.Fatalf("opening theme browser returned open=%v entries=%d, want true and 7", m.themesOpen, len(m.themeEntries))
+	if !m.themesOpen || len(m.themeEntries) != 9 {
+		t.Fatalf("opening theme browser returned open=%v entries=%d, want true and 9", m.themesOpen, len(m.themeEntries))
 	}
 	if m.themeEntries[0].FileName != "default-themes.toml" || m.themeEntries[m.themeSelected].Preset.Name != "Zealot" {
 		t.Fatalf("built-in active theme was not first and initially selected: selected=%+v entries=%+v", m.themeEntries[m.themeSelected], m.themeEntries)
 	}
-	foundAutumn, foundLimetime, foundPhosphor, foundFBI, foundPuTTY, foundTwilight := false, false, false, false, false, false
+	foundAutumn, foundLimetime, foundPhosphor, foundFBI, foundPuTTY, foundDarkroom, foundBlackout, foundTwilight := false, false, false, false, false, false, false, false
 	for _, entry := range m.themeEntries {
 		foundAutumn = foundAutumn || entry.Preset.ID == "autumn"
 		foundLimetime = foundLimetime || entry.Preset.ID == "limetime"
 		foundPhosphor = foundPhosphor || entry.Preset.ID == "green-phosphor"
 		foundFBI = foundFBI || entry.Preset.ID == "fbi"
 		foundPuTTY = foundPuTTY || entry.Preset.ID == "putty-classic"
+		foundDarkroom = foundDarkroom || entry.Preset.ID == "darkroom"
+		foundBlackout = foundBlackout || entry.Preset.ID == "blackout"
 		foundTwilight = foundTwilight || entry.Preset.ID == "twilight"
 	}
-	if !foundAutumn || !foundLimetime || !foundPhosphor || !foundFBI || !foundPuTTY || !foundTwilight {
-		t.Fatal("theme browser did not load Autumn, Limetime, Green Phosphor, FBI, PuTTY Classic, and Twilight")
+	if !foundAutumn || !foundLimetime || !foundPhosphor || !foundFBI || !foundPuTTY || !foundDarkroom || !foundBlackout || !foundTwilight {
+		t.Fatal("theme browser did not load Autumn, Limetime, Green Phosphor, FBI, PuTTY Classic, Darkroom, Blackout, and Twilight")
 	}
 }
 
