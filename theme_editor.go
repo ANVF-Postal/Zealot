@@ -198,6 +198,7 @@ func (m *model) finishThemeFieldEdit() {
 	m.themeDirty = entry.Preset != m.themeSavedPreset
 	m.restoreThemeComposer()
 	m.themeEditError = ""
+	m.clampThemeDetailsScroll()
 }
 
 func (m *model) reloadThemeEntries(selectFile, selectID string) {
