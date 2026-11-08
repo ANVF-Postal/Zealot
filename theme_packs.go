@@ -619,7 +619,7 @@ func saveThemePresetFile(entry themeListEntry, preset ThemePreset) (themeListEnt
 	}
 
 	newFilename := entry.FileName
-	if len(pack.Themes) == 1 {
+	if len(pack.Themes) == 1 && !strings.HasPrefix(strings.ToLower(entry.FileName), "pack-") {
 		newFilename = themeFilenameStem(preset.Name) + ".toml"
 	}
 	newPath := filepath.Join(themesDir(), newFilename)
