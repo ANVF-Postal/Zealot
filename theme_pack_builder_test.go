@@ -135,6 +135,22 @@ func TestThemePackBuilderButtonSelectionAndNaming(t *testing.T) {
 	if len(m.themePackSelected)!=1 {
 		t.Fatal("default theme was selected for packing")
 	}
+	for i, entry := range m.themeEntries {
+		if entry.FileName == custom.FileName && entry.Preset.ID == custom.Preset.ID {
+			m.selectThemeEntry(i)
+			break
+		}
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code:' ',Text:" "})
+	m = updated.(model)
+	if len(m.themePackSelected)!=0 {
+		t.Fatal("spacebar did not remove # selection")
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code:' ',Text:" "})
+	m = updated.(model)
+	if len(m.themePackSelected)!=1 {
+		t.Fatal("spacebar did not restore # selection")
+	}
 	// Confirm via right-pane button and save through the composer.
 	confirmX := rightStart+rightWidth-len(themePackConfirmLabel)
 	if !m.themePackButtonContains(confirmX,2) {t.Fatal("[CONFIRM] hitbox missing")}
@@ -270,5 +286,23 @@ func TestSingleThemePackKeepsNameAndFilenameWhenPresetIsRenamed(t *testing.T) {
 	if err != nil {t.Fatal(err)}
 	if pack.PackName!="Keep This Pack" || pack.Themes[0].Name!="Renamed" {
 		t.Fatalf("pack identity not preserved: %+v",pack)
+	}
+}
+
+func TestPackButtonRemainsReachableWithLongThemeName(t *testing.T) {
+	m := newThemeEditorTestModel(t)
+	m.cloneSelectedTheme()
+	entry, ok := m.selectedThemeEntry()
+	if !ok {t.Fatal("no custom theme")}
+	entry.Preset.Name = strings.Repeat("VeryLongName",12)
+	m.themeEntries[m.themeSelected] = entry
+	_, width := m.themeBrowserColumnWidths()
+	row := stripANSISequences(m.themeDetailsRows(width)[0])
+	if !strings.HasSuffix(row,themePackButtonLabel) {
+		t.Fatalf("long title hid pack button: %q",row)
+	}
+	rightStart := m.themeBrowserDividerX()+1
+	if !m.themePackButtonContains(rightStart+width-len(themePackButtonLabel),2) {
+		t.Fatal("long title hides pack click target")
 	}
 }
