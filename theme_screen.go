@@ -63,6 +63,9 @@ func (m *model) openThemeBrowser() {
 	}
 	m.themeDirty = false
 	m.themeEditField = ""
+	m.themePacking = false
+	m.themePackNaming = false
+	m.themePackSelected = nil
 	m.themeEditError = ""
 	if len(m.themeEntries) > 0 {
 		m.themeSavedPreset = m.themeEntries[m.themeSelected].Preset
@@ -213,13 +216,24 @@ func (m model) renderThemeBrowser() string {
 		if entry.Preset.Colors == m.cfg.Theme {
 			label += "  *"
 		}
+		marker := " "
+		if m.themePacking && m.themePackSelected[themePackSelectionKey(entry)] {
+			marker = "#"
+		}
 		if index == m.themeSelected {
-			label = "› " + label
+			label = "›" + marker + " " + label
 			style := lipgloss.NewStyle().Foreground(bg).Background(accentBG).Bold(true)
-			leftRows = append(leftRows, fitThemeRowWithBackground(style.Render(truncateANSI(label, leftWidth)), leftWidth, accentBG))
+			if m.themePacking && !themeEntryEditable(entry) {
+				style = lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).Background(bg)
+			}
+			leftRows = append(leftRows, fitThemeRowWithBackground(style.Render(truncateANSI(label, leftWidth)), leftWidth, func() color.Color { if m.themePacking && !themeEntryEditable(entry) { return bg }; return accentBG }()))
 		} else {
-			label = "  " + label
-			style := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.TextColor)).Background(bg)
+			label = " " + marker + " " + label
+			foreground := m.cfg.Theme.TextColor
+			if m.themePacking && !themeEntryEditable(entry) {
+				foreground = m.cfg.Theme.MutedTextColor
+			}
+			style := lipgloss.NewStyle().Foreground(lipgloss.Color(foreground)).Background(bg)
 			leftRows = append(leftRows, fitThemeRowWithBackground(style.Render(truncateANSI(label, leftWidth)), leftWidth, bg))
 		}
 	}
@@ -278,6 +292,8 @@ func fitThemeRowWithBackground(line string, width int, background color.Color) s
 
 const (
 	themeCreateButtonLabel = "[+]"
+	themePackButtonLabel = "[PACK]"
+	themePackConfirmLabel = "[CONFIRM]"
 	themeCloneButtonLabel  = "[CLONE]"
 	themeSaveButtonLabel   = "[SAVE]"
 	themeApplyButtonLabel  = "[APPLY]"
@@ -445,6 +461,30 @@ func (m model) themeCreateButtonContains(x, y int) bool {
 	return x >= buttonStartX && x < leftStartX+leftWidth
 }
 
+func (m model) themePackButtonContains(x, y int) bool {
+	if !m.themesOpen || m.themeError != "" || m.themeDirty || m.themeEditField != "" ||
+		m.themePackNaming || y != 2 {
+		return false
+	}
+	if !m.themePacking {
+		entry, ok := m.selectedThemeEntry()
+		if !ok || !themeEntryEditable(entry) {
+			return false
+		}
+	}
+	_, rightWidth := m.themeBrowserColumnWidths()
+	label := themePackButtonLabel
+	if m.themePacking {
+		label = themePackConfirmLabel
+	}
+	if rightWidth < lipgloss.Width(label) {
+		return false
+	}
+	leftWidth, _ := m.themeBrowserColumnWidths()
+	rightStart := m.themeBrowserContentStartX() + leftWidth + 1
+	return x >= rightStart+rightWidth-lipgloss.Width(label) && x < rightStart+rightWidth
+}
+
 func (m model) themeNameContains(x, y int) bool {
 	if !m.themesOpen || m.themeError != "" || len(m.themeEntries) == 0 || y != 2 {
 		return false
@@ -500,7 +540,44 @@ func (m model) themeColorFieldAt(x, y int) (string, bool) {
 	return fields[colorIndex], true
 }
 
+func (m model) themeDetailsTitleRow(width int, title, button string) string {
+	bg := lipgloss.Color(m.cfg.Theme.Background)
+	if button == "" || lipgloss.Width(title)+lipgloss.Width(button)+1 > width {
+		return m.styles.accent.Render(truncateANSI(title, width))
+	}
+	gap := width-lipgloss.Width(title)-lipgloss.Width(button)
+	return m.styles.accent.Render(title)+
+		lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", gap))+
+		m.styles.accent.Render(button)
+}
+
 func (m model) themeDetailsRows(width int) []string {
+	if m.themePacking {
+		heading := "CREATE PACK"
+		button := themePackConfirmLabel
+		if m.themePackNaming {
+			heading = "NAME PACK"
+			button = ""
+		}
+		title := m.themeDetailsTitleRow(width, heading, button)
+		rows := []string{
+			title,
+			"",
+			m.styles.system.Render(fmt.Sprintf("%d themes selected", len(m.themePackSelected))),
+			"",
+			m.styles.system.Render("Space or click: toggle #"),
+			m.styles.system.Render("Default themes cannot be packed."),
+		}
+		if m.themePackNaming {
+			rows = append(rows, "", m.styles.accent.Render("Enter pack name in the composer."), m.styles.system.Render("Enter: save pack · Esc: cancel"))
+		} else {
+			rows = append(rows, "", m.styles.accent.Render("Select custom themes; click [CONFIRM] to name and save."), m.styles.system.Render("Esc: cancel packing"))
+		}
+		if m.themeEditError != "" {
+			rows = append(rows, "", m.styles.system.Render(m.themeEditError))
+		}
+		return rows
+	}
 	if m.themeError != "" {
 		return []string{m.styles.accent.Render("THEME LIBRARY"), "", m.styles.system.Render(truncateANSI(m.themeError, width))}
 	}
@@ -543,8 +620,12 @@ func (m model) themeDetailsRows(width int) []string {
 	if entry.ThemeCount > 1 {
 		packRow = m.styles.system.Render("Pack: " + entry.PackName)
 	}
+	headerButton := ""
+	if editable && !m.themeDirty && m.themeEditField == "" {
+		headerButton = themePackButtonLabel
+	}
 	rows := []string{
-		m.styles.accent.Render(title),
+		m.themeDetailsTitleRow(width, title, headerButton),
 		packRow,
 		m.styles.system.Render(state),
 		"",
