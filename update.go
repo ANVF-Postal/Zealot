@@ -796,72 +796,72 @@ func (m model) Update(
 				return m, nil
 			}
 			if !m.themePacking {
-			switch keyMsg.Keystroke() {
-			case "enter":
-				if m.themeEditField != "" {
-					m.finishThemeFieldEdit()
+				switch keyMsg.Keystroke() {
+				case "enter":
+					if m.themeEditField != "" {
+						m.finishThemeFieldEdit()
+						return m, nil
+					}
+				case "esc", "escape":
+					if m.themeEditField != "" {
+						m.cancelThemeFieldEdit()
+						return m, nil
+					}
+					if !m.confirmThemeDiscard() {
+						return m, nil
+					}
+					m.themesOpen = false
+					m.themeError = ""
+					m.themeEditError = ""
 					return m, nil
-				}
-			case "esc", "escape":
-				if m.themeEditField != "" {
-					m.cancelThemeFieldEdit()
+				case "ctrl+s":
+					if m.themeEditField == "" {
+						m.saveSelectedThemeEdits()
+					}
 					return m, nil
-				}
-				if !m.confirmThemeDiscard() {
+				case "up":
+					if m.themeEditField == "" && m.input.Value() == "" {
+						m.moveThemeSelection(-1)
+						return m, nil
+					}
+				case "down":
+					if m.themeEditField == "" && m.input.Value() == "" {
+						m.moveThemeSelection(1)
+						return m, nil
+					}
+				case "pgup":
+					if m.themeEditField == "" && m.input.Value() == "" {
+						m.moveThemeSelection(-m.themeVisibleRows())
+						return m, nil
+					}
+				case "pgdown":
+					if m.themeEditField == "" && m.input.Value() == "" {
+						m.moveThemeSelection(m.themeVisibleRows())
+						return m, nil
+					}
+				case "home":
+					if m.themeEditField == "" && m.input.Value() == "" {
+						m.selectThemeEntry(0)
+						return m, nil
+					}
+				case "end":
+					if m.themeEditField == "" && m.input.Value() == "" {
+						m.selectThemeEntry(len(m.themeEntries) - 1)
+						return m, nil
+					}
+				case "f2":
+					if m.themeEditField == "" {
+						m.applySelectedTheme()
+					}
 					return m, nil
+				case "ctrl+c", "ctrl+q":
+					m.sendTyping(false)
+					m.quitting = true
+					return m, tea.Quit
+				default:
+					// Ordinary text and composer editing keys continue to the
+					// textarea. Enter confirms a field edit and otherwise sends.
 				}
-				m.themesOpen = false
-				m.themeError = ""
-				m.themeEditError = ""
-				return m, nil
-			case "ctrl+s":
-				if m.themeEditField == "" {
-					m.saveSelectedThemeEdits()
-				}
-				return m, nil
-			case "up":
-				if m.themeEditField == "" && m.input.Value() == "" {
-					m.moveThemeSelection(-1)
-					return m, nil
-				}
-			case "down":
-				if m.themeEditField == "" && m.input.Value() == "" {
-					m.moveThemeSelection(1)
-					return m, nil
-				}
-			case "pgup":
-				if m.themeEditField == "" && m.input.Value() == "" {
-					m.moveThemeSelection(-m.themeVisibleRows())
-					return m, nil
-				}
-			case "pgdown":
-				if m.themeEditField == "" && m.input.Value() == "" {
-					m.moveThemeSelection(m.themeVisibleRows())
-					return m, nil
-				}
-			case "home":
-				if m.themeEditField == "" && m.input.Value() == "" {
-					m.selectThemeEntry(0)
-					return m, nil
-				}
-			case "end":
-				if m.themeEditField == "" && m.input.Value() == "" {
-					m.selectThemeEntry(len(m.themeEntries) - 1)
-					return m, nil
-				}
-			case "f2":
-				if m.themeEditField == "" {
-					m.applySelectedTheme()
-				}
-				return m, nil
-			case "ctrl+c", "ctrl+q":
-				m.sendTyping(false)
-				m.quitting = true
-				return m, tea.Quit
-			default:
-				// Ordinary text and composer editing keys continue to the
-				// textarea. Enter confirms a field edit and otherwise sends.
-			}
 			}
 		}
 		switch keyMsg.String() {
