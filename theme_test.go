@@ -158,8 +158,8 @@ func TestLoadConfigCreatesDefaultThemePack(t *testing.T) {
 	if pack.PackName != "Zealot defaults" {
 		t.Fatalf("pack name = %q, want Zealot defaults", pack.PackName)
 	}
-	if len(pack.Themes) != 5 {
-		t.Fatalf("default pack contains %d themes, want Zealot, Autumn, Limetime, Green Phosphor, and FBI", len(pack.Themes))
+	if len(pack.Themes) != 6 {
+		t.Fatalf("default pack contains %d themes, want Zealot, Autumn, Limetime, Green Phosphor, FBI, and PuTTY Classic", len(pack.Themes))
 	}
 	if pack.Themes[0].ID != "zealot" || pack.Themes[0].Name != "Zealot" {
 		t.Fatalf("default theme identity = (%q, %q), want (zealot, Zealot)", pack.Themes[0].ID, pack.Themes[0].Name)
@@ -226,6 +226,26 @@ func TestLoadConfigCreatesDefaultThemePack(t *testing.T) {
 	}
 	if fbi.Colors != wantFBI {
 		t.Fatalf("FBI palette = %+v, want %+v", fbi.Colors, wantFBI)
+	}
+	putty := pack.Themes[5]
+	if putty.ID != "putty-classic" || putty.Name != "PuTTY Classic" {
+		t.Fatalf("sixth built-in theme = (%q, %q), want PuTTY Classic", putty.ID, putty.Name)
+	}
+	if putty.Description != "A traditional black terminal with PuTTY-style gray text and classic ANSI green, cyan, and blue highlights." {
+		t.Fatalf("PuTTY Classic description changed: %q", putty.Description)
+	}
+	wantPuTTY := Theme{
+		Background:               "#000000",
+		TextColor:                "#BBBBBB",
+		BorderColor:              "#555555",
+		AccentColor:              "#55FF55",
+		HoverTextColor:           "#55FFFF",
+		MutedTextColor:           "#777777",
+		MentionBackgroundColor:   "#003300",
+		SelectionBackgroundColor: "#0000BB",
+	}
+	if putty.Colors != wantPuTTY {
+		t.Fatalf("PuTTY Classic palette = %+v, want %+v", putty.Colors, wantPuTTY)
 	}
 	if pack.Themes[0].Colors != cfg.Theme {
 		t.Fatalf("default pack colors do not match the active default palette: got %+v, want %+v", pack.Themes[0].Colors, cfg.Theme)
@@ -568,8 +588,8 @@ func TestExistingDefaultPackGainsNewBuiltInsWithoutChangingExistingPresets(t *te
 	if _, err := toml.Decode(string(got), &pack); err != nil {
 		t.Fatalf("decode updated default pack: %v", err)
 	}
-	if len(pack.Themes) != 5 || pack.Themes[2].ID != "limetime" || pack.Themes[3].ID != "green-phosphor" || pack.Themes[4].ID != "fbi" {
-		t.Fatalf("new Limetime, Green Phosphor, and FBI presets not appended: %+v", pack.Themes)
+	if len(pack.Themes) != 6 || pack.Themes[2].ID != "limetime" || pack.Themes[3].ID != "green-phosphor" || pack.Themes[4].ID != "fbi" || pack.Themes[5].ID != "putty-classic" {
+		t.Fatalf("new Limetime, Green Phosphor, FBI, and PuTTY Classic presets not appended: %+v", pack.Themes)
 	}
 	if pack.Themes[0].Colors.AccentColor != "#123ABC" {
 		t.Fatal("customized Zealot preset was overwritten")
