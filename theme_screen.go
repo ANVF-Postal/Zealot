@@ -193,8 +193,8 @@ func (m model) themeBrowserListIndexAt(x, y int) (int, bool) {
 	return index, true
 }
 
-// Details scrolling is independent of theme selection. A scrollbar is only
-// rendered if content does not fit the available height.
+// Details scrolling is independent of theme selection. The rail is permanent;
+// the thumb indicates overflow and movement within the content.
 func (m model) themeDetailsOverflow() bool {
 	_, width := m.themeBrowserColumnWidths()
 	height := max(1, m.messageHeight())
