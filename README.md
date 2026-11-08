@@ -30,17 +30,7 @@ Zealot was designed to solve a very specific problem of direct messaging between
 
 -Mouse support
 
--Built-in themes, editable custom themes, and shareable theme packs
-
 -And more
-
-# Creating theme packs
-
-Open **[THEMES]** from Zealot's start screen. Built-in themes are read-only; clone one with **[CLONE]** or create a new custom theme with **[+]** to customize it.
-
-To assemble a pack, select a custom theme and click **[PACK]** at the top right of its details pane. In pack mode, use **Space** or click names to mark additional custom themes with a **#**. Built-in themes appear muted and cannot be included. Press **Enter** or click **[CONFIRM]**, type a pack name in the composer, then press **Enter** to save. **Esc** cancels naming or exits pack mode without changing files.
-
-Zealot writes the new `pack-<name>.toml` file to your themes directory. To avoid duplicate themes in the browser, selected presets are removed from their original live files, but the **original TOML files are preserved** in the `themes/packed/` archive directory, which Zealot does not load. If an original pack had unselected themes, those remain available in the live library. Themes in non-default packs remain editable.
 
 # Usage warning ⚠️
 Using Zealot for chatting will reduce your overall online footprint and make it harder for hackers or governments to spy on your messages. This may affect relationships with FBI, CIA, NSA, DOJ, CSIS, NATO and United Nations employees who are interested in wiretapping you. We are not responsible for any distress, face-palming, boring workdays, rolling eyes or any other side effects using Zealot may have on government workers. If you're feeling lonely and would prefer a chat app that spies on you, try [Discord!](https://discord.com)
