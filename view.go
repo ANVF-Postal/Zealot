@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -65,8 +66,8 @@ func (m model) renderHeader() string {
 		line += strings.Repeat(" ", remaining)
 	}
 	return lipgloss.NewStyle().
-		Foreground(lipgloss.Color(m.cfg.AccentColor)).
-		Background(lipgloss.Color(m.cfg.Background)).
+		Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).
+		Background(lipgloss.Color(m.cfg.Theme.Background)).
 		Render(line)
 }
 
@@ -112,10 +113,10 @@ func (m model) View() tea.View {
 		userEnd := min(userStart+visibleUsers, totalUserRows)
 		visible := m.userRowsRange(userStart, userEnd)
 
-		bg := lipgloss.Color(m.cfg.Background)
+		bg := lipgloss.Color(m.cfg.Theme.Background)
 		rowFill := lipgloss.NewStyle().Background(bg)
 		scrollbarStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color(m.cfg.BorderColor)).
+			Foreground(lipgloss.Color(m.cfg.Theme.BorderColor)).
 			Background(bg)
 		contentWidth := chatInnerWidth(m.width)
 		textWidth := max(1, contentWidth-1)
@@ -158,6 +159,11 @@ func (m model) View() tea.View {
 		return m.renderViewWithChat(header, chatBox, true, false)
 	}
 
+	if m.themesOpen {
+		chatBox := m.renderThemeBrowser()
+		return m.renderViewWithChat(header, chatBox, false, true)
+	}
+
 	if m.splashOpen {
 		chatBox := m.renderSplashPanel()
 		return m.renderViewWithChat(header, chatBox, false, true)
@@ -190,7 +196,7 @@ func (m model) View() tea.View {
 	visible := append([]string(nil), lines[start:end]...)
 	chatBlank := lipgloss.NewStyle().
 		Width(chatInnerWidth(m.width)).
-		Background(lipgloss.Color(m.cfg.Background)).
+		Background(lipgloss.Color(m.cfg.Theme.Background)).
 		Render("")
 
 	for len(visible) < chatHeight {
@@ -203,8 +209,8 @@ func (m model) View() tea.View {
 	visibleHeight := max(1, m.messageHeight()-1)
 	maxScroll := max(0, len(lines)-visibleHeight)
 	scrollbarStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(m.cfg.BorderColor)).
-		Background(lipgloss.Color(m.cfg.Background))
+		Foreground(lipgloss.Color(m.cfg.Theme.BorderColor)).
+		Background(lipgloss.Color(m.cfg.Theme.Background))
 	scrollbarRows := make([]string, chatHeight+1)
 	for i := range scrollbarRows {
 		switch {
@@ -262,10 +268,10 @@ func (m model) renderSplashPanel() string {
 	end := min(start+visibleHeight, len(lines))
 	visible := append([]string(nil), lines[start:end]...)
 
-	bg := lipgloss.Color(m.cfg.Background)
+	bg := lipgloss.Color(m.cfg.Theme.Background)
 	rowFill := lipgloss.NewStyle().Background(bg)
 	scrollbarStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(m.cfg.BorderColor)).
+		Foreground(lipgloss.Color(m.cfg.Theme.BorderColor)).
 		Background(bg)
 	contentWidth := chatInnerWidth(m.width)
 	textWidth := max(1, contentWidth-1)
@@ -302,15 +308,18 @@ func (m model) renderSplashPanel() string {
 }
 
 type footerTargets struct {
-	quitStart int
-	quitEnd   int
-	sendStart int
-	sendEnd   int
-	pgUpStart int
-	pgUpEnd   int
-	pgDnStart int
-	pgDnEnd   int
-	hasSend   bool
+	quitStart  int
+	quitEnd    int
+	sendStart  int
+	sendEnd    int
+	applyStart int
+	applyEnd   int
+	pgUpStart  int
+	pgUpEnd    int
+	pgDnStart  int
+	pgDnEnd    int
+	hasSend    bool
+	hasApply   bool
 	hasPageScroll bool
 }
 
@@ -334,17 +343,190 @@ func compactFooterStatusLead(status string, maxWidth int) string {
 	return " " + shortStatus + separator
 }
 
-// renderStatusBar keeps the ordinary shortcuts on the left and anchors the
-// send action to the right edge. The same measured layout supplies mouse
-// hitboxes, so clickable areas stay aligned with the rendered text.
+// renderThemeShortcutFooter follows the ordinary footer's compression order:
+// remove Enter:, clip non-button shortcuts from the right, shorten the status
+// while preserving complete PgUp/PgDn buttons, and only then drop page scroll.
+// All mouse targets are derived from the same rendered cursor positions.
+func (m model) renderThemeShortcutFooter() (string, footerTargets) {
+	available := max(1, m.width-1) // one final styled inset cell
+	const page = "PgUp/PgDn"
+	const hint = ": Ctrl+T:"
+	const tail = " • Esc: back • Ctrl+C:"
+	const apply = " Apply"
+	const send = "[Send]"
+
+	targets := footerTargets{}
+	quitText := "Quit"
+	if m.quitConfirm {
+		quitText = "Sure?"
+	}
+	lead := " " + m.status + " • "
+	fullPrefix := lead + page + hint
+	quitLeftPad, quitRightPad := 1, 1
+	applyVisible := true
+	sendVisible := true
+
+	// Keep a separator between the clickable actions. At impossible
+	// widths drop Send, then Apply, before clipping Quit itself.
+	const actionSeparator = 1
+	minAll := lipgloss.Width(apply) + lipgloss.Width(quitText) +
+		lipgloss.Width(send) + actionSeparator
+	if available < minAll {
+		sendVisible = false
+	}
+	if available < lipgloss.Width(apply)+lipgloss.Width(quitText)+actionSeparator {
+		applyVisible = false
+	}
+	if available < lipgloss.Width(quitText) {
+		quitText = truncateANSI(quitText, available)
+	}
+	minActions := lipgloss.Width(quitText)
+	if applyVisible {
+		minActions += lipgloss.Width(apply) + actionSeparator
+	}
+	if sendVisible {
+		minActions += lipgloss.Width(send)
+	}
+	// Retain the left pad when Apply is visible; it separates Apply
+	// from Quit. The right pad gives Quit breathing room beside Send.
+	if available < minActions+quitRightPad {
+		quitRightPad = 0
+	}
+	if !applyVisible && available < minActions+quitLeftPad+quitRightPad {
+		quitLeftPad = 0
+	}
+	applyText := ""
+	if applyVisible {
+		applyText = apply
+	}
+	sendWidth := 0
+	if sendVisible {
+		sendWidth = lipgloss.Width(send)
+	}
+
+	// Once Enter: is removed, Send remains anchored at the right edge.
+	// The space between Quit and Send is not a shortcut and is protected.
+	fullWidth := lipgloss.Width(fullPrefix+apply+tail) +
+		quitLeftPad + lipgloss.Width(quitText) + quitRightPad +
+		lipgloss.Width("Enter: "+send)
+	sendPrefix := ""
+	if sendVisible && available >= fullWidth {
+		sendPrefix = "Enter: "
+	}
+	budget := max(0, available-lipgloss.Width(applyText)-
+		quitLeftPad-lipgloss.Width(quitText)-quitRightPad-
+		sendWidth-lipgloss.Width(sendPrefix))
+
+	// The right-side hint is clipped first, from its end. Next the
+	// Ctrl+T label shrinks, followed by the Connected status. Never clip
+	// the clickable page labels themselves: either show both or neither.
+	prefix := ""
+	tailText := ""
+	if budget >= lipgloss.Width(fullPrefix) {
+		prefix = fullPrefix
+		tailText = truncateANSI(tail, budget-lipgloss.Width(prefix))
+	} else if budget >= lipgloss.Width(lead+page) {
+		prefix = lead + page + truncateANSI(hint, budget-lipgloss.Width(lead+page))
+	} else if budget >= lipgloss.Width(page) {
+		prefix = compactFooterStatusLead(m.status, budget-lipgloss.Width(page)) + page
+	}
+	prefix = strings.TrimSuffix(prefix, "\x1b[0m")
+	tailText = strings.TrimSuffix(tailText, "\x1b[0m")
+
+	var line strings.Builder
+	cursor := 0
+	pageIndex := strings.Index(prefix, page)
+	if pageIndex >= 0 {
+		beforePage := prefix[:pageIndex]
+		line.WriteString(m.styles.status.Render(beforePage))
+		cursor += lipgloss.Width(beforePage)
+		targets.hasPageScroll = true
+		targets.pgUpStart = cursor
+		targets.pgUpEnd = cursor + lipgloss.Width("PgUp")
+		targets.pgDnStart = targets.pgUpEnd + 1
+		targets.pgDnEnd = targets.pgDnStart + lipgloss.Width("PgDn")
+		line.WriteString(m.styles.accent.Render("PgUp"))
+		line.WriteString(m.styles.status.Render("/"))
+		line.WriteString(m.styles.accent.Render("PgDn"))
+		cursor += lipgloss.Width(page)
+		line.WriteString(m.styles.status.Render(prefix[pageIndex+len(page):]))
+		cursor = lipgloss.Width(prefix)
+	} else {
+		line.WriteString(m.styles.status.Render(prefix))
+		cursor = lipgloss.Width(prefix)
+	}
+
+	if applyVisible {
+		line.WriteString(m.styles.status.Render(" "))
+		cursor++
+		targets.hasApply = true
+		targets.applyStart = cursor
+		targets.applyEnd = cursor + lipgloss.Width("Apply")
+		line.WriteString(m.styles.accent.Render("Apply"))
+		cursor = targets.applyEnd
+	}
+	line.WriteString(m.styles.status.Render(tailText))
+	cursor += lipgloss.Width(tailText)
+	if quitLeftPad > 0 {
+		line.WriteString(m.styles.status.Render(strings.Repeat(" ", quitLeftPad)))
+		cursor += quitLeftPad
+	}
+	targets.quitStart = cursor
+	targets.quitEnd = cursor + lipgloss.Width(quitText)
+	line.WriteString(m.styles.accent.Render(quitText))
+	cursor = targets.quitEnd
+	if quitRightPad > 0 {
+		line.WriteString(m.styles.status.Render(strings.Repeat(" ", quitRightPad)))
+		cursor += quitRightPad
+	}
+
+	gap := max(0, available-cursor-lipgloss.Width(sendPrefix)-sendWidth)
+	line.WriteString(m.styles.status.Render(strings.Repeat("⠀", gap)))
+	if sendVisible {
+		line.WriteString(m.styles.status.Render(sendPrefix))
+		targets.hasSend = true
+		targets.sendStart = available-lipgloss.Width(send)
+		targets.sendEnd = available
+		if m.sendFeedback {
+			line.WriteString(m.styles.status.Render(send))
+		} else {
+			line.WriteString(m.styles.accent.Render(send))
+		}
+	}
+	line.WriteString(m.styles.status.Render("⠀"))
+	return line.String(), targets
+}
+
+// renderStatusBar keeps ordinary shortcuts on the left, the Quit button
+// immediately after the Ctrl+C hint, and the composer Send action anchored
+// to the right edge. The measured layout supplies matching mouse hitboxes.
 func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTargets) {
+	if m.themesOpen && m.themeError == "" && m.themeEditField == "" && !m.themeDirty && !m.themePacking && m.width >= 12 {
+		return m.renderThemeShortcutFooter()
+	}
 	availableWidth := max(1, m.width-1) // reserve one final cell as a styled blank
 	lead := " " + m.status + " • "
 	scrollLabel := "PgUp/PgDn"
 	scrollTail := ": Scroll • Ctrl+C: "
 	if usersOpen || splashOpen {
-		// Keep the secondary views' keyboard shortcut wording identical.
+		// Keep the secondary views' keyboard shortcut wording consistent.
 		scrollTail = ": Scroll • Esc: close • Ctrl+C: "
+	}
+	includeApply := m.themesOpen && m.themeError == "" && m.themeEditField == "" && !m.themeDirty && !m.themePacking
+	if m.themesOpen {
+		switch {
+		case m.themePackNaming:
+			scrollLabel = "Pack"
+			scrollTail = ": Enter: save pack • Esc: cancel • Ctrl+C: "
+		case m.themePacking:
+			scrollTail = ": Space: select • Enter: confirm • Esc: cancel • Ctrl+C: "
+		case m.themeEditField != "":
+			scrollTail = ": Enter: confirm • Esc: cancel • Ctrl+C: "
+		case m.themeDirty:
+			scrollTail = ": Ctrl+S: save • Esc: back • Ctrl+C: "
+		default:
+			scrollTail = ": Ctrl+T: • Esc: back • Ctrl+C: "
+		}
 	}
 	prefix := lead + scrollLabel + scrollTail
 
@@ -354,26 +536,36 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	}
 
 	targets := footerTargets{}
-	includeSend := !usersOpen && !splashOpen
+	includeSend := !m.themePacking && !usersOpen && (!splashOpen || m.themesOpen)
 	sendPrefix := "Enter: "
 	sendText := "[Send]"
 	quitWidth := lipgloss.Width(quitText)
+	applyWidth := 0
+	if includeApply {
+		applyWidth = lipgloss.Width(" Apply")
+		// Only yield Apply when the terminal cannot physically fit both
+		// action labels; otherwise keep it reserved through all resizing.
+		if availableWidth < quitWidth+applyWidth {
+			includeApply = false
+			applyWidth = 0
+		}
+	}
 	fullSendWidth := lipgloss.Width(sendPrefix + sendText)
 	shortSendWidth := lipgloss.Width(sendText)
 	quitLeftPad := 1
 	quitRightPad := 1
 
-	// The Enter hint is always the first thing sacrificed.
-	if includeSend && lipgloss.Width(prefix)+quitWidth+2+fullSendWidth > availableWidth {
+	// Preserve the footer resize priority: remove "Enter: " first, keep the
+	// fixed action buttons together, compact Quit padding, then compress the
+	// shortcut prefix. At extreme widths, Send then Apply yield to Quit.
+	if includeSend && lipgloss.Width(prefix)+quitWidth+applyWidth+2+fullSendWidth > availableWidth {
 		sendPrefix = ""
 	}
 
 	sendWidth := 0
 	if includeSend {
 		sendWidth = lipgloss.Width(sendPrefix) + shortSendWidth
-		// Preserve both clickable actions; relax Quit padding before dropping
-		// the Send action at the physical width limit.
-		for availableWidth < quitWidth+sendWidth+quitLeftPad+quitRightPad {
+		for availableWidth < quitWidth+applyWidth+sendWidth+quitLeftPad+quitRightPad {
 			if quitLeftPad > 0 {
 				quitLeftPad = 0
 				continue
@@ -384,42 +576,65 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 			}
 			break
 		}
-		if availableWidth < quitWidth+sendWidth {
+		if availableWidth < quitWidth+applyWidth+sendWidth {
 			includeSend = false
 			sendPrefix = ""
 			sendWidth = 0
 		}
 	}
-
+	if availableWidth < quitWidth+applyWidth+quitLeftPad+quitRightPad {
+		if quitLeftPad > 0 {
+			quitLeftPad = 0
+		}
+		if availableWidth < quitWidth+applyWidth+quitRightPad {
+			quitRightPad = 0
+		}
+	}
+	// Keep Apply in the fixed footer action layout even when space is tight.
+	// The shortcut prefix and its status lead compress before this action yields.
 	quitButtonWidth := quitWidth + quitLeftPad + quitRightPad
-	maxPrefixWidth := availableWidth - quitButtonWidth - sendWidth
+	maxPrefixWidth := availableWidth - quitButtonWidth - applyWidth - sendWidth
 	if maxPrefixWidth < 0 {
 		maxPrefixWidth = 0
 	}
 
 	pageLabelWidth := lipgloss.Width(scrollLabel)
-	if !usersOpen && !splashOpen {
-		// Compression order in the main view:
-		// 1. Enter: is removed above.
-		// 2. The explanatory shortcut tail is clipped from its right edge.
-		// 3. Connected is shortened, one character at a time, as the last resort.
+	if !usersOpen && (!splashOpen || m.themesOpen) {
 		if lipgloss.Width(prefix) > maxPrefixWidth {
-			tailBudget := maxPrefixWidth - lipgloss.Width(lead) - pageLabelWidth
-			if tailBudget >= 0 {
-				prefix = lead + scrollLabel
-				if tailBudget > 0 {
-					prefix += truncateANSI(scrollTail, tailBudget)
+			if m.themesOpen && includeApply {
+				// Keep the theme Apply shortcut reachable as the footer narrows.
+				// Compress the status and trailing hints before clipping Ctrl+T.
+				const applyShortcut = ": Ctrl+T:"
+				coreWidth := lipgloss.Width(scrollLabel + applyShortcut)
+				if maxPrefixWidth >= coreWidth {
+					prefix = scrollLabel + applyShortcut
+					remainder := strings.TrimPrefix(scrollTail, applyShortcut)
+					remainingWidth := maxPrefixWidth - coreWidth
+					if remainingWidth > 0 {
+						prefix += truncateANSI(remainder, remainingWidth)
+					}
+				} else {
+					// At very narrow widths, move Apply into the fixed action
+					// cluster beside Quit rather than dropping the button.
+					prefix = ""
 				}
-			} else if maxPrefixWidth >= pageLabelWidth {
-				statusBudget := maxPrefixWidth - pageLabelWidth
-				prefix = compactFooterStatusLead(m.status, statusBudget) + scrollLabel
 			} else {
-				// Never show a partial label as though it were clickable.
-				prefix = ""
+				tailBudget := maxPrefixWidth - lipgloss.Width(lead) - pageLabelWidth
+				if tailBudget >= 0 {
+					prefix = lead + scrollLabel
+					if tailBudget > 0 {
+						prefix += truncateANSI(scrollTail, tailBudget)
+					}
+				} else if maxPrefixWidth >= pageLabelWidth {
+					statusBudget := maxPrefixWidth - pageLabelWidth
+					prefix = compactFooterStatusLead(m.status, statusBudget) + scrollLabel
+				} else {
+					// Never show a partial page label as though it were clickable.
+					prefix = ""
+				}
 			}
 		}
 	} else {
-		// Keep the existing panel-specific footer behavior.
 		pageLabelStart := lipgloss.Width(lead)
 		if maxPrefixWidth < pageLabelStart+pageLabelWidth+1 {
 			prefix = ""
@@ -431,40 +646,94 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	prefixVisible := strings.TrimRight(prefix, " ")
 	prefixWidth := lipgloss.Width(prefixVisible)
 
-	// Highlight PgUp/PgDn and derive the mouse hitboxes from the final
-	// compacted prefix so the clickable areas always match the rendered text.
-	renderedPrefix := m.styles.status.Render(prefixVisible)
-	pageStartByte := strings.Index(prefixVisible, scrollLabel)
+	type footerHighlight struct {
+		start    int
+		end      int
+		rendered string
+	}
+	var highlights []footerHighlight
+
+	pageStartByte := -1
+	if !m.themePackNaming {
+		pageStartByte = strings.Index(prefixVisible, scrollLabel)
+	}
 	if pageStartByte >= 0 {
-		pageStart := lipgloss.Width(prefixVisible[:pageStartByte])
-		pageEndByte := pageStartByte + len(scrollLabel)
-		renderedPrefix = m.styles.status.Render(prefixVisible[:pageStartByte]) +
-			m.styles.accent.Render("PgUp") +
-			m.styles.status.Render("/") +
-			m.styles.accent.Render("PgDn") +
-			m.styles.status.Render(prefixVisible[pageEndByte:])
+		pgUpEndByte := pageStartByte + len("PgUp")
+		pgDnStartByte := pgUpEndByte + 1
+		pgDnEndByte := pgDnStartByte + len("PgDn")
+		highlights = append(highlights,
+			footerHighlight{start: pageStartByte, end: pgUpEndByte, rendered: m.styles.accent.Render("PgUp")},
+			footerHighlight{start: pgDnStartByte, end: pgDnEndByte, rendered: m.styles.accent.Render("PgDn")},
+		)
 		targets.hasPageScroll = true
+		pageStart := lipgloss.Width(prefixVisible[:pageStartByte])
 		targets.pgUpStart = pageStart
 		targets.pgUpEnd = pageStart + lipgloss.Width("PgUp")
 		targets.pgDnStart = pageStart + lipgloss.Width("PgUp/")
 		targets.pgDnEnd = targets.pgDnStart + lipgloss.Width("PgDn")
 	}
 
-	gapWidth := availableWidth - prefixWidth - quitButtonWidth - sendWidth
+	applyInline := false
+	if includeApply {
+		if applyInsertByte := strings.Index(prefixVisible, "Ctrl+T:"); applyInsertByte >= 0 {
+			applyInline = true
+			applyInsertByte += len("Ctrl+T:")
+			applyStart := lipgloss.Width(prefixVisible[:applyInsertByte]) + 1
+			targets.hasApply = true
+			targets.applyStart = applyStart
+			targets.applyEnd = applyStart + lipgloss.Width("Apply")
+			highlights = append(highlights, footerHighlight{
+				start: applyInsertByte,
+				end: applyInsertByte,
+				rendered: m.styles.status.Render(" ") + m.styles.accent.Render("Apply"),
+			})
+		}
+	}
+	if includeApply && !applyInline {
+		targets.hasApply = true
+		targets.applyStart = prefixWidth + 1
+		targets.applyEnd = targets.applyStart + lipgloss.Width("Apply")
+	}
+
+	sort.Slice(highlights, func(i, j int) bool { return highlights[i].start < highlights[j].start })
+	var prefixBuilder strings.Builder
+	cursor := 0
+	for _, highlight := range highlights {
+		if highlight.start < cursor {
+			continue
+		}
+		prefixBuilder.WriteString(m.styles.status.Render(prefixVisible[cursor:highlight.start]))
+		prefixBuilder.WriteString(highlight.rendered)
+		cursor = highlight.end
+	}
+	prefixBuilder.WriteString(m.styles.status.Render(prefixVisible[cursor:]))
+	renderedPrefix := prefixBuilder.String()
+
+	gapWidth := availableWidth - prefixWidth - quitButtonWidth - applyWidth - sendWidth
 	if gapWidth < 0 {
 		gapWidth = 0
 	}
 
-	targets.quitStart = prefixWidth + quitLeftPad
-	targets.quitEnd = targets.quitStart + quitWidth
+	// Apply is rendered inline after Ctrl+T in the shortcut hint. Its width
+	// remains reserved above so the Quit and Send buttons keep their layout.
+	position := prefixWidth + applyWidth
 	var line strings.Builder
 	line.WriteString(renderedPrefix)
+	if includeApply && !applyInline {
+		line.WriteString(m.styles.status.Render(" "))
+		line.WriteString(m.styles.accent.Render("Apply"))
+	}
 	if quitLeftPad > 0 {
 		line.WriteString(m.styles.status.Render(strings.Repeat(" ", quitLeftPad)))
+		position += quitLeftPad
 	}
+	targets.quitStart = position
+	targets.quitEnd = targets.quitStart + quitWidth
 	line.WriteString(m.styles.accent.Render(quitText))
+	position += quitWidth
 	if quitRightPad > 0 {
 		line.WriteString(m.styles.status.Render(strings.Repeat(" ", quitRightPad)))
+		position += quitRightPad
 	}
 	// Styled braille blanks force repainting when the footer changes length.
 	line.WriteString(m.styles.status.Render(strings.Repeat("⠀", gapWidth)))
@@ -500,14 +769,14 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen 
 	if len(inputView) == 0 {
 		inputView = []string{""}
 	}
-	mentionStyle := m.mentionStyle(lipgloss.Color(m.cfg.Background))
+	mentionStyle := m.mentionStyle(lipgloss.Color(m.cfg.Theme.Background), false)
 	mentionCandidates := m.mentionCandidates()
 	for i := range inputView {
 		inputView[i] = styleANSIVisibleMentions(inputView[i], mentionCandidates, mentionStyle)
 	}
 	prompt := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(m.cfg.AccentColor)).
-		Background(lipgloss.Color(m.cfg.Background)).
+		Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).
+		Background(lipgloss.Color(m.cfg.Theme.Background)).
 		Bold(true).
 		Render("> ")
 	firstInputRow := inputView[0]
@@ -527,7 +796,7 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen 
 	if inputInnerWidth < 1 {
 		inputInnerWidth = 1
 	}
-	inputBackground := lipgloss.NewStyle().Background(lipgloss.Color(m.cfg.Background))
+	inputBackground := lipgloss.NewStyle().Background(lipgloss.Color(m.cfg.Theme.Background))
 	if strings.TrimSpace(m.input.Value()) == "" {
 		// Bubbles' empty-placeholder view uses EndOfBuffer cells for rows below
 		// the placeholder. Those cells can retain a terminal-default background
@@ -562,7 +831,7 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen 
 
 	parts := []string{header, chatBox, inputBox}
 	if m.statusBarVisible() {
-		statusText, _ := m.renderStatusBar(usersOpen, splashOpen)
+		statusText, _ := m.renderStatusBar(usersOpen, splashOpen && !m.themesOpen)
 		status := m.styles.status.Render(statusText)
 		parts = append(parts, status)
 	}

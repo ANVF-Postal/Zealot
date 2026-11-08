@@ -64,7 +64,19 @@ func (m model) splashRows() []string {
 	}
 	rows = append(rows, m.styles.app.Render(center("History Enabled: "+historyStatus)))
 	rows = append(rows, m.styles.app.Render(center(fmt.Sprintf("Online users: %d", m.onlineCount))))
+	rows = append(rows, "")
+	rows = append(rows, m.styles.accent.Render(center("[THEMES]")))
 	return rows
+}
+
+// splashThemesButtonContains reports whether a click lands on the centered
+// [THEMES] action, accounting for the splash's vertical scroll offset.
+func (m model) splashThemesButtonContains(x, y int) bool {
+	button := "[THEMES]"
+	row := len(m.splashRows()) - 1
+	screenY := 2 + row - m.splashScroll // chat pane's top border and first content row
+	startX := 1 + max(0, (chatContentWidth(m.width)-lipgloss.Width(button))/2)
+	return y == screenY && x >= startX && x < startX+lipgloss.Width(button)
 }
 
 func (m model) splashPanelHeight() int {
@@ -191,7 +203,7 @@ func (m model) userRowsRange(start, end int) []string {
 		if rowEnd > start && rowIndex < end {
 			style := lipgloss.NewStyle().
 				Foreground(lipgloss.Color(user.Color)).
-				Background(lipgloss.Color(m.cfg.Background)).
+				Background(lipgloss.Color(m.cfg.Theme.Background)).
 				Bold(true)
 			marker := ""
 			switch {
@@ -201,8 +213,8 @@ func (m model) userRowsRange(start, end int) []string {
 				frames := []string{"·  ", "·· ", "···", " ··", "  ·"}
 				marker = " " + frames[m.usersFrame%len(frames)]
 				style = lipgloss.NewStyle().
-					Foreground(lipgloss.Color(m.cfg.AccentColor)).
-					Background(lipgloss.Color(m.cfg.Background)).
+					Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).
+					Background(lipgloss.Color(m.cfg.Theme.Background)).
 					Bold(true)
 			}
 			for i, part := range parts {

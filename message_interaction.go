@@ -52,7 +52,7 @@ func (m model) messageBodyRangesForLineCount(msg Packet, width, lineCount int) [
 	}
 
 	bg := m.messageBackground(msg)
-	bodyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.TextColor)).Background(bg)
+	bodyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.TextColor)).Background(bg)
 	nameStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(msg.User.Color)).
 		Background(bg).
@@ -431,7 +431,7 @@ func (m model) messageLinkRangesForLineCount(msg Packet, width, lineCount int) [
 		if width > 48 {
 			bg := m.messageBackground(msg)
 			nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.User.Color)).Background(bg).Bold(true)
-			bodyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.TextColor)).Background(bg)
+			bodyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.TextColor)).Background(bg)
 			timestamp := m.styles.time.Render("[" + msg.Time.Local().Format("15:04") + "]")
 			widePrefix := timestamp + bodyStyle.Render(" ") + nameStyle.Render(msg.User.Name) + badge + bodyStyle.Render(": ")
 			if lipgloss.Width(widePrefix) < chatContentWidth(width) {
