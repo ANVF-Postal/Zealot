@@ -198,7 +198,9 @@ func (m model) renderThemeBrowser() string {
 
 	leftRows := make([]string, 0, contentHeight)
 	header := m.styles.accent.Render("THEMES")
-	create := m.styles.accent.Render(themeCreateButtonLabel)
+	createLabel := themeCreateButtonLabel
+	if m.themePacking { createLabel = "" }
+	create := m.styles.accent.Render(createLabel)
 	headerGap := max(1, leftWidth-lipgloss.Width(header)-lipgloss.Width(create))
 	headerFill := lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", headerGap))
 	leftRows = append(leftRows, fitThemeRowWithBackground(header+headerFill+create, leftWidth, bg))
@@ -222,11 +224,13 @@ func (m model) renderThemeBrowser() string {
 		}
 		if index == m.themeSelected {
 			label = "›" + marker + " " + label
+			selectedBG := accentBG
 			style := lipgloss.NewStyle().Foreground(bg).Background(accentBG).Bold(true)
 			if m.themePacking && !themeEntryEditable(entry) {
+				selectedBG = bg
 				style = lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).Background(bg)
 			}
-			leftRows = append(leftRows, fitThemeRowWithBackground(style.Render(truncateANSI(label, leftWidth)), leftWidth, func() color.Color { if m.themePacking && !themeEntryEditable(entry) { return bg }; return accentBG }()))
+			leftRows = append(leftRows, fitThemeRowWithBackground(style.Render(truncateANSI(label, leftWidth)), leftWidth, selectedBG))
 		} else {
 			label = " " + marker + " " + label
 			foreground := m.cfg.Theme.TextColor
@@ -423,7 +427,7 @@ func themeActionButtonsRow(width int, dirty bool, background, accent string) str
 }
 
 func (m model) themeActionButtonContains(label string, x, y int) bool {
-	if !m.themesOpen || m.themeError != "" || len(m.themeEntries) == 0 {
+	if !m.themesOpen || m.themePacking || m.themeError != "" || len(m.themeEntries) == 0 {
 		return false
 	}
 	leftWidth, rightWidth := m.themeBrowserColumnWidths()
@@ -452,7 +456,7 @@ func (m model) themeSaveButtonContains(x, y int) bool {
 }
 
 func (m model) themeCreateButtonContains(x, y int) bool {
-	if !m.themesOpen || m.themeError != "" || y != 2 {
+	if !m.themesOpen || m.themePacking || m.themeError != "" || y != 2 {
 		return false
 	}
 	leftWidth, _ := m.themeBrowserColumnWidths()
@@ -477,7 +481,12 @@ func (m model) themePackButtonContains(x, y int) bool {
 	if m.themePacking {
 		label = themePackConfirmLabel
 	}
-	if rightWidth < lipgloss.Width(label) {
+	heading := "CREATE PACK"
+	if !m.themePacking {
+		entry, _ := m.selectedThemeEntry()
+		heading = entry.Preset.Name + "  ✎"
+	}
+	if rightWidth < lipgloss.Width(heading)+lipgloss.Width(label)+1 {
 		return false
 	}
 	leftWidth, _ := m.themeBrowserColumnWidths()
@@ -486,7 +495,7 @@ func (m model) themePackButtonContains(x, y int) bool {
 }
 
 func (m model) themeNameContains(x, y int) bool {
-	if !m.themesOpen || m.themeError != "" || len(m.themeEntries) == 0 || y != 2 {
+	if !m.themesOpen || m.themePacking || m.themeError != "" || len(m.themeEntries) == 0 || y != 2 {
 		return false
 	}
 	entry := m.themeEntries[min(max(0, m.themeSelected), len(m.themeEntries)-1)]
@@ -501,7 +510,7 @@ func (m model) themeNameContains(x, y int) bool {
 }
 
 func (m model) themeDescriptionContains(x, y int) bool {
-	if !m.themesOpen || m.themeError != "" || len(m.themeEntries) == 0 {
+	if !m.themesOpen || m.themePacking || m.themeError != "" || len(m.themeEntries) == 0 {
 		return false
 	}
 	leftWidth, rightWidth := m.themeBrowserColumnWidths()
