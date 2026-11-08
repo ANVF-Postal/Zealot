@@ -351,7 +351,6 @@ func (m model) renderThemeShortcutFooter() (string, footerTargets) {
 	const page = "PgUp/PgDn"
 	const core = page + ": Ctrl+T:"
 	const apply = " Apply"
-	const quit = " Quit"
 	const send = "[Send]"
 	const longTail = " • Esc: back • Ctrl+C:"
 	const shortTail = " • Ctrl+C:"
