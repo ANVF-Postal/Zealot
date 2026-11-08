@@ -32,6 +32,14 @@ type model struct {
 	themeSelected                    int
 	themeScroll                      int
 	themeDetailsScroll               int
+	themeListScrollDragging         bool
+	themeListScrollDragOffset       int
+	themeListScrollbarHoldDirection int
+	themeListScrollbarHoldGeneration int
+	themeDetailsScrollDragging      bool
+	themeDetailsScrollDragOffset    int
+	themeDetailsScrollbarHoldDirection int
+	themeDetailsScrollbarHoldGeneration int
 	themeError                       string
 	themeEditError                   string
 	themeDirty                       bool
