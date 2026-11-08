@@ -366,24 +366,34 @@ func (m model) renderThemeShortcutFooter() (string, footerTargets) {
 	applyVisible := true
 	sendVisible := true
 
-	// At the physical limit, retain the right-hand action cluster as long
-	// as possible. The normal-width padding is compressed only when needed.
-	minButtons := lipgloss.Width(apply) + lipgloss.Width(quitText) + lipgloss.Width(send)
-	if available < minButtons+quitLeftPad+quitRightPad {
-		quitRightPad = 0
-	}
-	if available < minButtons+quitLeftPad+quitRightPad {
-		quitLeftPad = 0
-	}
-	if available < minButtons {
+	// Keep a separator between the clickable actions. At impossible
+	// widths drop Send, then Apply, before clipping Quit itself.
+	const actionSeparator = 1
+	minAll := lipgloss.Width(apply) + lipgloss.Width(quitText) +
+		lipgloss.Width(send) + actionSeparator
+	if available < minAll {
 		sendVisible = false
 	}
-	if available < lipgloss.Width(apply)+lipgloss.Width(quitText) {
+	if available < lipgloss.Width(apply)+lipgloss.Width(quitText)+actionSeparator {
 		applyVisible = false
 	}
 	if available < lipgloss.Width(quitText) {
-		// Very small terminals can only show a clipped Quit label.
 		quitText = truncateANSI(quitText, available)
+	}
+	minActions := lipgloss.Width(quitText)
+	if applyVisible {
+		minActions += lipgloss.Width(apply) + actionSeparator
+	}
+	if sendVisible {
+		minActions += lipgloss.Width(send)
+	}
+	// Retain the left pad when Apply is visible; it separates Apply
+	// from Quit. The right pad gives Quit breathing room beside Send.
+	if available < minActions+quitRightPad {
+		quitRightPad = 0
+	}
+	if !applyVisible && available < minActions+quitLeftPad+quitRightPad {
+		quitLeftPad = 0
 	}
 	applyText := ""
 	if applyVisible {
