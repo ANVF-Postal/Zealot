@@ -266,6 +266,31 @@ func ensureMissingDefaultThemes(path string) error {
 		return fmt.Errorf("validate existing default theme pack: %w", err)
 	}
 
+	// The first Arcade release was actually the violet/pink palette now
+	// called Orchid. Rename only an untouched shipped preset, preserving
+	// comments and all other user content byte-for-byte. A customized old
+	// Arcade stays untouched; the new Orchid and Arcade can be added beside it.
+	for i := range pack.Themes {
+		preset := pack.Themes[i]
+		if preset.ID != "arcade" || preset.Name != "Arcade" ||
+			preset.Description != "Vibrant 90's arcade colors complete with glowsticks!" ||
+			preset.Colors != originalArcadeColors() {
+			continue
+		}
+		updated, ok := renameOriginalArcadePreset(string(existing))
+		if !ok {
+			break // Nonstandard formatting: leave the file unmodified.
+		}
+		if err := os.WriteFile(path, []byte(updated), 0600); err != nil {
+			return fmt.Errorf("rename original Arcade to Orchid: %w", err)
+		}
+		existing = []byte(updated)
+		pack.Themes[i].ID = "orchid"
+		pack.Themes[i].Name = "Orchid"
+		pack.Themes[i].Description = "Electric orchid and hot pink neon against deep violet, with bright cyan highlights."
+		break
+	}
+
 	known := make(map[string]struct{}, len(pack.Themes))
 	for _, preset := range pack.Themes {
 		known[strings.ToLower(strings.TrimSpace(preset.ID))] = struct{}{}
@@ -313,6 +338,39 @@ func ensureMissingDefaultThemes(path string) error {
 		return fmt.Errorf("close updated default theme pack: %w", err)
 	}
 	return nil
+}
+
+// renameOriginalArcadePreset changes only metadata within the matching TOML
+// array table. This keeps existing colors, comments, and other presets intact.
+func renameOriginalArcadePreset(content string) (string, bool) {
+	const table = "[[themes]]"
+	for pos := strings.Index(content, table); pos >= 0; {
+		end := strings.Index(content[pos+len(table):], table)
+		if end < 0 {
+			end = len(content)
+		} else {
+			end += pos + len(table)
+		}
+		block := content[pos:end]
+		if strings.Contains(block, "\nid = \"arcade\"\n") &&
+			strings.Contains(block, "\nname = \"Arcade\"\n") &&
+			strings.Contains(block, "\ndescription = \"Vibrant 90's arcade colors complete with glowsticks!\"\n") {
+			block = strings.Replace(block, "id = \"arcade\"", "id = \"orchid\"", 1)
+			block = strings.Replace(block, "name = \"Arcade\"", "name = \"Orchid\"", 1)
+			block = strings.Replace(block,
+				"description = \"Vibrant 90's arcade colors complete with glowsticks!\"",
+				"description = \"Electric orchid and hot pink neon against deep violet, with bright cyan highlights.\"", 1)
+			return content[:pos] + block + content[end:], true
+		}
+		if end == len(content) {
+			break
+		}
+		pos = strings.Index(content[end:], table)
+		if pos >= 0 {
+			pos += end
+		}
+	}
+	return content, false
 }
 
 // loadThemePacks reads and validates every TOML theme pack in the user's
