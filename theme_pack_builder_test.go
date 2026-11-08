@@ -235,3 +235,34 @@ func TestPackBuilderCancelRestoresComposerAndSelection(t *testing.T) {
 		t.Fatal("cancel did not discard the temporary selections")
 	}
 }
+
+func TestSingleThemePackKeepsNameAndFilenameWhenPresetIsRenamed(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME",t.TempDir())
+	if _, err := loadConfig(); err != nil {t.Fatal(err)}
+	entry, err := createThemePresetFile(ThemePreset{Name:"Original",Colors:defaultTheme()})
+	if err != nil {t.Fatal(err)}
+	filename, id, err := createPackedThemeFile("Keep This Pack",[]themeListEntry{entry})
+	if err != nil {t.Fatal(err)}
+	data, err := os.ReadFile(filepath.Join(themesDir(),filename))
+	if err != nil {t.Fatal(err)}
+	pack, err := decodeThemePackBytes(data)
+	if err != nil {t.Fatal(err)}
+	bundled := themeListEntry{Preset:pack.Themes[0],FileName:filename,PackName:pack.PackName,ThemeCount:1}
+	if id!=bundled.Preset.ID || !themeEntryEditable(bundled) {
+		t.Fatal("single-theme pack did not preserve editable ID")
+	}
+	renamed := bundled.Preset
+	renamed.Name = "Renamed"
+	updated, err := saveThemePresetFile(bundled,renamed)
+	if err != nil {t.Fatal(err)}
+	if updated.FileName!=filename {
+		t.Fatalf("renaming a packed theme renamed its pack file from %q to %q",filename,updated.FileName)
+	}
+	data, err = os.ReadFile(filepath.Join(themesDir(),filename))
+	if err != nil {t.Fatal(err)}
+	pack, err = decodeThemePackBytes(data)
+	if err != nil {t.Fatal(err)}
+	if pack.PackName!="Keep This Pack" || pack.Themes[0].Name!="Renamed" {
+		t.Fatalf("pack identity not preserved: %+v",pack)
+	}
+}
