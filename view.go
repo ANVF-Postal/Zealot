@@ -343,10 +343,129 @@ func compactFooterStatusLead(status string, maxWidth int) string {
 	return " " + shortStatus + separator
 }
 
+// renderThemeShortcutFooter measures each visible action exactly once. In
+// particular, Apply is never both an inline insertion and a reserved button:
+// its rendered position and clickable hitbox come from the same cursor.
+func (m model) renderThemeShortcutFooter() (string, footerTargets) {
+	available := max(1, m.width-1)
+	const page = "PgUp/PgDn"
+	const core = page + ": Ctrl+T:"
+	const apply = " Apply"
+	const quit = " Quit"
+	const send = "[Send]"
+	const longTail = " • Esc: back • Ctrl+C:"
+	const shortTail = " • Ctrl+C:"
+
+	targets := footerTargets{}
+	quitText := "Quit"
+	if m.quitConfirm {
+		quitText = "Sure?"
+	}
+	quitAction := " " + quitText
+	applyVisible := available >= lipgloss.Width(apply)+lipgloss.Width(quitAction)
+	applyAction := ""
+	if applyVisible {
+		applyAction = apply
+	}
+
+	// Send is the first action to yield at physical widths where the entire
+	// action cluster cannot fit. Its right-hand inset never changes.
+	showSend := available >= lipgloss.Width(applyAction+quitAction+send)
+	if !showSend && available < lipgloss.Width(apply+quitAction) {
+		applyVisible = false
+		applyAction = ""
+	}
+	sendWidth := 0
+	if showSend {
+		sendWidth = lipgloss.Width(send)
+	}
+	room := max(0, available-lipgloss.Width(applyAction+quitAction)-sendWidth)
+
+	// Preserve complete clickable page labels before less essential hints.
+	pre := ""
+	if room >= lipgloss.Width(core) {
+		pre = core
+	} else if room >= lipgloss.Width(page) {
+		pre = page
+	} else if room >= lipgloss.Width("Ctrl+T:") {
+		pre = "Ctrl+T:"
+	}
+
+	// Shortcuts may shrink, but never leave partial instructions behind.
+	tail := ""
+	left := room - lipgloss.Width(pre)
+	if left >= lipgloss.Width(longTail) {
+		tail = longTail
+	} else if left >= lipgloss.Width(shortTail) {
+		tail = shortTail
+	}
+	left -= lipgloss.Width(tail)
+	if pre == core {
+		pre = compactFooterStatusLead(m.status, left) + pre
+	}
+	// "Enter:" is optional; the Send button always stays at the right edge.
+	sendPrefix := ""
+	used := lipgloss.Width(pre+applyAction+tail+quitAction) + sendWidth
+	if showSend && available-used >= lipgloss.Width("Enter: ") {
+		sendPrefix = "Enter: "
+	}
+
+	var line strings.Builder
+	cursor := 0
+	pageAt := strings.Index(pre, page)
+	if pageAt >= 0 {
+		line.WriteString(m.styles.status.Render(pre[:pageAt]))
+		targets.hasPageScroll = true
+		targets.pgUpStart = lipgloss.Width(pre[:pageAt])
+		targets.pgUpEnd = targets.pgUpStart + lipgloss.Width("PgUp")
+		targets.pgDnStart = targets.pgUpEnd + 1
+		targets.pgDnEnd = targets.pgDnStart + lipgloss.Width("PgDn")
+		line.WriteString(m.styles.accent.Render("PgUp"))
+		line.WriteString(m.styles.status.Render("/"))
+		line.WriteString(m.styles.accent.Render("PgDn"))
+		line.WriteString(m.styles.status.Render(pre[pageAt+len(page):]))
+	} else {
+		line.WriteString(m.styles.status.Render(pre))
+	}
+	cursor = lipgloss.Width(pre)
+	if applyVisible {
+		line.WriteString(m.styles.status.Render(" "))
+		targets.hasApply = true
+		targets.applyStart = cursor+1
+		targets.applyEnd = targets.applyStart+lipgloss.Width("Apply")
+		line.WriteString(m.styles.accent.Render("Apply"))
+		cursor += lipgloss.Width(applyAction)
+	}
+	line.WriteString(m.styles.status.Render(tail+" "))
+	cursor += lipgloss.Width(tail)+1
+	targets.quitStart = cursor
+	targets.quitEnd = cursor+lipgloss.Width(quitText)
+	line.WriteString(m.styles.accent.Render(quitText))
+	cursor = targets.quitEnd
+	gap := max(0, available-cursor-lipgloss.Width(sendPrefix)-sendWidth)
+	line.WriteString(m.styles.status.Render(strings.Repeat("⠀", gap)))
+	if showSend {
+		targets.hasSend = true
+		targets.sendStart = available-lipgloss.Width(send)
+		targets.sendEnd = available
+		line.WriteString(m.styles.status.Render(sendPrefix))
+		if m.sendFeedback {
+			line.WriteString(m.styles.status.Render(send))
+		} else {
+			line.WriteString(m.styles.accent.Render(send))
+		}
+	}
+	line.WriteString(m.styles.status.Render("⠀"))
+	return line.String(), targets
+}
+
 // renderStatusBar keeps ordinary shortcuts on the left, the Quit button
 // immediately after the Ctrl+C hint, and the composer Send action anchored
 // to the right edge. The measured layout supplies matching mouse hitboxes.
 func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTargets) {
+	if m.themesOpen && m.themeError == "" && m.themeEditField == "" && !m.themeDirty && m.width >= 12 {
+		return m.renderThemeShortcutFooter()
+	}
 	availableWidth := max(1, m.width-1) // reserve one final cell as a styled blank
 	lead := " " + m.status + " • "
 	scrollLabel := "PgUp/PgDn"
