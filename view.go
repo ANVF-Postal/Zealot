@@ -653,7 +653,10 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	}
 	var highlights []footerHighlight
 
-	pageStartByte := strings.Index(prefixVisible, scrollLabel)
+	pageStartByte := -1
+	if !m.themePackNaming {
+		pageStartByte = strings.Index(prefixVisible, scrollLabel)
+	}
 	if pageStartByte >= 0 {
 		pgUpEndByte := pageStartByte + len("PgUp")
 		pgDnStartByte := pgUpEndByte + 1
