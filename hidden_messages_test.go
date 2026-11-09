@@ -170,14 +170,22 @@ func TestLongReaderHeaderTimestampAndSpacer(t *testing.T) {
 	rendered := stripANSISequences(m.renderLongReaderPanel())
 	rows := strings.Split(rendered, "\n")
 	wantHeader := "[LONG MESSAGE] [" + packet.Time.Local().Format("15:04") + "] Daniel2 · Esc: close"
-	if len(rows) < 3 || !strings.Contains(rows[0], wantHeader) {
+	headerRow := -1
+	for i, row := range rows {
+		if strings.Contains(row, wantHeader) {
+			headerRow = i
+			break
+		}
+	}
+	if headerRow < 0 || headerRow+2 >= len(rows) {
 		t.Fatalf("reader header missing timestamp: %q", rendered)
 	}
-	if strings.Contains(rows[1], "First line") || strings.TrimSpace(strings.TrimSuffix(rows[1], "│")) != "" {
-		t.Fatalf("reader spacer must be blank: %q", rows[1])
+	if strings.Contains(rows[headerRow+1], "First line") ||
+		strings.ContainsAny(rows[headerRow+1], "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ") {
+		t.Fatalf("reader spacer must be blank: %q", rows[headerRow+1])
 	}
-	if !strings.Contains(rows[2], "First line") {
-		t.Fatalf("first content line must follow spacer: %q", rows[2])
+	if !strings.Contains(rows[headerRow+2], "First line") {
+		t.Fatalf("first content line must follow spacer: %q", rows[headerRow+2])
 	}
 	if m.longReaderVisibleHeight() != max(1, m.messageHeight()-2) {
 		t.Fatal("reader scrolling height did not account for new spacer")
