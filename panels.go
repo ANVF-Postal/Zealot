@@ -1062,32 +1062,9 @@ func (m model) scrollbarThumb() (top, thumbHeight, trackHeight int) {
 }
 
 func (m model) scrollbarThumbForLineCount(total int) (top, thumbHeight, trackHeight int) {
-	trackHeight = m.messageHeight() - 2
-	if trackHeight < 1 {
-		trackHeight = 1
-	}
-	visible := m.messageHeight() - 1
-	if visible < 1 {
-		visible = 1
-	}
-	if total <= visible {
-		return 0, trackHeight, trackHeight
-	}
-
-	thumbHeight = visible * trackHeight / total
-	if thumbHeight < 1 {
-		thumbHeight = 1
-	}
-	if thumbHeight > trackHeight {
-		thumbHeight = trackHeight
-	}
-	maxTop := trackHeight - thumbHeight
-	maxScroll := total - visible
-	if maxScroll > 0 {
-		scrollFromTop := maxScroll - min(max(m.scroll, 0), maxScroll)
-		top = scaleScrollbarPosition(scrollFromTop, maxScroll, maxTop)
-	}
-	return
+	visible := max(1, m.messageHeight()-1)
+	fromTop := max(0, total-visible)-m.scroll
+	return scrollbarGeometry(total, visible, m.messageHeight()-2, fromTop)
 }
 
 func (m *model) setScrollFromTrack(trackPosition int) {
