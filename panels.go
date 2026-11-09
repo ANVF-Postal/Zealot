@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"sort"
 	"strings"
 	"time"
@@ -23,9 +24,8 @@ func scaleScrollbarPosition(position, sourceMax, destinationMax int) int {
 	return int((numerator + int64(sourceMax)/2) / int64(sourceMax))
 }
 
-func (m model) splashRows() []string {
-	const logoWidth = 74
-	logo := []string{
+var splashLogos = [][]string{
+	{
 		"#########    #########    ..#####..    ###......    .#######.    #########",
 		"......###    ###......    .###.###.    ###......    ###...###    ....###..",
 		".....###.    ###......    ###...###    ###......    ###...###    ....###..",
@@ -33,7 +33,55 @@ func (m model) splashRows() []string {
 		"..###....    ###......    ###...###    ###......    ###...###    ....###..",
 		".###.....    ###......    ###...###    ###......    ###...###    ....###..",
 		"#########    #########    ###...###    #########    .#######.    ....###..",
+	},
+	{
+		"$$$$\\                    $\\            $\\     ",
+		"\\____$  |                   $ |           $ |    ",
+		"    $  / $$$\\   $$$\\  $ | $$$\\ $$$\\   ",
+		"   $  / $  __$\\  \\____$\\ $ |$  __$\\\\_$  _|  ",
+		"  $  /  $$$$ | $$$$ |$ |$ /  $ | $ |    ",
+		" $  /   $   ____|$  __$ |$ |$ |  $ | $ |$\\ ",
+		"$$$$\\\\$$$$\\ \\$$$$ |$ |\\$$$  | \\$$  |",
+		"\\________|\\_______| \\_______|\\__| \\______/   \\____/ ",
+	},
+}
+
+// cycleSplashLogo chooses a different logo each time the splash opens or
+// its artwork is clicked; additional designs can be added to splashLogos.
+func (m *model) cycleSplashLogo() {
+	if len(splashLogos) < 2 {
+		m.splashLogoIndex = 0
+		return
 	}
+	m.splashLogoIndex = (m.splashLogoIndex + 1 + rand.IntN(len(splashLogos)-1)) % len(splashLogos)
+	m.splashScroll = 0
+}
+
+func (m model) activeSplashLogo() []string {
+	return splashLogos[min(max(0,m.splashLogoIndex),len(splashLogos)-1)]
+}
+
+// splashLogoContains follows the same centered, truncated rows shown on
+// screen, accounting for splash scrolling and the chat content gutter.
+func (m model) splashLogoContains(x, y int) bool {
+	if !m.splashOpen || m.themesOpen {
+		return false
+	}
+	width := chatContentWidth(m.width)
+	for i, line := range m.activeSplashLogo() {
+		rowY := 3+i-m.splashScroll // first splash row is blank
+		if y != rowY || y < 2 || y >= 2+m.splashPanelHeight() {
+			continue
+		}
+		visible := truncateANSI(line,width)
+		startX := 1+max(0,(width-lipgloss.Width(visible))/2)
+		return x >= startX && x < startX+lipgloss.Width(visible)
+	}
+	return false
+}
+
+func (m model) splashRows() []string {
+	logo := m.activeSplashLogo()
 	width := chatContentWidth(m.width)
 	center := func(value string) string {
 		value = truncateANSI(value, width)
@@ -48,10 +96,8 @@ func (m model) splashRows() []string {
 
 	rows := []string{""}
 	for _, line := range logo {
-		if lipgloss.Width(line) != logoWidth {
-			// Keep the layout predictable if the artwork is edited later.
-			line = truncateANSI(line, logoWidth)
-		}
+		// Each design is kept at its original width, then centered or
+		// truncated to fit the current terminal.
 		rows = append(rows, m.styles.accent.Render(center(line)))
 	}
 	rows = append(rows, "")
