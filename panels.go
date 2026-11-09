@@ -253,16 +253,21 @@ func (m model) splashLogoContains(x, y int) bool {
 	if !m.splashOpen || m.themesOpen {
 		return false
 	}
-	width := max(1, chatInnerWidth(m.width)-1) // reserve splash scrollbar
+	width := chatContentWidth(m.width) // excludes splash scrollbar
 	logo := m.activeSplashLogo()
 	left := splashLogoLeftPadding(logo, width)
+	startX := 1
+	if narrowBordersHidden(m.width) {
+		startX = 0
+	}
 	rows := splashLogoLayout(logo, width)
 	for i, line := range rows {
 		rowY := 3+i-m.splashScroll
 		if y != rowY || y < 2 || y >= 2+m.splashPanelHeight() {
 			continue
 		}
-		return x >= 1+left && x < 1+lipgloss.Width(line)
+		return x >= startX+left &&
+			x < min(startX+lipgloss.Width(line), m.chatScrollbarX())
 	}
 	return false
 }
