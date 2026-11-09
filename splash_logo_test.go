@@ -109,3 +109,19 @@ func TestSplashThemeActionStillWorksAfterSwitchingLogos(t *testing.T) {
 			m.themesOpen,m.splashOpen,m.splashLogoIndex)
 	}
 }
+
+func TestEscapeFromThemeBrowserRotatesSplashArtwork(t *testing.T) {
+	m := newThemeEditorTestModel(t)
+	if !m.themesOpen || !m.splashOpen {
+		t.Fatal("theme editor fixture should be opened from splash")
+	}
+	before := m.splashLogoIndex
+	updated,_ := m.Update(tea.KeyPressMsg{Code:tea.KeyEscape})
+	m = updated.(model)
+	if m.themesOpen || !m.splashOpen {
+		t.Fatal("escape did not return from theme browser to splash")
+	}
+	if m.splashLogoIndex == before {
+		t.Fatal("returning to splash did not choose another logo")
+	}
+}
