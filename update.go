@@ -454,11 +454,6 @@ func (m model) Update(
 			}
 			return m, sendWhoCmd
 		}
-		// Once common header and footer actions have had priority, the
-		// reader captures remaining clicks within its own pane.
-		if m.longReader != nil {
-			return m, nil
-		}
 		if m.splashOpen && !m.themesOpen && mouse.Button == tea.MouseLeft && m.splashLogoContains(mouse.X, mouse.Y) {
 			m.cycleSplashLogo()
 			return m, nil
@@ -616,6 +611,12 @@ func (m model) Update(
 				m.setLongReaderScrollFromTrack(trackY)
 				return m, nil
 			}
+		}
+		// Reader scrollbar actions take priority over the chat beneath it.
+		// Only ignore unrelated pane clicks after its track and arrows
+		// have had a chance to handle the event.
+		if m.longReader != nil {
+			return m, nil
 		}
 		if !m.usersOpen && !m.splashOpen && mouse.Button == tea.MouseLeft && m.scrollbarContains(mouse.X, mouse.Y) && m.maxScroll() > 0 {
 			top, thumbHeight, trackHeight := m.scrollbarThumb()
