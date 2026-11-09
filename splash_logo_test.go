@@ -11,10 +11,10 @@ import (
 
 func TestSplashLogoCyclesOnOpenAndArtworkClick(t *testing.T) {
 	m := newMessageInteractionTestModel(110)
-	if len(splashLogos) != 7 {
-		t.Fatalf("expected original, dollar-sign and five new logos, got %d",len(splashLogos))
+	if len(splashLogos) != 14 {
+		t.Fatalf("expected all fourteen splash logos, got %d",len(splashLogos))
 	}
-	wantRows := []int{7,8,6,7,7,8,7}
+	wantRows := []int{7,8,6,7,7,8,7,7,4,8,14,8,5,7}
 	for i,rows := range wantRows {
 		if len(splashLogos[i]) != rows {
 			t.Fatalf("logo %d has %d rows, want %d",i,len(splashLogos[i]),rows)
@@ -30,6 +30,13 @@ func TestSplashLogoCyclesOnOpenAndArtworkClick(t *testing.T) {
 		4:" ________",
 		5:" ███████████",
 		6:":::::::::",
+		7:"      :::::::::",
+		8:"  ____",
+		9:"\x27########:",
+		10:" sdSSSSSSSbs",
+		11:"                              ,,",
+		12:"    _/_/_/_/_/",
+		13:"M\"\"\"\"\"\"\"\"`M",
 	} {
 		if !strings.HasPrefix(splashLogos[i][0],prefix) {
 			t.Fatalf("logo %d changed unexpectedly: %q",i,splashLogos[i][0])
@@ -194,5 +201,53 @@ func TestSplashLogoClippingRespectsScrollbarAndBlockColumns(t *testing.T) {
 				t.Fatalf("logo %d line %d treats scrollbar as clickable artwork",logoIndex,i)
 			}
 		}
+	}
+}
+
+func TestSplashNewLogoShapesAndMiniVariant(t *testing.T) {
+	if got := len(splashLogos); got != 14 {
+		t.Fatalf("expected 14 splash logos, got %d",got)
+	}
+	// Preserve the distinctive punctuation, whitespace, and backslashes
+	// in designs copied from the ASCII generators.
+	checks := []struct{logo,row int; text string}{
+		{7,0,"      :::::::::"},
+		{8,2,"_\x60 | / _"},
+		{9,7,"........::"},
+		{10,2,"\x60S%b"},
+		{10,13,"                             Y"},
+		{11,1,"\x607MM"},
+		{11,7,"\x60Mbmmd'"},
+		{12,4,"_/_/_/_/_/"},
+		{13,0,"M\"\"\"\"\"\"\"\"\x60M"},
+		{13,3,"88'  \x6088"},
+	}
+	for _,check := range checks {
+		if !strings.Contains(splashLogos[check.logo][check.row],check.text) {
+			t.Fatalf("logo %d line %d is missing %q: %q",check.logo,check.row,check.text,splashLogos[check.logo][check.row])
+		}
+	}
+	if len(splashLogos[8]) != 4 {
+		t.Fatal("mini logo should retain its compact four-row height")
+	}
+	mini := splashLogoLayout(splashLogos[8],100)
+	if lipgloss.Width(mini[0]) >= 100 || !strings.HasPrefix(mini[0]," ") {
+		t.Fatal("mini logo is not centered as a compact block")
+	}
+}
+
+func TestSplashRandomizerNeverRepeatsWithFourteenLogos(t *testing.T) {
+	m := newMessageInteractionTestModel(110)
+	seen := map[int]bool{m.splashLogoIndex:true}
+	for i:=0; i<500; i++ {
+		previous:=m.splashLogoIndex
+		m.cycleSplashLogo()
+		if m.splashLogoIndex==previous || m.splashLogoIndex<0 || m.splashLogoIndex>=len(splashLogos) {
+			t.Fatalf("invalid random logo transition: %d -> %d",previous,m.splashLogoIndex)
+		}
+		seen[m.splashLogoIndex]=true
+	}
+	if len(seen)<5 {
+		t.Fatalf("randomizer did not visit enough designs: %v",seen)
 	}
 }
