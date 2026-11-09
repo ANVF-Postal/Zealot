@@ -27,6 +27,7 @@ type model struct {
 	usersAnimationRunning bool
 
 	splashOpen                       bool
+	splashLogoIndex                  int
 	themesOpen                       bool
 	themeEntries                     []themeListEntry
 	themeSelected                    int
