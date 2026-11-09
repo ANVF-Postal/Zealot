@@ -395,6 +395,7 @@ func (m model) Update(
 			if m.themesOpen {
 				m.themesOpen = false
 				m.splashOpen = true
+				m.cycleSplashLogo()
 			} else if m.splashOpen {
 				m.splashOpen = false
 				m.splashScrollDragging = false
@@ -402,6 +403,7 @@ func (m model) Update(
 				m.splashScrollbarHoldGeneration++
 			} else {
 				m.splashOpen = true
+				m.cycleSplashLogo()
 				m.usersOpen = false
 				m.splashScroll = 0
 				m.splashScrollDragging = false
@@ -436,6 +438,10 @@ func (m model) Update(
 				return m, tea.Batch(sendWhoCmd, animationCmd)
 			}
 			return m, sendWhoCmd
+		}
+		if m.splashOpen && !m.themesOpen && mouse.Button == tea.MouseLeft && m.splashLogoContains(mouse.X, mouse.Y) {
+			m.cycleSplashLogo()
+			return m, nil
 		}
 		if m.splashOpen && !m.themesOpen && mouse.Button == tea.MouseLeft && m.splashThemesButtonContains(mouse.X, mouse.Y) {
 			m.openThemeBrowser()
