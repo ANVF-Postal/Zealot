@@ -46,9 +46,8 @@ func TestSplashLogoCyclesOnOpenAndArtworkClick(t *testing.T) {
 	}
 
 	// Clicking a visible position inside the artwork chooses a different logo.
-	firstLine := strings.TrimRight(m.activeSplashLogo()[0]," ")
-	width := chatContentWidth(m.width)
-	logoX := 1 + max(0,(width-lipgloss.Width(truncateANSI(firstLine,width)))/2) + 1
+	width := max(1,chatInnerWidth(m.width)-1)
+	logoX := 1+splashLogoLeftPadding(m.activeSplashLogo(),width)+1
 	if !m.splashLogoContains(logoX,3) {
 		t.Fatal("logo artwork does not have a clickable hitbox")
 	}
@@ -79,9 +78,8 @@ func TestSplashLogoClickRespectsScrollAndTerminalWidth(t *testing.T) {
 		lineIndex := min(3,len(m.activeSplashLogo())-1)
 		line := strings.TrimRight(m.activeSplashLogo()[lineIndex]," ")
 		y := 3+lineIndex-m.splashScroll
-		width := chatContentWidth(m.width)
-		visible := truncateANSI(line,width)
-		x := 1+max(0,(width-lipgloss.Width(visible))/2)+min(2,max(0,lipgloss.Width(visible)-1))
+		width := max(1,chatInnerWidth(m.width)-1)
+		x := 1+splashLogoLeftPadding(m.activeSplashLogo(),width)+min(2,max(0,lipgloss.Width(line)-1))
 		if !m.splashLogoContains(x,y) {
 			t.Fatalf("logo %d scrolled row click rejected at (%d,%d)",logoIndex,x,y)
 		}
@@ -144,5 +142,57 @@ func TestEscapeFromThemeBrowserRotatesSplashArtwork(t *testing.T) {
 	}
 	if m.splashLogoIndex == before {
 		t.Fatal("returning to splash did not choose another logo")
+	}
+}
+
+func TestSplashLogoArtworkMaintainsFixedBlockAlignment(t *testing.T) {
+	for logoIndex, logo := range splashLogos {
+		// A trailing 100-space generator pad must never shift the logo.
+		const width = 110
+		rows := splashLogoLayout(logo,width)
+		if len(rows)!=len(logo) {
+			t.Fatalf("logo %d row count changed",logoIndex)
+		}
+		left := splashLogoLeftPadding(logo,width)
+		for rowIndex,original := range logo {
+			want := strings.Repeat(" ",left)+strings.TrimRight(original," ")
+			if rows[rowIndex]!=want {
+				t.Fatalf("logo %d row %d shifted or truncated unexpectedly: got %q, want %q",
+					logoIndex,rowIndex,rows[rowIndex],want)
+			}
+			if lipgloss.Width(rows[rowIndex])>width {
+				t.Fatalf("logo %d row %d extends past viewport",logoIndex,rowIndex)
+			}
+		}
+		m := newMessageInteractionTestModel(112)
+		m.splashOpen = true
+		m.splashLogoIndex = logoIndex
+		rendered := m.splashRows()
+		for i,row := range rows {
+			got := stripANSISequences(rendered[i+1])
+			if got!=row {
+				t.Fatalf("logo %d rendered row %d changed: got %q, want %q",
+					logoIndex,i,got,row)
+			}
+		}
+	}
+}
+
+func TestSplashLogoClippingRespectsScrollbarAndBlockColumns(t *testing.T) {
+	m := newMessageInteractionTestModel(32)
+	m.splashOpen = true
+	for logoIndex,logo := range splashLogos {
+		m.splashLogoIndex = logoIndex
+		width := max(1,chatInnerWidth(m.width)-1)
+		rows := splashLogoLayout(logo,width)
+		for i,row := range rows {
+			if lipgloss.Width(row)>width {
+				t.Fatalf("logo %d line %d spills into scrollbar",logoIndex,i)
+			}
+			y := i+3
+			if m.splashLogoContains(m.chatScrollbarX(),y) {
+				t.Fatalf("logo %d line %d treats scrollbar as clickable artwork",logoIndex,i)
+			}
+		}
 	}
 }
