@@ -861,6 +861,9 @@ func (m model) Update(
 						return m, nil
 					}
 					m.themesOpen = false
+					if m.splashOpen {
+						m.cycleSplashLogo()
+					}
 					m.themeError = ""
 					m.themeEditError = ""
 					return m, nil
