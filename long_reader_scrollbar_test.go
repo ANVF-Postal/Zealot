@@ -115,3 +115,21 @@ func TestLongReaderScrollbarArrowClickHoldAndRelease(t *testing.T) {
 		t.Fatal("closing reader left scrollbar interaction active")
 	}
 }
+
+func TestLongReaderScrollbarThumbRenderedAtTrackClickPosition(t *testing.T) {
+	m := longReaderScrollbarTestModel()
+	_, thumb, track := m.longReaderScrollbarThumb()
+	if thumb != 1 {
+		t.Fatalf("expected one-cell thumb, got %d", thumb)
+	}
+	for _, position := range []int{0, 1, track / 2, track - 1} {
+		m.setLongReaderScrollFromThumbTop(position)
+		rows := strings.Split(stripANSISequences(m.renderLongReaderPanel()), "\n")
+		// The chat border is row zero, the header row is row one,
+		// and the scrollbar track starts at the blank spacer row (row two).
+		trackRow := 2 + position
+		if trackRow >= len(rows) || !strings.Contains(rows[trackRow], "█") {
+			t.Fatalf("thumb at %d is not painted on its clickable track row %d: %q", position, trackRow, rows)
+		}
+	}
+}
