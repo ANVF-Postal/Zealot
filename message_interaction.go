@@ -41,6 +41,7 @@ func (m model) messageBodyRanges(msg Packet, width int) []messageBodyRange {
 }
 
 func (m model) messageBodyRangesForLineCount(msg Packet, width, lineCount int) []messageBodyRange {
+	msg = m.displayedMessage(msg)
 	ranges := make([]messageBodyRange, lineCount)
 	if msg.Type != "message" || msg.Text == "" || msg.XKeyscore > 0 || lineCount == 0 {
 		return ranges
@@ -570,6 +571,9 @@ func (m *model) beginReply(id string) {
 	}
 	for _, packet := range m.messages {
 		if packet.ID == id && packet.Type == "message" {
+			if packet.Spoiler && !m.revealedSpoilers[id] {
+				return
+			}
 			if m.replyTargetID != id {
 				m.replyTargetID = id
 				m.input.EndSelection()
