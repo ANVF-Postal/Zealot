@@ -289,16 +289,6 @@ func (m model) Update(
 
 	switch mouse := msg.(type) {
 	case tea.MouseClickMsg:
-		if m.longReader != nil {
-			// Clicking the reader heading returns to chat; other clicks
-			// cannot accidentally activate the composer or message links.
-			if mouse.Button == tea.MouseLeft && mouse.Y <= 2 {
-				m.longReader = nil
-				m.longReaderLines = nil
-				m.refreshMessageHover()
-			}
-			return m, nil
-		}
 		m.lastMouseX = mouse.X
 		m.lastMouseY = mouse.Y
 		m.mousePositionKnown = true
@@ -389,6 +379,16 @@ func (m model) Update(
 					return quitConfirmTimeoutMsg{generation: generation}
 				})
 			}
+		}
+		if m.longReader != nil {
+			// Footer actions and composer selection have already been handled
+			// above. The reader only owns clicks inside its own pane.
+			if mouse.Button == tea.MouseLeft && mouse.Y == 2 {
+				m.longReader = nil
+				m.longReaderLines = nil
+				m.refreshMessageHover()
+			}
+			return m, nil
 		}
 		if (m.usersOpen || m.splashOpen) && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width("[X]") && mouse.X < m.width {
 			m.usersOpen = false
@@ -809,24 +809,32 @@ func (m model) Update(
 
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		if m.longReader != nil {
+			// Reader navigation takes only dedicated keys. Normal typing,
+			// editing, Enter and quit shortcuts go through the shared
+			// composer logic, just as in the other panels.
 			switch keyMsg.Keystroke() {
 			case "esc", "escape":
 				m.longReader = nil
 				m.longReaderLines = nil
 				m.refreshMessageHover()
-			case "up", "k": m.longReaderScroll--
-			case "down", "j": m.longReaderScroll++
-			case "pgup": m.longReaderScroll -= m.longReaderVisibleHeight()
-			case "pgdown": m.longReaderScroll += m.longReaderVisibleHeight()
-			case "home", "ctrl+home": m.longReaderScroll = 0
-			case "end", "ctrl+end": m.longReaderScroll = m.maxLongReaderScroll()
-			case "ctrl+c", "ctrl+q":
-				m.sendTyping(false)
-				m.quitting = true
-				return m, tea.Quit
+				return m, nil
+			case "pgup":
+				m.longReaderScroll -= m.longReaderVisibleHeight()
+			case "pgdown":
+				m.longReaderScroll += m.longReaderVisibleHeight()
+			case "ctrl+home":
+				m.longReaderScroll = 0
+			case "ctrl+end":
+				m.longReaderScroll = m.maxLongReaderScroll()
+			default:
+				// Arrow keys still edit or navigate the composer normally.
+				break
 			}
-			m.clampLongReaderScroll()
-			return m, nil
+			switch keyMsg.Keystroke() {
+			case "pgup", "pgdown", "ctrl+home", "ctrl+end":
+				m.clampLongReaderScroll()
+				return m, nil
+			}
 		}
 		if m.themesOpen {
 			if m.themePacking {
@@ -1169,6 +1177,16 @@ func (m *model) applyMouseMotion(x, y int) {
 
 // scrollPage applies the same viewport movement for keyboard and footer clicks.
 func (m *model) scrollPage(up bool) {
+	if m.longReader != nil {
+		if up {
+			m.longReaderScroll -= m.longReaderVisibleHeight()
+		} else {
+			m.longReaderScroll += m.longReaderVisibleHeight()
+		}
+		m.clampLongReaderScroll()
+		return
+	}
+
 	if m.themesOpen {
 		step := m.themeVisibleRows()
 		if up { m.moveThemeSelection(-step) } else { m.moveThemeSelection(step) }
