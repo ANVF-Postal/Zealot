@@ -125,9 +125,19 @@ func TestLongReaderScrollbarThumbRenderedAtTrackClickPosition(t *testing.T) {
 	for _, position := range []int{0, 1, track / 2, track - 1} {
 		m.setLongReaderScrollFromThumbTop(position)
 		rows := strings.Split(stripANSISequences(m.renderLongReaderPanel()), "\n")
-		// The chat border is row zero, the header row is row one,
-		// and the scrollbar track starts at the blank spacer row (row two).
-		trackRow := 2 + position
+		// The first track row is the spacer immediately below the
+		// reader header; find it relative to the header, not the border.
+		headerRow := -1
+		for i, row := range rows {
+			if strings.Contains(row, "[LONG MESSAGE]") {
+				headerRow = i
+				break
+			}
+		}
+		if headerRow < 0 {
+			t.Fatalf("reader header missing from rendered panel")
+		}
+		trackRow := headerRow + 1 + position
 		if trackRow >= len(rows) || !strings.Contains(rows[trackRow], "█") {
 			t.Fatalf("thumb at %d is not painted on its clickable track row %d: %q", position, trackRow, rows)
 		}
