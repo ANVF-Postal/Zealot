@@ -380,14 +380,12 @@ func (m model) Update(
 				})
 			}
 		}
-		if m.longReader != nil {
-			// Footer actions and composer selection have already been handled
-			// above. The reader only owns clicks inside its own pane.
-			if mouse.Button == tea.MouseLeft && mouse.Y == 2 {
-				m.longReader = nil
-				m.longReaderLines = nil
-				m.refreshMessageHover()
-			}
+		// Reader close control is inside the pane, not in the global
+		// header. Let ZEALOT and Online clicks below navigate normally.
+		if m.longReader != nil && mouse.Button == tea.MouseLeft &&
+			mouse.Y == 2 && mouse.X >= m.longReaderCloseX() &&
+			mouse.X < m.longReaderCloseX()+lipgloss.Width("[X]") {
+			m.closeLongReader()
 			return m, nil
 		}
 		if (m.usersOpen || m.splashOpen) && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width("[X]") && mouse.X < m.width {
@@ -403,6 +401,9 @@ func (m model) Update(
 			return m, nil
 		}
 		if mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= 0 && mouse.X < lipgloss.Width("ZEALOT") {
+			if m.longReader != nil {
+				m.closeLongReader()
+			}
 			if m.themesOpen {
 				m.themesOpen = false
 				m.splashOpen = true
@@ -430,6 +431,9 @@ func (m model) Update(
 			return m, nil
 		}
 		if !m.usersOpen && !m.splashOpen && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width(fmt.Sprintf("Online: %d", m.onlineCount)) && mouse.X < m.width {
+			if m.longReader != nil {
+				m.closeLongReader()
+			}
 			m.usersOpen = true
 			m.usersScroll = 0
 			m.usersScrollDragging = false
@@ -449,6 +453,11 @@ func (m model) Update(
 				return m, tea.Batch(sendWhoCmd, animationCmd)
 			}
 			return m, sendWhoCmd
+		}
+		// Once common header and footer actions have had priority, the
+		// reader captures remaining clicks within its own pane.
+		if m.longReader != nil {
+			return m, nil
 		}
 		if m.splashOpen && !m.themesOpen && mouse.Button == tea.MouseLeft && m.splashLogoContains(mouse.X, mouse.Y) {
 			m.cycleSplashLogo()
@@ -814,9 +823,7 @@ func (m model) Update(
 			// composer logic, just as in the other panels.
 			switch keyMsg.Keystroke() {
 			case "esc", "escape":
-				m.longReader = nil
-				m.longReaderLines = nil
-				m.refreshMessageHover()
+				m.closeLongReader()
 				return m, nil
 			case "pgup":
 				m.longReaderScroll -= m.longReaderVisibleHeight()
