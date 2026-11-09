@@ -18,11 +18,11 @@ func isSpecialMessage(packet Packet) bool {
 func spoilerMask(text string) string {
 	var result strings.Builder
 	for _, r := range text {
-		if r == ' ' || r == '\\n' {
+		if r == ' ' || r == '\n' {
 			result.WriteRune(r)
 			continue
 		}
-		if r == '\\t' {
+		if r == '\t' {
 			result.WriteString("    ")
 			continue
 		}
