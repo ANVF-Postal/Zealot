@@ -2,6 +2,9 @@ package main
 
 import (
 	"strings"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
 	"unicode"
 
 	"charm.land/lipgloss/v2"
@@ -90,6 +93,9 @@ func (m *model) openLongReader(packet Packet) {
 	m.longReader = &packet
 	m.longReaderScroll = 0
 	m.longReaderWidth = -1
+	m.longReaderDragging = false
+	m.longReaderScrollbarHoldDirection = 0
+	m.longReaderScrollbarHoldGeneration++
 	m.prepareLongReader()
 }
 
@@ -100,6 +106,9 @@ func (m *model) closeLongReader() {
 	m.longReaderLines = nil
 	m.longReaderScroll = 0
 	m.longReaderWidth = -1
+	m.longReaderDragging = false
+	m.longReaderScrollbarHoldDirection = 0
+	m.longReaderScrollbarHoldGeneration++
 	m.refreshMessageHover()
 }
 
@@ -139,6 +148,41 @@ func (m *model) clampLongReaderScroll() {
 	m.longReaderScroll = max(0, min(m.longReaderScroll, m.maxLongReaderScroll()))
 }
 
+// The long reader uses the same on-screen scrollbar coordinate system as
+// main chat: top arrow y=2, draggable track y=3..height, bottom arrow at
+// y=1+messageHeight, with the same thumb sizing and positioning helpers.
+func (m model) longReaderScrollbarContains(x, y int) bool {
+	return m.longReader != nil && x == m.chatScrollbarX() &&
+		y >= 2 && y <= 1+m.messageHeight()
+}
+
+func (m model) longReaderScrollbarThumb() (top, thumbHeight, trackHeight int) {
+	return scrollbarGeometry(
+		len(m.longReaderLines), m.longReaderVisibleHeight(),
+		m.messageHeight()-2, m.longReaderScroll,
+	)
+}
+
+func (m *model) setLongReaderScrollFromThumbTop(top int) {
+	_, thumbHeight, trackHeight := m.longReaderScrollbarThumb()
+	m.longReaderScroll = scrollbarScrollForThumb(
+		top, len(m.longReaderLines), m.longReaderVisibleHeight(),
+		trackHeight, thumbHeight,
+	)
+	m.clampLongReaderScroll()
+}
+
+func (m *model) setLongReaderScrollFromTrack(trackPosition int) {
+	_, thumbHeight, _ := m.longReaderScrollbarThumb()
+	m.setLongReaderScrollFromThumbTop(trackPosition - thumbHeight/2)
+}
+
+func (m model) longReaderScrollbarHoldCmd(generation int) tea.Cmd {
+	return tea.Tick(120*time.Millisecond, func(time.Time) tea.Msg {
+		return longReaderScrollbarHoldMsg{generation: generation}
+	})
+}
+
 func (m model) renderLongReaderPanel() string {
 	bg := lipgloss.Color(m.cfg.Theme.Background)
 	fill := lipgloss.NewStyle().Background(bg)
@@ -161,14 +205,7 @@ func (m model) renderLongReaderPanel() string {
 		rows = append(rows, padANSIToWidth("", contentWidth, fill)+railStyle.Render("│"))
 	}
 	visible := max(0, height-len(rows))
-	trackHeight := max(1, visible-1)
-	thumbHeight := trackHeight
-	thumbTop := 0
-	if maxScroll := m.maxLongReaderScroll(); maxScroll > 0 {
-		thumbHeight = max(1, visible*trackHeight/max(1,len(m.longReaderLines)))
-		thumbHeight = min(thumbHeight, trackHeight)
-		thumbTop = scaleScrollbarPosition(m.longReaderScroll, maxScroll, trackHeight-thumbHeight)
-	}
+	thumbTop, thumbHeight, trackHeight := m.longReaderScrollbarThumb()
 	for i := 0; i < visible; i++ {
 		index := m.longReaderScroll+i
 		line := ""
@@ -182,6 +219,8 @@ func (m model) renderLongReaderPanel() string {
 			rail = "v"
 		case m.maxLongReaderScroll() > 0 && i < trackHeight && i >= thumbTop && i < thumbTop+thumbHeight:
 			rail = "█"
+		case i >= trackHeight:
+			rail = " "
 		}
 		rows = append(rows, line+railStyle.Render(rail))
 	}
