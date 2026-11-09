@@ -106,16 +106,20 @@ func (m model) activeSplashLogo() []string {
 	return splashLogos[min(max(0,m.splashLogoIndex),len(splashLogos)-1)]
 }
 
-// splashLogoLayout keeps each logo as one rectangular block. Centering each
-// individual row shifts slanted lettering and breaks the ASCII art. Ignore
-// only the generator's trailing padding when measuring the block.
-func splashLogoLayout(logo []string, width int) []string {
-	width = max(1, width)
+// splashLogoLayout centers artwork as one block rather than centering every
+// row independently (which makes slanted lettering appear shifted).
+// Generated trailing padding is excluded from the width calculation.
+func splashLogoLeftPadding(logo []string, width int) int {
 	blockWidth := 0
 	for _, line := range logo {
 		blockWidth = max(blockWidth, lipgloss.Width(strings.TrimRight(line, " ")))
 	}
-	left := max(0, (width-blockWidth)/2)
+	return max(0, (max(1,width)-blockWidth)/2)
+}
+
+func splashLogoLayout(logo []string, width int) []string {
+	width = max(1, width)
+	left := splashLogoLeftPadding(logo, width)
 	lines := make([]string, 0, len(logo))
 	for _, line := range logo {
 		line = strings.TrimRight(line, " ")
@@ -124,30 +128,22 @@ func splashLogoLayout(logo []string, width int) []string {
 	return lines
 }
 
-// splashLogoContains uses exactly the same block geometry as the renderer,
-// accounting for scrolling and the reserved scrollbar column.
+// Click detection uses the same block origin, clipping and viewport scroll
+// as the renderer, without treating the outside centering margin as artwork.
 func (m model) splashLogoContains(x, y int) bool {
 	if !m.splashOpen || m.themesOpen {
 		return false
 	}
-	logo := splashLogoLayout(m.activeSplashLogo(), max(1,chatInnerWidth(m.width)-1))
-	for i, line := range logo {
+	width := max(1, chatInnerWidth(m.width)-1) // reserve splash scrollbar
+	logo := m.activeSplashLogo()
+	left := splashLogoLeftPadding(logo, width)
+	rows := splashLogoLayout(logo, width)
+	for i, line := range rows {
 		rowY := 3+i-m.splashScroll
 		if y != rowY || y < 2 || y >= 2+m.splashPanelHeight() {
 			continue
 		}
-		// Exclude the blank padding before the logo, but preserve leading
-		// spaces within the artwork itself.
-		blockStart := 1
-		for j := range logo {
-			raw := strings.TrimRight(m.activeSplashLogo()[j]," ")
-			if lipgloss.Width(raw) > 0 {
-				blockStart = 1+lipgloss.Width(line)-lipgloss.Width(strings.TrimLeft(line," "))
-				_ = blockStart
-				break
-			}
-		}
-		return x >= 1 && x < 1+lipgloss.Width(line) && x < 1+max(1,chatInnerWidth(m.width)-1)
+		return x >= 1+left && x < 1+lipgloss.Width(line)
 	}
 	return false
 }
