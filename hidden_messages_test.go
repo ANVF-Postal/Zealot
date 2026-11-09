@@ -191,3 +191,69 @@ func TestLongReaderHeaderTimestampAndSpacer(t *testing.T) {
 		t.Fatal("reader scrolling height did not account for new spacer")
 	}
 }
+
+func TestLongReaderHeaderNavigationReturnsToChat(t *testing.T) {
+	makeReader := func() model {
+		packet := interactionTestPacket("reader-navigation", strings.Repeat("reader text for scrolling. ", 200))
+		packet.Long = true
+		m := newMessageInteractionTestModel(100, packet)
+		m.onlineCount = 2
+		m.openLongReader(packet)
+		return m
+	}
+	t.Run("splash", func(t *testing.T) {
+		m := makeReader()
+		updated, _ := m.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: 1, Y: 0})
+		m = updated.(model)
+		if !m.splashOpen || m.longReader != nil {
+			t.Fatalf("ZEALOT header should leave reader for splash, got splash=%v reader=%v", m.splashOpen, m.longReader != nil)
+		}
+		updated, _ = m.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: m.width-2, Y: 0})
+		m = updated.(model)
+		if m.splashOpen || m.longReader != nil || m.usersOpen {
+			t.Fatal("closing splash should return to main chat")
+		}
+	})
+	t.Run("roster", func(t *testing.T) {
+		m := makeReader()
+		updated, _ := m.Update(tea.MouseClickMsg{
+			Button: tea.MouseLeft, X: m.width-2, Y: 0,
+		})
+		m = updated.(model)
+		if !m.usersOpen || m.longReader != nil {
+			t.Fatalf("Online header should leave reader for roster, got users=%v reader=%v", m.usersOpen, m.longReader != nil)
+		}
+		updated, _ = m.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: m.width-2, Y: 0})
+		m = updated.(model)
+		if m.usersOpen || m.longReader != nil || m.splashOpen {
+			t.Fatal("closing roster should return to main chat")
+		}
+	})
+}
+
+func TestLongReaderCloseButtonAndScrollbarColors(t *testing.T) {
+	packet := interactionTestPacket("reader-close", strings.Repeat("content words for a scrolling reader. ", 150))
+	packet.Long = true
+	m := newMessageInteractionTestModel(100, packet)
+	m.openLongReader(packet)
+	rendered := m.renderLongReaderPanel()
+	if !strings.Contains(stripANSISequences(rendered), "[X]") {
+		t.Fatal("reader panel does not show close button")
+	}
+	// Both the main chat's rail and the long reader's rail use the theme's
+	// border color, rather than the muted system-label color.
+	bg := lipgloss.Color(m.cfg.Theme.Background)
+	wantRail := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.cfg.Theme.BorderColor)).
+		Background(bg).Render("^")
+	if !strings.Contains(rendered, wantRail) {
+		t.Errorf("reader scrollbar is not styled like the chat scrollbar")
+	}
+	updated, _ := m.Update(tea.MouseClickMsg{
+		Button: tea.MouseLeft, X: m.longReaderCloseX()+1, Y: 2,
+	})
+	m = updated.(model)
+	if m.longReader != nil || m.usersOpen || m.splashOpen {
+		t.Fatal("reader [X] should return to main chat")
+	}
+}
