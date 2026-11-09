@@ -97,7 +97,7 @@ func TestLongReaderClickScrollAndClose(t *testing.T) {
 	if m.longReaderScroll != 3 {
 		t.Fatalf("wheel did not scroll reader: %d", m.longReaderScroll)
 	}
-	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 27})
 	m = updated.(model)
 	if m.longReader != nil {
 		t.Fatal("Escape did not return to chat")
