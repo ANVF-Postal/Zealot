@@ -118,7 +118,7 @@ func (m model) splashLogoContains(x, y int) bool {
 		if y != rowY || y < 2 || y >= 2+m.splashPanelHeight() {
 			continue
 		}
-		visible := truncateANSI(line,width)
+		visible := truncateANSI(strings.TrimRight(line, " "),width)
 		startX := 1+max(0,(width-lipgloss.Width(visible))/2)
 		return x >= startX && x < startX+lipgloss.Width(visible)
 	}
@@ -143,7 +143,7 @@ func (m model) splashRows() []string {
 	for _, line := range logo {
 		// Each design is kept at its original width, then centered or
 		// truncated to fit the current terminal.
-		rows = append(rows, m.styles.accent.Render(center(line)))
+		rows = append(rows, m.styles.accent.Render(center(strings.TrimRight(line, " "))))
 	}
 	rows = append(rows, "")
 	rows = append(rows, m.styles.app.Render(center(appVersion)))
