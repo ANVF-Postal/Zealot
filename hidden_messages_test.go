@@ -159,3 +159,27 @@ func TestLongMessageInputLimitsAndCommandBoundary(t *testing.T) {
 		t.Fatalf("long text visible in chat: %q", got)
 	}
 }
+
+func TestLongReaderHeaderTimestampAndSpacer(t *testing.T) {
+	packet := interactionTestPacket("long-header", "First line\nSecond line")
+	packet.Long = true
+	packet.User.Name = "Daniel2"
+	m := newMessageInteractionTestModel(80, packet)
+	m.openLongReader(packet)
+
+	rendered := stripANSISequences(m.renderLongReaderPanel())
+	rows := strings.Split(rendered, "\n")
+	wantHeader := "[LONG MESSAGE] [" + packet.Time.Local().Format("15:04") + "] Daniel2 · Esc: close"
+	if len(rows) < 3 || !strings.Contains(rows[0], wantHeader) {
+		t.Fatalf("reader header missing timestamp: %q", rendered)
+	}
+	if strings.Contains(rows[1], "First line") || strings.TrimSpace(strings.TrimSuffix(rows[1], "│")) != "" {
+		t.Fatalf("reader spacer must be blank: %q", rows[1])
+	}
+	if !strings.Contains(rows[2], "First line") {
+		t.Fatalf("first content line must follow spacer: %q", rows[2])
+	}
+	if m.longReaderVisibleHeight() != max(1, m.messageHeight()-2) {
+		t.Fatal("reader scrolling height did not account for new spacer")
+	}
+}
