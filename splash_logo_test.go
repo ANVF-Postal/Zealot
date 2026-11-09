@@ -122,6 +122,7 @@ func TestSplashThemeActionStillWorksAfterSwitchingLogos(t *testing.T) {
 	if !m.themesOpen {
 		t.Fatal("clicking [THEMES] no longer opens the theme browser")
 	}
+	before = m.splashLogoIndex
 	updated,_ = m.Update(tea.MouseClickMsg{X:1,Y:0,Button:tea.MouseLeft})
 	m = updated.(model)
 	if m.themesOpen || !m.splashOpen || m.splashLogoIndex == before {
