@@ -71,6 +71,10 @@ type model struct {
 	longReaderScroll int
 	longReaderLines []string
 	longReaderWidth int
+	longReaderDragging bool
+	longReaderDragOffset int
+	longReaderScrollbarHoldDirection int
+	longReaderScrollbarHoldGeneration int
 	messageByID map[string]Packet
 	replyIDsByMessageID map[string][]string
 	messageRowsByID map[string]messageRowRange
