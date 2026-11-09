@@ -353,8 +353,13 @@ func (s *server) handle(conn net.Conn) {
 				limit = maxLongMessage
 			}
 			if len([]rune(text)) > limit {
-				client.send(Packet{Type: "system", Room: roomName, Text: "Message exceeds its allowed length.", Time: time.Now().UTC()})
-				continue
+				if !longMessage && !spoilerMessage {
+					// Preserve ordinary chat's existing truncation policy.
+					text = string([]rune(text)[:limit])
+				} else {
+					client.send(Packet{Type: "system", Room: roomName, Text: "Message exceeds its allowed length.", Time: time.Now().UTC()})
+					continue
+				}
 			}
 
 			message := Packet{
