@@ -93,6 +93,26 @@ func (m *model) openLongReader(packet Packet) {
 	m.prepareLongReader()
 }
 
+// closeLongReader discards the alternate reader; navigating to another panel
+// should always return to main chat when that panel is closed.
+func (m *model) closeLongReader() {
+	m.longReader = nil
+	m.longReaderLines = nil
+	m.longReaderScroll = 0
+	m.longReaderWidth = -1
+	m.refreshMessageHover()
+}
+
+func (m model) longReaderCloseX() int {
+	// The reader's [X] sits inside the chat pane, immediately left of
+	// the scrollbar rail, matching the other panels' top-right control.
+	left := 0
+	if !narrowBordersHidden(m.width) {
+		left = 1
+	}
+	return left + max(0, chatContentWidth(m.width)-lipgloss.Width("[X]"))
+}
+
 func (m *model) prepareLongReader() {
 	if m.longReader == nil || m.longReaderWidth == chatContentWidth(m.width) {
 		return
@@ -122,18 +142,33 @@ func (m *model) clampLongReaderScroll() {
 func (m model) renderLongReaderPanel() string {
 	bg := lipgloss.Color(m.cfg.Theme.Background)
 	fill := lipgloss.NewStyle().Background(bg)
+	railStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.cfg.Theme.BorderColor)).
+		Background(bg)
 	width := max(1, chatInnerWidth(m.width))
 	contentWidth := max(1, width-1)
 	height := max(1, m.messageHeight())
 	readerName := strings.NewReplacer("\n", " ", "\r", " ", "\t", " ").Replace(terminalSafeText(m.longReader.User.Name))
-	header := m.styles.accent.Render("  [LONG MESSAGE] [" + m.longReader.Time.Local().Format("15:04") + "] " + readerName + " · Esc: close")
-	header = padANSIToWidth(header, contentWidth, fill)
-	rows := []string{header + m.styles.system.Render("^")}
+	header := "  [LONG MESSAGE] [" + m.longReader.Time.Local().Format("15:04") + "] " + readerName + " · Esc: close"
+	closeText := "[X]"
+	closeWidth := lipgloss.Width(closeText)
+	headerWidth := max(0, contentWidth-closeWidth)
+	header = truncateANSI(m.styles.accent.Render(header), headerWidth)
+	header = padANSIToWidth(header, headerWidth, fill)
+	rows := []string{header + m.styles.accent.Render(closeText) + railStyle.Render("^")}
 	if height > 1 {
-		// Keep a permanent empty row between the header and the body.
-		rows = append(rows, padANSIToWidth("", contentWidth, fill)+m.styles.system.Render("│"))
+		// One blank row between the header and the body.
+		rows = append(rows, padANSIToWidth("", contentWidth, fill)+railStyle.Render("│"))
 	}
 	visible := max(0, height-len(rows))
+	trackHeight := max(1, visible-1)
+	thumbHeight := trackHeight
+	thumbTop := 0
+	if maxScroll := m.maxLongReaderScroll(); maxScroll > 0 {
+		thumbHeight = max(1, visible*trackHeight/max(1,len(m.longReaderLines)))
+		thumbHeight = min(thumbHeight, trackHeight)
+		thumbTop = scaleScrollbarPosition(m.longReaderScroll, maxScroll, trackHeight-thumbHeight)
+	}
 	for i := 0; i < visible; i++ {
 		index := m.longReaderScroll+i
 		line := ""
@@ -142,10 +177,13 @@ func (m model) renderLongReaderPanel() string {
 		}
 		line = padANSIToWidth(fill.Render(" "+line), contentWidth, fill)
 		rail := "│"
-		if i == visible-1 {
+		switch {
+		case i == visible-1:
 			rail = "v"
+		case m.maxLongReaderScroll() > 0 && i < trackHeight && i >= thumbTop && i < thumbTop+thumbHeight:
+			rail = "█"
 		}
-		rows = append(rows, line+m.styles.system.Render(rail))
+		rows = append(rows, line+railStyle.Render(rail))
 	}
 	return m.chatBorderStyle().Width(m.width).Height(m.messageHeight()).Render(strings.Join(rows, "\n"))
 }
