@@ -456,15 +456,27 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 
 	if msg.Type == "coinflip_result" || msg.Type == "random_result" {
 		label := "[COIN FLIP]"
-		body := fmt.Sprintf("%s flipped a coin: %s", msg.User.Name, msg.Text)
+		action := msg.User.Name + " flipped a coin: "
+		outcome := msg.Text
 		if msg.Type == "random_result" {
 			label = "[RANDOM]"
-			body = fmt.Sprintf("%s rolled %s", msg.User.Name, msg.Text)
+			// Random results are daemon-generated as "MIN–MAX: RESULT".
+			// Keep the range with the user's coloured action and render only
+			// the final number in normal chat text.
+			if colon := strings.LastIndex(msg.Text, ": "); colon >= 0 {
+				action = msg.User.Name + " rolled " + msg.Text[:colon+2]
+				outcome = msg.Text[colon+2:]
+			} else {
+				action = msg.User.Name + " rolled: "
+			}
 		}
-		text := fmt.Sprintf("[%s] %s %s", msg.Time.Local().Format("15:04"), label, body)
+		userStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.User.Color)).Background(bg)
+		styled := normalBodyStyle.Render("["+msg.Time.Local().Format("15:04")+"] ") +
+			m.styles.accent.Render(label) + normalBodyStyle.Render(" ") +
+			userStyle.Render(action) + normalBodyStyle.Render(outcome)
 		var result []string
-		for _, line := range wrapText(text, max(1, contentWidth-2)) {
-			result = append(result, renderChatRow(rowFill, m.styles.accent.Render("  "+line), contentWidth))
+		for _, line := range wrapANSIHardLine(styled, max(1, contentWidth-2)) {
+			result = append(result, renderChatRow(rowFill, "  "+line, contentWidth))
 		}
 		return result
 	}
