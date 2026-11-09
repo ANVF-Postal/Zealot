@@ -295,6 +295,22 @@ func (s *server) handle(conn net.Conn) {
 		}
 
 		switch packet.Type {
+		case "coinflip":
+			result, err := newCoinflipResult(roomName, client.user)
+			if err != nil {
+				client.send(Packet{Type: "system", Room: roomName, Text: "Coin flip failed: could not obtain secure randomness.", Time: time.Now().UTC()})
+				continue
+			}
+			s.broadcastGameResult(roomName, client, result)
+
+		case "random":
+			result, err := newRandomResult(roomName, client.user, packet.Text)
+			if err != nil {
+				client.send(Packet{Type: "system", Room: roomName, Text: err.Error(), Time: time.Now().UTC()})
+				continue
+			}
+			s.broadcastGameResult(roomName, client, result)
+
 
 		case "letter":
 			// Letters are one-shot, multiline messages sent by stdin/pipes.
