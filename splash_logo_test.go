@@ -11,10 +11,10 @@ import (
 
 func TestSplashLogoCyclesOnOpenAndArtworkClick(t *testing.T) {
 	m := newMessageInteractionTestModel(110)
-	if len(splashLogos) != 14 {
-		t.Fatalf("expected all fourteen splash logos, got %d",len(splashLogos))
+	if len(splashLogos) != 20 {
+		t.Fatalf("expected all twenty splash logos, got %d",len(splashLogos))
 	}
-	wantRows := []int{7,8,6,7,7,8,7,7,4,8,14,8,5,7}
+	wantRows := []int{7,8,6,7,7,8,7,7,4,8,14,8,5,7,10,3,7,9,5,6}
 	for i,rows := range wantRows {
 		if len(splashLogos[i]) != rows {
 			t.Fatalf("logo %d has %d rows, want %d",i,len(splashLogos[i]),rows)
@@ -37,6 +37,12 @@ func TestSplashLogoCyclesOnOpenAndArtworkClick(t *testing.T) {
 		11:"                              ,,",
 		12:"    _/_/_/_/_/",
 		13:"M\"\"\"\"\"\"\"\"`M",
+		14:"@@@@@@@@",
+		15:" +-+-+-+-+-+-+",
+		16:" ________",
+		17:"__/\\\\",
+		18:" ______",
+		19:".%%%%%%",
 	} {
 		if !strings.HasPrefix(splashLogos[i][0],prefix) {
 			t.Fatalf("logo %d changed unexpectedly: %q",i,splashLogos[i][0])
@@ -205,8 +211,8 @@ func TestSplashLogoClippingRespectsScrollbarAndBlockColumns(t *testing.T) {
 }
 
 func TestSplashNewLogoShapesAndMiniVariant(t *testing.T) {
-	if got := len(splashLogos); got != 14 {
-		t.Fatalf("expected 14 splash logos, got %d",got)
+	if got := len(splashLogos); got != 20 {
+		t.Fatalf("expected 20 splash logos, got %d",got)
 	}
 	// Preserve the distinctive punctuation, whitespace, and backslashes
 	// in designs copied from the ASCII generators.
@@ -236,7 +242,7 @@ func TestSplashNewLogoShapesAndMiniVariant(t *testing.T) {
 	}
 }
 
-func TestSplashRandomizerNeverRepeatsWithFourteenLogos(t *testing.T) {
+func TestSplashRandomizerNeverRepeatsWithTwentyLogos(t *testing.T) {
 	m := newMessageInteractionTestModel(110)
 	seen := map[int]bool{m.splashLogoIndex:true}
 	for i:=0; i<500; i++ {
@@ -249,5 +255,41 @@ func TestSplashRandomizerNeverRepeatsWithFourteenLogos(t *testing.T) {
 	}
 	if len(seen)<5 {
 		t.Fatalf("randomizer did not visit enough designs: %v",seen)
+	}
+}
+
+func TestSplashLatestSixLogosRetainShapes(t *testing.T) {
+	if len(splashLogos) != 20 {
+		t.Fatalf("want 20 designs, got %d", len(splashLogos))
+	}
+	cases := []struct {
+		index, row int
+		contains string
+	}{
+		{14, 0, "@@@@@@@@"},
+		{15, 1, "|Z|e|a|l|o|t|"},
+		{16, 1, "(\"      \""},
+		{17, 8, "_\\///////////////"},
+		{18, 0, " ______"},
+		{19, 5, "................................................"},
+	}
+	for _, tc := range cases {
+		if !strings.Contains(splashLogos[tc.index][tc.row], tc.contains) {
+			t.Errorf("logo %d row %d missing %q: %q",
+				tc.index, tc.row, tc.contains, splashLogos[tc.index][tc.row])
+		}
+	}
+	for i := 14; i < 20; i++ {
+		for _, width := range []int{30, 80, 140} {
+			lines := splashLogoLayout(splashLogos[i], width)
+			if len(lines) != len(splashLogos[i]) {
+				t.Fatalf("logo %d lost rows at width %d", i, width)
+			}
+			for j, line := range lines {
+				if lipgloss.Width(line) > width {
+					t.Fatalf("logo %d row %d exceeds width %d", i, j, width)
+				}
+			}
+		}
 	}
 }
