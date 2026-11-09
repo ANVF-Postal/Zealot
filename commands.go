@@ -38,6 +38,26 @@ func (m *model) sendMessage(text string, replyTo string) bool {
 		return false
 	}
 	switch strings.ToLower(fields[0]) {
+	case "/long", "/spoiler":
+		body := strings.TrimSpace(strings.TrimPrefix(trimmed, fields[0]))
+		if body == "" {
+			m.appendMessage(Packet{Type: "system", Text: "Usage: " + strings.ToLower(fields[0]) + " message", Time: time.Now().UTC()})
+			return false
+		}
+		longMessage := strings.EqualFold(fields[0], "/long")
+		limit := maxMessage
+		if longMessage {
+			limit = maxLongMessage
+		}
+		if len([]rune(body)) > limit {
+			m.appendMessage(Packet{Type: "system", Text: fmt.Sprintf("Message exceeds the %d-character limit.", limit), Time: time.Now().UTC()})
+			return false
+		}
+		_ = m.client.send(Packet{
+			Type: "message", ReplyTo: replyTo, Room: m.room, User: m.user,
+			Text: body, Long: longMessage, Spoiler: !longMessage,
+		})
+		return true
 	case "/coinflip":
 		if len(fields) != 1 {
 			m.appendMessage(Packet{Type: "system", Text: "Usage: /coinflip", Time: time.Now().UTC()})
