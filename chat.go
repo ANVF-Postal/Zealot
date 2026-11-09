@@ -26,6 +26,7 @@ func (m model) renderMessageLines() []string {
  // or constructing terminal row strings. It is used for off-screen messages
  // so scroll geometry remains accurate while rendering stays viewport-bound.
 func (m model) renderPacketLineCount(msg Packet, width int) int {
+	msg = m.displayedMessage(msg)
 	if width < 1 {
 		return 1
 	}
@@ -438,6 +439,8 @@ func (m model) renderReplyBadgeForWidth(msg Packet, width int) string {
 }
 
 func (m model) renderPacketBaseLines(msg Packet, width int) []string {
+	original := msg
+	msg = m.displayedMessage(msg)
 	// The final interior column is reserved for the permanent scrollbar.
 	// When the side borders disappear at narrow widths, those two columns
 	// become available to message content.
@@ -448,8 +451,13 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 	rowFill := lipgloss.NewStyle().Width(contentWidth).Background(bg)
 	normalBodyStyle := lipgloss.NewStyle().Foreground(text).Background(bg)
 	bodyStyle := normalBodyStyle
+	if original.Long {
+		bodyStyle = bodyStyle.Foreground(lipgloss.Color(m.cfg.Theme.AccentColor))
+	} else if original.Spoiler && !m.revealedSpoilers[original.ID] {
+		bodyStyle = bodyStyle.Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor))
+	}
 	hovered := msg.Type == "message" && msg.ID != "" && (msg.ID == m.hoveredMessageID || msg.ID == m.highlightedMessageID)
-	if hovered {
+	if hovered && !isSpecialMessage(original) {
 		hoverColor := lipgloss.Color(m.cfg.Theme.HoverTextColor)
 		bodyStyle = bodyStyle.Foreground(hoverColor)
 	}
