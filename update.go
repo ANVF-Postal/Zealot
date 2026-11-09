@@ -587,6 +587,36 @@ func (m model) Update(
 				return m, nil
 			}
 		}
+		if mouse.Button == tea.MouseLeft && m.longReaderScrollbarContains(mouse.X, mouse.Y) {
+			// Match main chat: click arrows to step and hold them to repeat;
+			// drag the thumb or jump by clicking anywhere on its track.
+			if m.maxLongReaderScroll() == 0 {
+				return m, nil
+			}
+			top, thumbHeight, trackHeight := m.longReaderScrollbarThumb()
+			trackY := min(max(0, mouse.Y-3), trackHeight-1)
+			switch {
+			case mouse.Y == 2:
+				m.longReaderScrollbarHoldDirection = -1
+				m.longReaderScrollbarHoldGeneration++
+				m.longReaderScroll -= 3
+				m.clampLongReaderScroll()
+				return m, m.longReaderScrollbarHoldCmd(m.longReaderScrollbarHoldGeneration)
+			case mouse.Y == 1+m.messageHeight():
+				m.longReaderScrollbarHoldDirection = 1
+				m.longReaderScrollbarHoldGeneration++
+				m.longReaderScroll += 3
+				m.clampLongReaderScroll()
+				return m, m.longReaderScrollbarHoldCmd(m.longReaderScrollbarHoldGeneration)
+			case trackY >= top && trackY < top+thumbHeight:
+				m.longReaderDragging = true
+				m.longReaderDragOffset = trackY-top
+				return m, nil
+			default:
+				m.setLongReaderScrollFromTrack(trackY)
+				return m, nil
+			}
+		}
 		if !m.usersOpen && !m.splashOpen && mouse.Button == tea.MouseLeft && m.scrollbarContains(mouse.X, mouse.Y) && m.maxScroll() > 0 {
 			top, thumbHeight, trackHeight := m.scrollbarThumb()
 			trackY := mouse.Y - 3 // first draggable track row; arrows occupy y=2 and the final row
@@ -678,6 +708,9 @@ func (m model) Update(
 		m.splashScrollDragging = false
 		m.splashScrollbarHoldDirection = 0
 		m.splashScrollbarHoldGeneration++
+		m.longReaderDragging = false
+		m.longReaderScrollbarHoldDirection = 0
+		m.longReaderScrollbarHoldGeneration++
 		m.scrollDragging = false
 		m.scrollbarHoldDirection = 0
 		m.scrollbarHoldGeneration++
@@ -735,6 +768,20 @@ func (m model) Update(
 				return m, nil
 			}
 			return m, m.splashScrollbarHoldCmd(mouse.generation)
+		}
+		return m, nil
+	case longReaderScrollbarHoldMsg:
+		if m.longReader != nil &&
+			mouse.generation == m.longReaderScrollbarHoldGeneration &&
+			m.longReaderScrollbarHoldDirection != 0 {
+			before := m.longReaderScroll
+			m.longReaderScroll += m.longReaderScrollbarHoldDirection * 3
+			m.clampLongReaderScroll()
+			if m.longReaderScroll == before {
+				m.longReaderScrollbarHoldDirection = 0
+				return m, nil
+			}
+			return m, m.longReaderScrollbarHoldCmd(mouse.generation)
 		}
 		return m, nil
 	case scrollbarHoldMsg:
@@ -1172,6 +1219,12 @@ func (m *model) applyMouseMotion(x, y int) {
 		target := y - 3 - m.usersScrollDragOffset
 		target = min(max(target, 0), max(0, trackHeight-thumbHeight))
 		m.setUsersScrollFromThumbTop(target)
+		return
+	}
+	if m.longReader != nil && m.longReaderDragging {
+		_, thumbHeight, trackHeight := m.longReaderScrollbarThumb()
+		trackY := y-3-m.longReaderDragOffset
+		m.setLongReaderScrollFromThumbTop(min(max(0,trackY),max(0,trackHeight-thumbHeight)))
 		return
 	}
 	if m.scrollDragging && !m.usersOpen && !m.splashOpen {
