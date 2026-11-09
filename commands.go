@@ -38,6 +38,24 @@ func (m *model) sendMessage(text string, replyTo string) bool {
 		return false
 	}
 	switch strings.ToLower(fields[0]) {
+	case "/coinflip":
+		if len(fields) != 1 {
+			m.appendMessage(Packet{Type: "system", Text: "Usage: /coinflip", Time: time.Now().UTC()})
+			return false
+		}
+		_ = m.client.send(Packet{Type: "coinflip", Room: m.room})
+		return true
+	case "/random":
+		if len(fields) != 2 {
+			m.appendMessage(Packet{Type: "system", Text: "Usage: /random MIN-MAX", Time: time.Now().UTC()})
+			return false
+		}
+		if _, _, err := parseRandomRange(fields[1]); err != nil {
+			m.appendMessage(Packet{Type: "system", Text: err.Error(), Time: time.Now().UTC()})
+			return false
+		}
+		_ = m.client.send(Packet{Type: "random", Room: m.room, Text: fields[1]})
+		return true
 	case "/rb":
 		body := strings.TrimSpace(strings.TrimPrefix(trimmed, fields[0]))
 		if body == "" {
