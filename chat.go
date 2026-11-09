@@ -454,6 +454,21 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 		bodyStyle = bodyStyle.Foreground(hoverColor)
 	}
 
+	if msg.Type == "coinflip_result" || msg.Type == "random_result" {
+		label := "[COIN FLIP]"
+		body := fmt.Sprintf("%s flipped a coin: %s", msg.User.Name, msg.Text)
+		if msg.Type == "random_result" {
+			label = "[RANDOM]"
+			body = fmt.Sprintf("%s rolled %s", msg.User.Name, msg.Text)
+		}
+		text := fmt.Sprintf("[%s] %s %s", msg.Time.Local().Format("15:04"), label, body)
+		var result []string
+		for _, line := range wrapText(text, max(1, contentWidth-2)) {
+			result = append(result, renderChatRow(rowFill, m.styles.accent.Render("  "+line), contentWidth))
+		}
+		return result
+	}
+
 	if msg.Type == "letter" {
 		header := fmt.Sprintf("  [%s] sent a letter:", msg.User.Name)
 		lines := []string{renderChatRow(rowFill, m.styles.system.Render(header), contentWidth)}
