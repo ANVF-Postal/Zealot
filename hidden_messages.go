@@ -97,12 +97,11 @@ func (m *model) prepareLongReader() {
 	if m.longReader == nil || m.longReaderWidth == chatContentWidth(m.width) {
 		return
 	}
-	width := max(1, chatContentWidth(m.width)-2)
-	lines := make([]string, 0)
-	for _, line := range strings.Split(terminalSafeText(m.longReader.Text), "\n") {
-		line = strings.ReplaceAll(line, "\t", "    ")
-		lines = append(lines, wrapANSIHardLine(line, width)...)
-	}
+	// Use the same word-aware wrapping as normal chat messages. Explicit
+	// paragraph breaks remain visible, including blank lines.
+	width := max(1, chatContentWidth(m.width)-1)
+	text := strings.ReplaceAll(terminalSafeText(m.longReader.Text), "\t", "    ")
+	lines := wrapText(text, width)
 	m.longReaderLines = lines
 	m.longReaderWidth = chatContentWidth(m.width)
 	m.clampLongReaderScroll()
