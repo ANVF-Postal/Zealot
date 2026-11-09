@@ -344,9 +344,17 @@ func (s *server) handle(conn net.Conn) {
 				continue
 			}
 
-			if len([]rune(text)) > maxMessage {
-				runes := []rune(text)
-				text = string(runes[:maxMessage])
+			// The daemon enforces the special type and the corresponding
+			// limit. Other chat messages retain the original 4,000-rune cap.
+			longMessage := packet.Long && !packet.Spoiler
+			spoilerMessage := packet.Spoiler && !packet.Long
+			limit := maxMessage
+			if longMessage {
+				limit = maxLongMessage
+			}
+			if len([]rune(text)) > limit {
+				client.send(Packet{Type: "system", Room: roomName, Text: "Message exceeds its allowed length.", Time: time.Now().UTC()})
+				continue
 			}
 
 			message := Packet{
@@ -360,6 +368,14 @@ func (s *server) handle(conn net.Conn) {
 				Rainbow:      packet.Rainbow,
 				RainbowPhase: packet.RainbowPhase,
 				XKeyscore:    packet.XKeyscore,
+				Long:         longMessage,
+				Spoiler:      spoilerMessage,
+			}
+			if longMessage || spoilerMessage {
+				// Prevent visual-effect flags from overriding the special
+				// message's hidden/interactive presentation.
+				message.Rainbow = false
+				message.XKeyscore = 0
 			}
 
 			s.mu.Lock()
