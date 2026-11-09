@@ -148,7 +148,10 @@ func TestEscapeFromThemeBrowserRotatesSplashArtwork(t *testing.T) {
 func TestSplashLogoArtworkMaintainsFixedBlockAlignment(t *testing.T) {
 	for logoIndex, logo := range splashLogos {
 		// A trailing 100-space generator pad must never shift the logo.
-		const width = 110
+		m := newMessageInteractionTestModel(112)
+		m.splashOpen = true
+		m.splashLogoIndex = logoIndex
+		width := max(1,chatInnerWidth(m.width)-1)
 		rows := splashLogoLayout(logo,width)
 		if len(rows)!=len(logo) {
 			t.Fatalf("logo %d row count changed",logoIndex)
@@ -164,9 +167,6 @@ func TestSplashLogoArtworkMaintainsFixedBlockAlignment(t *testing.T) {
 				t.Fatalf("logo %d row %d extends past viewport",logoIndex,rowIndex)
 			}
 		}
-		m := newMessageInteractionTestModel(112)
-		m.splashOpen = true
-		m.splashLogoIndex = logoIndex
 		rendered := m.splashRows()
 		for i,row := range rows {
 			got := stripANSISequences(rendered[i+1])
