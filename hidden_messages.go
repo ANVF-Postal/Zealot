@@ -126,7 +126,7 @@ func (m model) renderLongReaderPanel() string {
 	width := max(1, chatInnerWidth(m.width))
 	contentWidth := max(1, width-1)
 	height := max(1, m.messageHeight())
-	readerName := strings.NewReplacer("\\n", " ", "\\r", " ", "\\t", " ").Replace(terminalSafeText(m.longReader.User.Name))
+	readerName := strings.NewReplacer("\n", " ", "\r", " ", "\t", " ").Replace(terminalSafeText(m.longReader.User.Name))
 	header := m.styles.accent.Render("  [LONG MESSAGE] " + readerName + " · Esc: close")
 	header = padANSIToWidth(header, contentWidth, fill)
 	rows := []string{header + m.styles.system.Render("^")}
