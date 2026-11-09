@@ -66,6 +66,11 @@ type model struct {
 	client *wireClient
 
 	messages []Packet
+	revealedSpoilers map[string]bool
+	longReader *Packet
+	longReaderScroll int
+	longReaderLines []string
+	longReaderWidth int
 	messageByID map[string]Packet
 	replyIDsByMessageID map[string][]string
 	messageRowsByID map[string]messageRowRange
