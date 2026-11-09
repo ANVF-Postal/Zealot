@@ -103,6 +103,10 @@ func (m model) View() tea.View {
 	// Alternate panels
 	// -------------------------------------------------------------------------
 
+	if m.longReader != nil {
+		return m.renderViewWithChat(header, m.renderLongReaderPanel(), false, true)
+	}
+
 	if m.usersOpen {
 		// The existing chat pane becomes the roster. The heading uses a clean
 		// full-width background row; the scrollbar occupies the far-right
