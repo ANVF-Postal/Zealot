@@ -106,28 +106,55 @@ func (m model) activeSplashLogo() []string {
 	return splashLogos[min(max(0,m.splashLogoIndex),len(splashLogos)-1)]
 }
 
-// splashLogoContains follows the same centered, truncated rows shown on
-// screen, accounting for splash scrolling and the chat content gutter.
+// splashLogoLayout keeps each logo as one rectangular block. Centering each
+// individual row shifts slanted lettering and breaks the ASCII art. Ignore
+// only the generator's trailing padding when measuring the block.
+func splashLogoLayout(logo []string, width int) []string {
+	width = max(1, width)
+	blockWidth := 0
+	for _, line := range logo {
+		blockWidth = max(blockWidth, lipgloss.Width(strings.TrimRight(line, " ")))
+	}
+	left := max(0, (width-blockWidth)/2)
+	lines := make([]string, 0, len(logo))
+	for _, line := range logo {
+		line = strings.TrimRight(line, " ")
+		lines = append(lines, strings.Repeat(" ", left)+truncateANSI(line, max(0,width-left)))
+	}
+	return lines
+}
+
+// splashLogoContains uses exactly the same block geometry as the renderer,
+// accounting for scrolling and the reserved scrollbar column.
 func (m model) splashLogoContains(x, y int) bool {
 	if !m.splashOpen || m.themesOpen {
 		return false
 	}
-	width := chatContentWidth(m.width)
-	for i, line := range m.activeSplashLogo() {
-		rowY := 3+i-m.splashScroll // first splash row is blank
+	logo := splashLogoLayout(m.activeSplashLogo(), max(1,chatInnerWidth(m.width)-1))
+	for i, line := range logo {
+		rowY := 3+i-m.splashScroll
 		if y != rowY || y < 2 || y >= 2+m.splashPanelHeight() {
 			continue
 		}
-		visible := truncateANSI(strings.TrimRight(line, " "),width)
-		startX := 1+max(0,(width-lipgloss.Width(visible))/2)
-		return x >= startX && x < startX+lipgloss.Width(visible)
+		// Exclude the blank padding before the logo, but preserve leading
+		// spaces within the artwork itself.
+		blockStart := 1
+		for j := range logo {
+			raw := strings.TrimRight(m.activeSplashLogo()[j]," ")
+			if lipgloss.Width(raw) > 0 {
+				blockStart = 1+lipgloss.Width(line)-lipgloss.Width(strings.TrimLeft(line," "))
+				_ = blockStart
+				break
+			}
+		}
+		return x >= 1 && x < 1+lipgloss.Width(line) && x < 1+max(1,chatInnerWidth(m.width)-1)
 	}
 	return false
 }
 
 func (m model) splashRows() []string {
 	logo := m.activeSplashLogo()
-	width := chatContentWidth(m.width)
+	width := max(1,chatInnerWidth(m.width)-1)
 	center := func(value string) string {
 		value = truncateANSI(value, width)
 		padding := max(0, (width-lipgloss.Width(value))/2)
@@ -140,10 +167,8 @@ func (m model) splashRows() []string {
 	}
 
 	rows := []string{""}
-	for _, line := range logo {
-		// Each design is kept at its original width, then centered or
-		// truncated to fit the current terminal.
-		rows = append(rows, m.styles.accent.Render(center(strings.TrimRight(line, " "))))
+	for _, line := range splashLogoLayout(logo,width) {
+		rows = append(rows, m.styles.accent.Render(line))
 	}
 	rows = append(rows, "")
 	rows = append(rows, m.styles.app.Render(center(appVersion)))
