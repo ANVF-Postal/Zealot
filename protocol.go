@@ -34,5 +34,7 @@ type Packet struct {
 	Rainbow     bool      `json:"rainbow,omitempty"`
 	RainbowPhase float64   `json:"rainbow_phase,omitempty"`
 	XKeyscore    int       `json:"xkeyscore,omitempty"`
+	Long         bool      `json:"long,omitempty"`
+	Spoiler      bool      `json:"spoiler,omitempty"`
 	Users       []User    `json:"users,omitempty"`
 }
