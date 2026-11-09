@@ -101,11 +101,17 @@ func TestSplashLogoClickRespectsScrollAndTerminalWidth(t *testing.T) {
 		}
 		m.width = 28
 		m.splashScroll = 0
-		if !m.splashLogoContains(2,3) {
-			t.Fatalf("logo %d narrow terminal cannot click visible truncated logo",logoIndex)
+		narrowWidth := chatContentWidth(m.width)
+		narrowRows := splashLogoLayout(m.activeSplashLogo(),narrowWidth)
+		narrowLeft := splashLogoLeftPadding(m.activeSplashLogo(),narrowWidth)
+		// Test an actual visible cell: compact logos are centered, so
+		// a hard-coded x=2 may be outside their artwork.
+		clickX := narrowLeft + min(2,max(0,lipgloss.Width(narrowRows[0])-narrowLeft-1))
+		if !m.splashLogoContains(clickX,3) {
+			t.Fatalf("logo %d narrow terminal rejected a visible artwork cell at x=%d",logoIndex,clickX)
 		}
-		if m.splashLogoContains(28,3) {
-			t.Fatalf("logo %d narrow terminal hitbox extends beyond visible logo",logoIndex)
+		if m.splashLogoContains(m.chatScrollbarX(),3) {
+			t.Fatalf("logo %d narrow terminal includes scrollbar in artwork hitbox",logoIndex)
 		}
 		m.width = 100
 	}
