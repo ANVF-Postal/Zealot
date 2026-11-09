@@ -200,12 +200,18 @@ func (m model) renderLongReaderPanel() string {
 	header = truncateANSI(m.styles.accent.Render(header), headerWidth)
 	header = padANSIToWidth(header, headerWidth, fill)
 	rows := []string{header + m.styles.accent.Render(closeText) + railStyle.Render("^")}
+	thumbTop, thumbHeight, trackHeight := m.longReaderScrollbarThumb()
+	// The spacer is a real row in the scrollbar track. It must receive
+	// the first thumb cell when the reader is scrolled to the top, just as
+	// main chat draws its first track cell immediately below the top arrow.
 	if height > 1 {
-		// One blank row between the header and the body.
-		rows = append(rows, padANSIToWidth("", contentWidth, fill)+railStyle.Render("│"))
+		spacerRail := "│"
+		if m.maxLongReaderScroll() > 0 && thumbTop == 0 {
+			spacerRail = "█"
+		}
+		rows = append(rows, padANSIToWidth("", contentWidth, fill)+railStyle.Render(spacerRail))
 	}
 	visible := max(0, height-len(rows))
-	thumbTop, thumbHeight, trackHeight := m.longReaderScrollbarThumb()
 	for i := 0; i < visible; i++ {
 		index := m.longReaderScroll+i
 		line := ""
@@ -217,9 +223,9 @@ func (m model) renderLongReaderPanel() string {
 		switch {
 		case i == visible-1:
 			rail = "v"
-		case m.maxLongReaderScroll() > 0 && i < trackHeight && i >= thumbTop && i < thumbTop+thumbHeight:
+		case m.maxLongReaderScroll() > 0 && i+1 < trackHeight && i+1 >= thumbTop && i+1 < thumbTop+thumbHeight:
 			rail = "█"
-		case i >= trackHeight:
+		case i+1 >= trackHeight:
 			rail = " "
 		}
 		rows = append(rows, line+railStyle.Render(rail))
