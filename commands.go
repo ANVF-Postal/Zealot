@@ -17,6 +17,7 @@ func (m *model) sendCurrentMessage() {
 
 	sent := m.sendMessage(text, m.replyTargetID)
 	m.input.Reset()
+	m.input.CharLimit = maxMessage
 	if sent && m.replyTargetID != "" {
 		m.cancelReply()
 	}
