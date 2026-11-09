@@ -55,6 +55,7 @@ func (m model) Update(
 		m.themeDividerDragging = false
 		m.stopThemeScrollbarInteractions()
 		m.resizeInput()
+		if m.longReader != nil { m.prepareLongReader() }
 		if oldWidth != m.width || !m.renderCacheValid {
 			m.rebuildMessageCache()
 		}
@@ -288,6 +289,16 @@ func (m model) Update(
 
 	switch mouse := msg.(type) {
 	case tea.MouseClickMsg:
+		if m.longReader != nil {
+			// Clicking the reader heading returns to chat; other clicks
+			// cannot accidentally activate the composer or message links.
+			if mouse.Button == tea.MouseLeft && mouse.Y <= 2 {
+				m.longReader = nil
+				m.longReaderLines = nil
+				m.refreshMessageHover()
+			}
+			return m, nil
+		}
 		m.lastMouseX = mouse.X
 		m.lastMouseY = mouse.Y
 		m.mousePositionKnown = true
@@ -609,6 +620,16 @@ func (m model) Update(
 					return m, m.navigateToMessage(targetID)
 				}
 				if id := m.messageIDAt(mouse.X, mouse.Y); id != "" {
+					if packet, ok := m.messageByID[id]; ok {
+						if packet.Long {
+							m.openLongReader(packet)
+							return m, nil
+						}
+						if packet.Spoiler && !m.revealedSpoilers[id] {
+							m.revealSpoiler(id)
+							return m, nil
+						}
+					}
 					m.beginReply(id)
 					return m, nil
 				}
@@ -725,6 +746,14 @@ func (m model) Update(
 	// -------------------------------------------------------------------------
 
 	if mouseMsg, ok := msg.(tea.MouseWheelMsg); ok {
+		if m.longReader != nil {
+			switch mouseMsg.Button {
+			case tea.MouseWheelUp: m.longReaderScroll -= 3
+			case tea.MouseWheelDown: m.longReaderScroll += 3
+			}
+			m.clampLongReaderScroll()
+			return m, nil
+		}
 		if m.themesOpen {
 			delta := 0
 			switch mouseMsg.Button {
@@ -779,6 +808,26 @@ func (m model) Update(
 	handledNewline := false
 
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
+		if m.longReader != nil {
+			switch keyMsg.Keystroke() {
+			case "esc", "escape":
+				m.longReader = nil
+				m.longReaderLines = nil
+				m.refreshMessageHover()
+			case "up", "k": m.longReaderScroll--
+			case "down", "j": m.longReaderScroll++
+			case "pgup": m.longReaderScroll -= m.longReaderVisibleHeight()
+			case "pgdown": m.longReaderScroll += m.longReaderVisibleHeight()
+			case "home", "ctrl+home": m.longReaderScroll = 0
+			case "end", "ctrl+end": m.longReaderScroll = m.maxLongReaderScroll()
+			case "ctrl+c", "ctrl+q":
+				m.sendTyping(false)
+				m.quitting = true
+				return m, tea.Quit
+			}
+			m.clampLongReaderScroll()
+			return m, nil
+		}
 		if m.themesOpen {
 			if m.themePacking {
 				if m.themePackNaming {
@@ -1009,6 +1058,12 @@ func (m model) Update(
 
 	if !handledNewline {
 		m.input, inputCmd = m.input.Update(msg)
+	}
+	// Raise the composer cap only while writing a /long message.
+	if strings.HasPrefix(strings.ToLower(m.input.Value()), "/long ") {
+		m.input.CharLimit = maxLongMessage + len("/long ")
+	} else {
+		m.input.CharLimit = maxMessage
 	}
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok && m.replyTargetID != "" && m.input.Value() == "" {
 		if keyMsg.String() == "backspace" || keyMsg.String() == "delete" {
