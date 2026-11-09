@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"charm.land/lipgloss/v2"
 )
 
 func TestRandomCommandRangeValidation(t *testing.T) {
@@ -153,5 +155,37 @@ func TestRandomResultNumberIsWithinRequestedRange(t *testing.T) {
 		if len(chunks)!=2 { t.Fatalf("malformed result: %q",p.Text) }
 		n, err := strconv.ParseInt(chunks[1],10,64)
 		if err!=nil || n<200 || n>250 { t.Fatalf("out of range: %q (%v)",p.Text,err) }
+	}
+}
+
+func TestGameResultColorsFollowUsernameAndTheme(t *testing.T) {
+	m := newMessageInteractionTestModel(120)
+	user := User{Name: "Postal", Color: "#FF3399"}
+	cases := []struct {
+		kind, body, action, outcome, label string
+	}{
+		{"coinflip_result", "Heads", "Postal flipped a coin: ", "Heads", "[COIN FLIP]"},
+		{"random_result", "1–100: 42", "Postal rolled 1–100: ", "42", "[RANDOM]"},
+	}
+	bg := m.messageBackground(Packet{Type: "coinflip_result", User: user})
+	userStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(user.Color)).Background(bg)
+	normalStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.TextColor)).Background(bg)
+	for _, tc := range cases {
+		packet := Packet{Type: tc.kind, User: user, Text: tc.body, Time: time.Now().UTC()}
+		rows := m.renderPacketBaseLines(packet, m.width)
+		rendered := strings.Join(rows, "\n")
+		for _, segment := range []string{
+			m.styles.accent.Render(tc.label),
+			userStyle.Render(tc.action),
+			normalStyle.Render(tc.outcome),
+		} {
+			if !strings.Contains(rendered, segment) {
+				t.Errorf("%s missing styled segment %q in %q", tc.kind, segment, rendered)
+			}
+		}
+		plain := stripANSISequences(rendered)
+		if !strings.Contains(plain, tc.action+tc.outcome) {
+			t.Errorf("%s lost its content: %q", tc.kind, plain)
+		}
 	}
 }
