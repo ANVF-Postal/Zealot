@@ -565,7 +565,7 @@ func (m model) Update(
 				return m, nil
 			}
 		}
-		if m.commandsOpen && mouse.Button == tea.MouseLeft && mouse.X == m.chatScrollbarX() {
+		if m.commandsOpen && mouse.Button == tea.MouseLeft && mouse.X == m.chatScrollbarX() && mouse.Y >= 2 && mouse.Y <= 1+m.messageHeight() {
 			if m.maxCommandsScroll()==0 { return m,nil }
 			top,thumb,track:=m.commandsScrollbarThumb()
 			trackY:=min(max(0,mouse.Y-3),track-1)
