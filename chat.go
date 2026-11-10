@@ -462,10 +462,32 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 		bodyStyle = bodyStyle.Foreground(hoverColor)
 	}
 
-	if msg.Type == "coinflip_result" || msg.Type == "random_result" {
+	if msg.Type == "fortune_result" {
+		prefix := "Fortune: "
+		if msg.FortuneTo != "" {
+			prefix = "Fortune to @" + terminalSafeText(msg.FortuneTo) + ": "
+		}
+		styled := normalBodyStyle.Render("["+msg.Time.Local().Format("15:04")+"] ") +
+			m.styles.accent.Render(prefix) + normalBodyStyle.Render(terminalSafeText(msg.Text))
+		var result []string
+		for _, line := range wrapANSIHardLine(styled, max(1, contentWidth-2)) {
+			result = append(result, renderChatRow(rowFill, "  "+line, contentWidth))
+		}
+		return result
+	}
+
+	if msg.Type == "coinflip_result" || msg.Type == "random_result" || msg.Type == "roll_result" {
 		label := "[COIN FLIP]"
 		action := msg.User.Name + " flipped a coin: "
 		outcome := msg.Text
+		if msg.Type == "roll_result" {
+			label = "[ROLL]"
+			action = msg.User.Name + " rolled "
+			if colon := strings.LastIndex(msg.Text, ": "); colon >= 0 {
+				action += msg.Text[:colon+2]
+				outcome = msg.Text[colon+2:]
+			}
+		}
 		if msg.Type == "random_result" {
 			label = "[RANDOM]"
 			// Random results are daemon-generated as "MIN–MAX: RESULT".
