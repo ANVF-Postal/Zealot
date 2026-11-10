@@ -28,6 +28,13 @@ type model struct {
 
 	splashOpen                       bool
 	splashLogoIndex                  int
+	commandsOpen bool
+	commandsTab int
+	commandsScroll int
+	commandsDragging bool
+	commandsDragOffset int
+	commandsHoldDirection int
+	commandsHoldGeneration int
 	themesOpen                       bool
 	themeEntries                     []themeListEntry
 	themeSelected                    int
