@@ -312,6 +312,28 @@ func (s *server) handle(conn net.Conn) {
 			s.broadcastGameResult(roomName, client, result)
 
 
+		case "roll":
+			result, err := newRollResult(roomName, client.user, packet.Text)
+			if err != nil {
+				client.send(Packet{Type: "system", Room: roomName, Text: err.Error(), Time: time.Now().UTC()})
+				continue
+			}
+			s.broadcastGameResult(roomName, client, result)
+
+		case "fortune":
+			target, valid := s.resolveFortuneTarget(roomName, packet.Text)
+			if !valid {
+				client.send(Packet{Type: "system", Room: roomName, Text: "Usage: /fortune [@user] (user must be online in this room)", Time: time.Now().UTC()})
+				continue
+			}
+			result, err := newFortuneResult(roomName, client.user, target)
+			if err != nil {
+				client.send(Packet{Type: "system", Room: roomName, Text: err.Error(), Time: time.Now().UTC()})
+				continue
+			}
+			s.broadcastGameResult(roomName, client, result)
+
+
 		case "letter":
 			// Letters are one-shot, multiline messages sent by stdin/pipes.
 			// Unlike regular chat, their whitespace and line breaks are meaningful,
