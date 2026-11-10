@@ -163,6 +163,11 @@ func (m model) View() tea.View {
 		return m.renderViewWithChat(header, chatBox, true, false)
 	}
 
+	if m.commandsOpen {
+		chatBox := m.renderCommandsBrowser()
+		return m.renderViewWithChat(header, chatBox, false, true)
+	}
+
 	if m.themesOpen {
 		chatBox := m.renderThemeBrowser()
 		return m.renderViewWithChat(header, chatBox, false, true)
@@ -512,7 +517,7 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	lead := " " + m.status + " • "
 	scrollLabel := "PgUp/PgDn"
 	scrollTail := ": Scroll • Ctrl+C: "
-	if usersOpen || splashOpen || m.longReader != nil {
+	if usersOpen || splashOpen || m.longReader != nil || m.commandsOpen {
 		// Keep the secondary views' keyboard shortcut wording consistent.
 		scrollTail = ": Scroll • Esc: close • Ctrl+C: "
 	}
