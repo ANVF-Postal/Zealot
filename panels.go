@@ -250,7 +250,7 @@ func splashLogoLayout(logo []string, width int) []string {
 // Click detection uses the same block origin, clipping and viewport scroll
 // as the renderer, without treating the outside centering margin as artwork.
 func (m model) splashLogoContains(x, y int) bool {
-	if !m.splashOpen || m.themesOpen {
+	if !m.splashOpen || m.themesOpen || m.commandsOpen {
 		return false
 	}
 	width := chatContentWidth(m.width) // excludes splash scrollbar
@@ -301,17 +301,31 @@ func (m model) splashRows() []string {
 	rows = append(rows, m.styles.app.Render(center("History Enabled: "+historyStatus)))
 	rows = append(rows, m.styles.app.Render(center(fmt.Sprintf("Online users: %d", m.onlineCount))))
 	rows = append(rows, "")
+	rows = append(rows, m.styles.accent.Render(center("[COMMANDS]")))
 	rows = append(rows, m.styles.accent.Render(center("[THEMES]")))
 	return rows
 }
 
 // splashThemesButtonContains reports whether a click lands on the centered
 // [THEMES] action, accounting for the splash's vertical scroll offset.
+func (m model) splashCommandsButtonContains(x, y int) bool {
+	button := "[COMMANDS]"
+	row := len(m.splashRows())-2
+	screenY := 2+row-m.splashScroll
+	left := 0
+	if !narrowBordersHidden(m.width) { left = 1 }
+	startX := left+max(0,(chatContentWidth(m.width)-lipgloss.Width(button))/2)
+	return m.splashOpen && !m.themesOpen && !m.commandsOpen &&
+		y == screenY && x >= startX && x < startX+lipgloss.Width(button)
+}
+
 func (m model) splashThemesButtonContains(x, y int) bool {
 	button := "[THEMES]"
 	row := len(m.splashRows()) - 1
 	screenY := 2 + row - m.splashScroll // chat pane's top border and first content row
-	startX := 1 + max(0, (chatContentWidth(m.width)-lipgloss.Width(button))/2)
+	left := 0
+	if !narrowBordersHidden(m.width) { left = 1 }
+	startX := left+max(0, (chatContentWidth(m.width)-lipgloss.Width(button))/2)
 	return y == screenY && x >= startX && x < startX+lipgloss.Width(button)
 }
 
