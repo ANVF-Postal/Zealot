@@ -161,7 +161,7 @@ func (m model) commandsTabAt(x, y int) int {
 	}
 	left := 0
 	if !narrowBordersHidden(m.width) { left = 1 }
-	_, ranges := m.commandsTabsLine()
+	_, _, ranges := m.commandsTabsLine()
 	for index, hit := range ranges {
 		if hit.End > hit.Start && x-left >= hit.Start && x-left < hit.End {
 			return index
