@@ -467,8 +467,12 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 		if msg.FortuneTo != "" {
 			prefix = terminalSafeText(msg.FortuneTo) + ", your fortune is: "
 		}
+		fortuneAccent := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).
+			Background(bg).
+			Bold(true)
 		styled := normalBodyStyle.Render("["+msg.Time.Local().Format("15:04")+"] ") +
-			m.styles.accent.Render(prefix) + normalBodyStyle.Render(terminalSafeText(msg.Text))
+			fortuneAccent.Render(prefix) + normalBodyStyle.Render(terminalSafeText(msg.Text))
 		var result []string
 		for _, line := range wrapANSIHardLine(styled, max(1, contentWidth-2)) {
 			result = append(result, renderChatRow(rowFill, "  "+line, contentWidth))
