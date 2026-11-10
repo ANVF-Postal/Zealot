@@ -75,31 +75,108 @@ func (m *model) selectCommandsTab(index int) {
 	m.commandsHoldGeneration++
 }
 
-// Folder tabs have a top rim and a labelled face. The active folder joins
-// the handbook content; muted inactive folders sit in the background.
+// Folder tabs use the full width when it is available. On compact
+// terminals the selected folder stays visible while a fixed, opaque
+// < | > overlay covers the right end of the strip (never the scrollbar).
+// The hitboxes below are derived from these same visible cell positions.
+const commandsTabNavigation = "< | >"
+
+func commandsTabWidth(label string) int {
+	return lipgloss.Width(label) + 2 // folder sides
+}
+
+func (m model) commandsTabsOverflow() bool {
+	// Match the actual folder artwork, including the leading inset cell.
+	total := 1
+	for _, label := range []string{" CHAT ", " USER ", " LAUNCH "} {
+		total += commandsTabWidth(label)
+	}
+	return total > chatContentWidth(m.width)
+}
+
+func (m model) commandsNavigationAt(x, y int) int {
+	if !m.commandsOpen || !m.commandsTabsOverflow() || (y != 2 && y != 3) {
+		return 0
+	}
+	left := 0
+	if !narrowBordersHidden(m.width) {
+		left = 1
+	}
+	contentWidth := chatContentWidth(m.width)
+	overlayWidth := min(lipgloss.Width(commandsTabNavigation), contentWidth)
+	start := left + contentWidth - overlayWidth
+	switch x {
+	case start:
+		return -1
+	case start + overlayWidth - 1:
+		return 1
+	default:
+		return 0
+	}
+}
+
+// commandsTabsLine returns the two folder-art rows and their *visible*
+// per-tab hitboxes. When compact, the controls are painted last over the
+// rightmost cells, using the configured background to hide clipped tabs.
 func (m model) commandsTabsLine() (top, face string, ranges []messageBodyRange) {
 	bg := lipgloss.Color(m.cfg.Theme.Background)
 	active := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).Background(bg).Bold(true)
 	inactive := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).Background(bg)
 	labels := []string{" CHAT ", " USER ", " LAUNCH "}
-	ranges = make([]messageBodyRange,len(labels))
-	used := 1
-	top = " "
-	face = " "
-	contentWidth := chatContentWidth(m.width)
-	for i,label := range labels {
-		tabWidth := lipgloss.Width(label)+2
-		if used+tabWidth > contentWidth { break }
-		style := inactive
-		rim := "┌"+strings.Repeat("─",lipgloss.Width(label))+"┐"
-		if i==m.commandsTab {
-			style=active
-			rim="╭"+strings.Repeat("─",lipgloss.Width(label))+"╮"
+	ranges = make([]messageBodyRange, len(labels))
+	width := chatContentWidth(m.width)
+	overflow := m.commandsTabsOverflow()
+	overlayWidth := 0
+	if overflow {
+		overlayWidth = min(lipgloss.Width(commandsTabNavigation), width)
+	}
+	visibleWidth := max(0, width-overlayWidth)
+
+	// Scroll the *tab strip*, not its content. As the user advances,
+	// show the selected folder even if earlier folders must slide away.
+	first := 0
+	if overflow {
+		used := 1
+		for i := 0; i <= m.commandsTab && i < len(labels); i++ {
+			used += commandsTabWidth(labels[i])
 		}
-		top += style.Render(rim)
-		face += style.Render("│"+label+"│")
-		ranges[i]=messageBodyRange{Start:used,End:used+tabWidth}
-		used+=tabWidth
+		for used > visibleWidth && first < m.commandsTab {
+			used -= commandsTabWidth(labels[first])
+			first++
+		}
+	}
+	top, face = " ", " "
+	used := 1
+	for i := first; i < len(labels); i++ {
+		label := labels[i]
+		tabWidth := commandsTabWidth(label)
+		if used >= visibleWidth {
+			break
+		}
+		style := inactive
+		rim := "┌" + strings.Repeat("─", lipgloss.Width(label)) + "┐"
+		if i == m.commandsTab {
+			style = active
+			rim = "╭" + strings.Repeat("─", lipgloss.Width(label)) + "╮"
+		}
+		shown := min(tabWidth, visibleWidth-used)
+		top += truncateANSI(style.Render(rim), shown)
+		face += truncateANSI(style.Render("│"+label+"│"), shown)
+		ranges[i] = messageBodyRange{Start: used, End: used+shown}
+		used += shown
+	}
+
+	if overflow {
+		// Fill the space under the overlay with the theme background
+		// so the controls never inherit terminal-default colors.
+		top = padANSIToWidth(top, visibleWidth, lipgloss.NewStyle().Background(bg))
+		face = padANSIToWidth(face, visibleWidth, lipgloss.NewStyle().Background(bg))
+		controls := commandsTabNavigation
+		if overlayWidth < lipgloss.Width(controls) {
+			controls = truncateANSI(controls, overlayWidth)
+		}
+		top += lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", overlayWidth))
+		face += active.Render(controls)
 	}
 	return
 }
