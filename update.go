@@ -66,6 +66,10 @@ func (m model) Update(
 		// when the window is expanded again.
 		m.clampUsersScroll()
 		m.clampSplashScroll()
+		m.clampCommandsScroll()
+		m.commandsDragging = false
+		m.commandsHoldDirection = 0
+		m.commandsHoldGeneration++
 		m.clampThemeSelection()
 		m.clampThemeDetailsScroll()
 		m.splashScrollDragging = false
@@ -389,6 +393,7 @@ func (m model) Update(
 			return m, nil
 		}
 		if (m.usersOpen || m.splashOpen) && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width("[X]") && mouse.X < m.width {
+			if m.commandsOpen { m.closeCommandsBrowser(); return m,nil }
 			m.usersOpen = false
 			m.splashOpen = false
 			m.themesOpen = false
@@ -401,6 +406,7 @@ func (m model) Update(
 			return m, nil
 		}
 		if mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= 0 && mouse.X < lipgloss.Width("ZEALOT") {
+			if m.commandsOpen { m.closeCommandsBrowser(); return m,nil }
 			if m.longReader != nil {
 				m.closeLongReader()
 			}
@@ -454,11 +460,18 @@ func (m model) Update(
 			}
 			return m, sendWhoCmd
 		}
-		if m.splashOpen && !m.themesOpen && mouse.Button == tea.MouseLeft && m.splashLogoContains(mouse.X, mouse.Y) {
+		if m.commandsOpen && mouse.Button == tea.MouseLeft {
+			if index := m.commandsTabAt(mouse.X,mouse.Y); index>=0 { m.selectCommandsTab(index); return m,nil }
+		}
+		if m.splashOpen && !m.themesOpen && !m.commandsOpen && mouse.Button == tea.MouseLeft && m.splashLogoContains(mouse.X, mouse.Y) {
 			m.cycleSplashLogo()
 			return m, nil
 		}
-		if m.splashOpen && !m.themesOpen && mouse.Button == tea.MouseLeft && m.splashThemesButtonContains(mouse.X, mouse.Y) {
+		if m.splashOpen && !m.themesOpen && !m.commandsOpen && mouse.Button == tea.MouseLeft && m.splashCommandsButtonContains(mouse.X,mouse.Y) {
+			m.openCommandsBrowser()
+			return m,nil
+		}
+		if m.splashOpen && !m.themesOpen && !m.commandsOpen && mouse.Button == tea.MouseLeft && m.splashThemesButtonContains(mouse.X, mouse.Y) {
 			m.openThemeBrowser()
 			return m, nil
 		}
@@ -550,6 +563,23 @@ func (m model) Update(
 				}
 				m.setUsersScrollFromTrack(trackPosition)
 				return m, nil
+			}
+		}
+		if m.commandsOpen && mouse.Button == tea.MouseLeft && mouse.X == m.chatScrollbarX() {
+			if m.maxCommandsScroll()==0 { return m,nil }
+			top,thumb,track:=m.commandsScrollbarThumb()
+			trackY:=min(max(0,mouse.Y-3),track-1)
+			switch {
+			case mouse.Y==2:
+				m.commandsHoldDirection=-1; m.commandsHoldGeneration++; m.commandsScroll-=3
+				m.clampCommandsScroll(); return m,m.commandsHoldCmd(m.commandsHoldGeneration)
+			case mouse.Y==1+m.messageHeight():
+				m.commandsHoldDirection=1; m.commandsHoldGeneration++; m.commandsScroll+=3
+				m.clampCommandsScroll(); return m,m.commandsHoldCmd(m.commandsHoldGeneration)
+			case mouse.Y>=3 && mouse.Y<1+m.messageHeight() && trackY>=top && trackY<top+thumb:
+				m.commandsDragging=true; m.commandsDragOffset=trackY-top; return m,nil
+			case mouse.Y>=3 && mouse.Y<1+m.messageHeight():
+				m.setCommandsScrollFromTrack(trackY); return m,nil
 			}
 		}
 		if m.splashOpen && mouse.Button == tea.MouseLeft && mouse.X == m.chatScrollbarX() && m.maxSplashScroll() > 0 {
@@ -712,6 +742,9 @@ func (m model) Update(
 		m.longReaderDragging = false
 		m.longReaderScrollbarHoldDirection = 0
 		m.longReaderScrollbarHoldGeneration++
+		m.commandsDragging=false
+		m.commandsHoldDirection=0
+		m.commandsHoldGeneration++
 		m.scrollDragging = false
 		m.scrollbarHoldDirection = 0
 		m.scrollbarHoldGeneration++
@@ -760,6 +793,15 @@ func (m model) Update(
 			return m, m.usersScrollbarHoldCmd(mouse.generation)
 		}
 		return m, nil
+	case commandsScrollbarHoldMsg:
+		if m.commandsOpen && mouse.generation==m.commandsHoldGeneration && m.commandsHoldDirection!=0 {
+			before:=m.commandsScroll
+			m.commandsScroll+=m.commandsHoldDirection*3
+			m.clampCommandsScroll()
+			if before==m.commandsScroll { m.commandsHoldDirection=0; return m,nil }
+			return m,m.commandsHoldCmd(mouse.generation)
+		}
+		return m,nil
 	case splashScrollbarHoldMsg:
 		if m.splashOpen && mouse.generation == m.splashScrollbarHoldGeneration && m.splashScrollbarHoldDirection != 0 {
 			m.splashScroll += m.splashScrollbarHoldDirection * 3
@@ -803,6 +845,14 @@ func (m model) Update(
 	// -------------------------------------------------------------------------
 
 	if mouseMsg, ok := msg.(tea.MouseWheelMsg); ok {
+		if m.commandsOpen {
+			switch mouseMsg.Button {
+			case tea.MouseWheelUp: m.commandsScroll-=3
+			case tea.MouseWheelDown: m.commandsScroll+=3
+			}
+			m.clampCommandsScroll()
+			return m,nil
+		}
 		if m.longReader != nil {
 			switch mouseMsg.Button {
 			case tea.MouseWheelUp: m.longReaderScroll -= 3
@@ -865,6 +915,23 @@ func (m model) Update(
 	handledNewline := false
 
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
+		if m.commandsOpen {
+			switch keyMsg.Keystroke() {
+			case "esc","escape": m.closeCommandsBrowser(); return m,nil
+			case "pgup": m.commandsScroll-=m.commandsVisibleHeight()
+			case "pgdown": m.commandsScroll+=m.commandsVisibleHeight()
+			case "ctrl+home": m.commandsScroll=0
+			case "ctrl+end": m.commandsScroll=m.maxCommandsScroll()
+			case "left":
+				if m.input.Value()=="" { m.selectCommandsTab((m.commandsTab+len(handbookPages)-1)%len(handbookPages)); return m,nil }
+			case "right":
+				if m.input.Value()=="" { m.selectCommandsTab((m.commandsTab+1)%len(handbookPages)); return m,nil }
+			}
+			switch keyMsg.Keystroke() {
+			case "pgup","pgdown","ctrl+home","ctrl+end":
+				m.clampCommandsScroll(); return m,nil
+			}
+		}
 		if m.longReader != nil {
 			// Reader navigation takes only dedicated keys. Normal typing,
 			// editing, Enter and quit shortcuts go through the shared
@@ -1208,6 +1275,11 @@ func (m *model) applyMouseMotion(x, y int) {
 		m.refreshMessageHover()
 		return
 	}
+	if m.commandsOpen && m.commandsDragging {
+		_,thumb,track:=m.commandsScrollbarThumb()
+		m.setCommandsScrollFromThumbTop(min(max(0,y-3-m.commandsDragOffset),max(0,track-thumb)))
+		return
+	}
 	if m.splashOpen && m.splashScrollDragging {
 		_, thumbHeight, trackHeight := m.splashScrollbarThumb()
 		target := y - 3 - m.splashScrollDragOffset
@@ -1238,6 +1310,10 @@ func (m *model) applyMouseMotion(x, y int) {
 
 // scrollPage applies the same viewport movement for keyboard and footer clicks.
 func (m *model) scrollPage(up bool) {
+	if m.commandsOpen {
+		if up {m.commandsScroll-=m.commandsVisibleHeight()} else {m.commandsScroll+=m.commandsVisibleHeight()}
+		m.clampCommandsScroll(); return
+	}
 	if m.longReader != nil {
 		if up {
 			m.longReaderScroll -= m.longReaderVisibleHeight()
