@@ -118,7 +118,7 @@ func (m model) Update(
 			m.clampUsersScroll()
 			m.refreshMentionUsernames()
 
-		case "message", "system", "me", "letter", "coinflip_result", "random_result":
+		case "message", "system", "me", "letter", "coinflip_result", "random_result", "roll_result", "fortune_result":
 			m.appendMessage(packet)
 			if packet.Type == "message" && packet.User.Name != m.user.Name {
 				m.userActivity[packet.User.Name] = 6
