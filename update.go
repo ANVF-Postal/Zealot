@@ -344,7 +344,7 @@ func (m model) Update(
 		// Footer actions occupy the final terminal row. Their hitboxes are
 		// calculated by the same layout helper used to render the row.
 		if m.statusBarVisible() && mouse.Button == tea.MouseLeft && mouse.Y == m.height-1 {
-			_, targets := m.renderStatusBar(m.usersOpen, m.splashOpen && !m.themesOpen)
+			_, targets := m.renderStatusBar(m.usersOpen, m.splashOpen && !m.themesOpen && !m.commandsOpen)
 			if targets.hasApply && mouse.X >= targets.applyStart && mouse.X < targets.applyEnd {
 				m.applySelectedTheme()
 				return m, nil
