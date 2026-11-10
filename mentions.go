@@ -108,7 +108,7 @@ func messageMentionsUser(msg Packet, username string) bool {
 }
 
 func (m model) messageBackground(msg Packet) color.Color {
-	if msg.Type == "message" && messageMentionsUser(msg, m.user.Name) {
+	if (msg.Type == "message" || msg.Type == "fortune_result") && messageMentionsUser(msg, m.user.Name) {
 		return lipgloss.Color(m.cfg.Theme.MentionBackgroundColor)
 	}
 	return lipgloss.Color(m.cfg.Theme.Background)
