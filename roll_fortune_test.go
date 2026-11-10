@@ -115,14 +115,14 @@ func TestDaemonRollAndFortuneRequestsCannotForgeResults(t *testing.T) {
 	}
 	receiveUntil("users")
 	if err:=encoder.Encode(Packet{
-		Type:"roll",Room:"test",Text:"2d6: 6 + 6 = 12",User:User{Name:"Impostor"},
+		Type:"roll",Room:"test",Text:"2d6",User:User{Name:"Impostor"},
 	});err!=nil {t.Fatal(err)}
 	roll:=receiveUntil("roll_result")
 	if roll.User.Name!="Alice" || !regexp.MustCompile(`^2d6: [1-6] \+ [1-6] = ([2-9]|1[0-2])$`).MatchString(roll.Text) {
 		t.Fatalf("roll allowed spoofed sender or result: %+v",roll)
 	}
 	receiveUntil("users")
-	if err:=encoder.Encode(Packet{Type:"fortune",Room:"test",Text:"@alice",User:User{Name:"Impostor"}});err!=nil {t.Fatal(err)}
+	if err:=encoder.Encode(Packet{Type:"fortune",Room:"test",Text:"@alice",FortuneTo:"Impostor",User:User{Name:"Impostor"}});err!=nil {t.Fatal(err)}
 	fortune:=receiveUntil("fortune_result")
 	if fortune.User.Name!="Alice" || fortune.FortuneTo!="Alice" {
 		t.Fatalf("fortune did not use canonical target/identity: %+v",fortune)
