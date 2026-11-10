@@ -463,9 +463,9 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 	}
 
 	if msg.Type == "fortune_result" {
-		prefix := "Fortune: "
+		prefix := terminalSafeText(msg.User.Name) + "'s Fortune: "
 		if msg.FortuneTo != "" {
-			prefix = "Fortune to @" + terminalSafeText(msg.FortuneTo) + ": "
+			prefix = terminalSafeText(msg.FortuneTo) + ", your fortune is: "
 		}
 		styled := normalBodyStyle.Render("["+msg.Time.Local().Format("15:04")+"] ") +
 			m.styles.accent.Render(prefix) + normalBodyStyle.Render(terminalSafeText(msg.Text))
