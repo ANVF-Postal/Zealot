@@ -9,20 +9,28 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-func TestSplashIncludesCenteredThemesActionAfterStats(t *testing.T) {
+func TestSplashIncludesCenteredCommandsAndThemesActionsAfterStats(t *testing.T) {
 	m := newMessageInteractionTestModel(100)
 	m.splashOpen = true
 	rows := m.splashRows()
-	if len(rows) < 2 || rows[len(rows)-2] != "" {
-		t.Fatalf("splash theme action must be separated from stats by a blank line: %#v", rows)
+	if len(rows) < 3 || rows[len(rows)-3] != "" {
+		t.Fatalf("splash actions must be separated from stats by a blank line")
 	}
-	if !strings.Contains(stripANSISequences(rows[len(rows)-1]), "[THEMES]") {
-		t.Fatalf("splash does not contain the themes action: %q", rows[len(rows)-1])
-	}
-	button := "[THEMES]"
-	wantX := 1 + max(0, (chatContentWidth(m.width)-len(button))/2)
-	if !m.splashThemesButtonContains(wantX, 2+len(rows)-1) {
-		t.Fatalf("centered themes action did not register its screen coordinate")
+	for _, action := range []struct {
+		label string
+		row int
+		contains func(int, int) bool
+	}{
+		{"[COMMANDS]", len(rows)-2, m.splashCommandsButtonContains},
+		{"[THEMES]", len(rows)-1, m.splashThemesButtonContains},
+	} {
+		if !strings.Contains(stripANSISequences(rows[action.row]), action.label) {
+			t.Fatalf("splash does not contain %s action at row %d: %q", action.label, action.row, rows[action.row])
+		}
+		wantX := 1 + max(0, (chatContentWidth(m.width)-lipgloss.Width(action.label))/2)
+		if !action.contains(wantX, 2+action.row) {
+			t.Fatalf("centered %s action did not register its screen coordinate", action.label)
+		}
 	}
 }
 
