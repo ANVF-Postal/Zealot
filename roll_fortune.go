@@ -90,10 +90,14 @@ func newFortuneResult(room string, user User, target string) (Packet, error) {
 	if err != nil {
 		return Packet{}, fmt.Errorf("Fortune failed: could not obtain secure randomness")
 	}
-	return Packet{
+	packet := Packet{
 		ID: nextMessageID(), Type: "fortune_result", Room: room, User: user,
 		Text: fortuneSayings[draw], FortuneTo: target, Time: time.Now().UTC(),
-	}, nil
+	}
+	if target != "" {
+		packet.Mentions = []string{target}
+	}
+	return packet, nil
 }
 
 // The target must be a current room member. Resolve against the daemon's
