@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"charm.land/lipgloss/v2"
 )
 
 func TestDiceNotationValidationAndLimits(t *testing.T) {
@@ -83,12 +85,12 @@ func TestFortuneResultPresentationAndPublicDocumentation(t *testing.T) {
 			}
 			recipient := m
 			recipient.user.Name = target
-			if recipient.messageBackground(p)!=recipient.cfg.Theme.MentionBackgroundColor {
+			if recipient.messageBackground(p)!=lipgloss.Color(recipient.cfg.Theme.MentionBackgroundColor) {
 				t.Fatal("targeted fortune did not use mention background on recipient's screen")
 			}
 			bystander := m
 			bystander.user.Name = "Bystander"
-			if bystander.messageBackground(p)!=bystander.cfg.Theme.Background {
+			if bystander.messageBackground(p)!=lipgloss.Color(bystander.cfg.Theme.Background) {
 				t.Fatal("targeted fortune highlighted a bystander's screen")
 			}
 		} else if len(p.Mentions)!=0 {
