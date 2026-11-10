@@ -102,3 +102,86 @@ func TestHandbookScrollbarDragAndRelease(t *testing.T) {
 	m=updated.(model)
 	if m.commandsDragging || m.commandsHoldDirection!=0 { t.Fatal("mouse release did not stop scrollbar interactions") }
 }
+
+func TestHandbookCompactTabsOverlayAndNavigation(t *testing.T) {
+	m := newMessageInteractionTestModel(23)
+	m.openCommandsBrowser()
+	if !m.commandsTabsOverflow() {
+		t.Fatal("compact window should show tab navigation overlay")
+	}
+	rim, face, hits := m.commandsTabsLine()
+	if !strings.Contains(stripANSISequences(face), "< | >") {
+		t.Fatalf("compact tabs missing arrow overlay: %q", face)
+	}
+	if got := lipgloss.Width(face); got != chatContentWidth(m.width) {
+		t.Fatalf("compact tab face width = %d, content width = %d", got, chatContentWidth(m.width))
+	}
+	if got := lipgloss.Width(rim); got != chatContentWidth(m.width) {
+		t.Fatalf("compact tab rim width = %d, content width = %d", got, chatContentWidth(m.width))
+	}
+	bg := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).
+		Background(lipgloss.Color(m.cfg.Theme.Background)).Bold(true)
+	if !strings.Contains(face, bg.Render("< | >")) {
+		t.Fatalf("navigation must use persistent theme background and accent foreground: %q", face)
+	}
+	for _, hit := range hits {
+		if hit.End > chatContentWidth(m.width)-lipgloss.Width(commandsTabNavigation) {
+			t.Fatalf("tab hitbox leaks under arrow overlay: %+v", hit)
+		}
+	}
+
+	left := 0
+	if !narrowBordersHidden(m.width) { left = 1 }
+	arrowX := left + chatContentWidth(m.width)-1
+	for _, target := range []int{1, 2} {
+		updated, _ := m.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: arrowX, Y: 3})
+		m = updated.(model)
+		if m.commandsTab != target || m.commandsScroll != 0 {
+			t.Fatalf("right arrow failed to advance to %d, got tab=%d scroll=%d", target, m.commandsTab, m.commandsScroll)
+		}
+		_, visible, regions := m.commandsTabsLine()
+		if regions[target].End <= regions[target].Start {
+			t.Fatalf("selected tab %d is invisible in compact layout: %q", target, visible)
+		}
+	}
+	// Endpoints stop at the final tab, rather than wrapping to CHAT.
+	updated, _ := m.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: arrowX, Y: 3})
+	m = updated.(model)
+	if m.commandsTab != 2 { t.Fatal("right arrow wrapped beyond LAUNCH") }
+
+	leftArrowX := left + chatContentWidth(m.width)-lipgloss.Width(commandsTabNavigation)
+	for _, target := range []int{1, 0} {
+		updated, _ = m.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: leftArrowX, Y: 2})
+		m = updated.(model)
+		if m.commandsTab != target { t.Fatalf("left arrow failed to select %d; got %d", target, m.commandsTab) }
+	}
+	updated, _ = m.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: leftArrowX, Y: 3})
+	if got := updated.(model).commandsTab; got != 0 { t.Fatalf("left arrow wrapped to tab %d", got) }
+}
+
+func TestHandbookTabNavigationDisappearsWhenThereIsRoom(t *testing.T) {
+	m := newMessageInteractionTestModel(100)
+	m.openCommandsBrowser()
+	if m.commandsTabsOverflow() { t.Fatal("wide window incorrectly shows navigation") }
+	_, face, regions := m.commandsTabsLine()
+	if strings.Contains(stripANSISequences(face), commandsTabNavigation) {
+		t.Fatal("unnecessary overlay appeared in wide layout")
+	}
+	for i, region := range regions {
+		if region.End <= region.Start {
+			t.Fatalf("wide layout hid tab %d", i)
+		}
+	}
+
+	// Resizing while on the LAUNCH tab must keep that tab reachable.
+	m.selectCommandsTab(2)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 20, Height: 24})
+	m = updated.(model)
+	if m.commandsTab != 2 || !m.commandsTabsOverflow() {
+		t.Fatalf("resize lost selected tab or overflow: tab=%d", m.commandsTab)
+	}
+	_, face, regions = m.commandsTabsLine()
+	if regions[2].End <= regions[2].Start {
+		t.Fatalf("LAUNCH tab not kept visible after resizing: %q", face)
+	}
+}
