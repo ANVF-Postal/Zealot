@@ -69,13 +69,30 @@ func TestFortuneResultPresentationAndPublicDocumentation(t *testing.T) {
 		for _,say:=range fortuneSayings { if p.Text==say {known=true;break} }
 		if !known { t.Fatalf("unknown fortune saying: %q",p.Text) }
 		rendered:=stripANSISequences(strings.Join(m.renderPacketBaseLines(p,100),"\n"))
-		prefix:="Fortune: "
-		if target!="" {prefix="Fortune to @Postal: "}
+		prefix:="Postal's Fortune: "
+		if target!="" {prefix="Postal, your fortune is: "}
 		if !strings.Contains(rendered,prefix) || !strings.Contains(rendered,p.Text) {
 			t.Fatalf("fortune rendering incorrect: %q",rendered)
 		}
 		if !strings.Contains(rendered,"["+p.Time.Local().Format("15:04")+"]") {
 			t.Fatalf("fortune timestamp missing: %q",rendered)
+		}
+		if target != "" {
+			if len(p.Mentions)!=1 || p.Mentions[0]!=target {
+				t.Fatalf("targeted fortune did not carry canonical mention: %+v",p.Mentions)
+			}
+			recipient := m
+			recipient.user.Name = target
+			if recipient.messageBackground(p)!=recipient.cfg.Theme.MentionBackgroundColor {
+				t.Fatal("targeted fortune did not use mention background on recipient's screen")
+			}
+			bystander := m
+			bystander.user.Name = "Bystander"
+			if bystander.messageBackground(p)!=bystander.cfg.Theme.Background {
+				t.Fatal("targeted fortune highlighted a bystander's screen")
+			}
+		} else if len(p.Mentions)!=0 {
+			t.Fatalf("untargeted fortune should not carry mentions: %+v",p.Mentions)
 		}
 	}
 	roll,err:=newRollResult("lobby",user,"1d6")
