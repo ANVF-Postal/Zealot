@@ -75,41 +75,33 @@ func (m *model) selectCommandsTab(index int) {
 	m.commandsHoldGeneration++
 }
 
-func (m model) commandsTabLabels() []string {
-	return []string{" CHAT ", " USER ", " LAUNCH "}
-}
-
-func (m model) commandsTabsLine() (string, []messageBodyRange) {
+// Folder tabs have a top rim and a labelled face. The active folder joins
+// the handbook content; muted inactive folders sit in the background.
+func (m model) commandsTabsLine() (top, face string, ranges []messageBodyRange) {
 	bg := lipgloss.Color(m.cfg.Theme.Background)
-	accent := lipgloss.Color(m.cfg.Theme.AccentColor)
-	muted := lipgloss.Color(m.cfg.Theme.MutedTextColor)
-	contentWidth := max(1, chatContentWidth(m.width))
-	labels := m.commandsTabLabels()
-	ranges := make([]messageBodyRange, len(labels))
-	var out strings.Builder
+	active := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).Background(bg).Bold(true)
+	inactive := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).Background(bg)
+	labels := []string{" CHAT ", " USER ", " LAUNCH "}
+	ranges = make([]messageBodyRange,len(labels))
 	used := 1
-	out.WriteString(" ")
-	for i, label := range labels {
-		// Folder shape: raised selected tab and recessed inactive tabs.
-		text := "┌" + strings.Repeat("─", lipgloss.Width(label)) + "┐"
-		if i == m.commandsTab {
-			text = "╭" + strings.Repeat("─", lipgloss.Width(label)) + "╮"
+	top = " "
+	face = " "
+	contentWidth := chatContentWidth(m.width)
+	for i,label := range labels {
+		tabWidth := lipgloss.Width(label)+2
+		if used+tabWidth > contentWidth { break }
+		style := inactive
+		rim := "┌"+strings.Repeat("─",lipgloss.Width(label))+"┐"
+		if i==m.commandsTab {
+			style=active
+			rim="╭"+strings.Repeat("─",lipgloss.Width(label))+"╮"
 		}
-		_ = text // the tab's face uses the matching horizontal folder edge
-		tab := "[" + strings.TrimSpace(label) + "]"
-		if used+lipgloss.Width(tab)+1 > contentWidth {
-			break
-		}
-		ranges[i] = messageBodyRange{Start: used, End: used + lipgloss.Width(tab)}
-		style := lipgloss.NewStyle().Background(bg).Foreground(muted)
-		if i == m.commandsTab {
-			style = style.Foreground(accent).Bold(true).Underline(true)
-		}
-		out.WriteString(style.Render(tab))
-		out.WriteString(" ")
-		used += lipgloss.Width(tab)+1
+		top += style.Render(rim)
+		face += style.Render("│"+label+"│")
+		ranges[i]=messageBodyRange{Start:used,End:used+tabWidth}
+		used+=tabWidth
 	}
-	return out.String(), ranges
+	return
 }
 
 func (m model) commandsTextRows() []string {
@@ -131,7 +123,7 @@ func (m model) commandsTextRows() []string {
 }
 
 func (m model) commandsVisibleHeight() int {
-	return max(1, m.messageHeight()-2)
+	return max(1, m.messageHeight()-3)
 }
 
 func (m model) maxCommandsScroll() int {
@@ -164,7 +156,7 @@ func (m model) commandsHoldCmd(generation int) tea.Cmd {
 }
 
 func (m model) commandsTabAt(x, y int) int {
-	if !m.commandsOpen || y != 2 {
+	if !m.commandsOpen || (y != 2 && y != 3) {
 		return -1
 	}
 	left := 0
@@ -185,24 +177,29 @@ func (m model) renderCommandsBrowser() string {
 	accent := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).Background(bg)
 	width := chatContentWidth(m.width)
 	height := max(1, m.messageHeight())
-	tabs, _ := m.commandsTabsLine()
-	rows := []string{padANSIToWidth(tabs, width, fill)+railStyle.Render("^")}
-	if height > 1 {
-		rows = append(rows, padANSIToWidth(accent.Render("  └"+strings.Repeat("─", max(0,width-3))+"┘"),width,fill)+railStyle.Render("│"))
-	}
+	tabRim, tabFace, _ := m.commandsTabsLine()
 	content := m.commandsTextRows()
 	thumbTop, thumbHeight, trackHeight := m.commandsScrollbarThumb()
+	railAt := func(trackPosition int, bottom bool) string {
+		if bottom { return "v" }
+		switch {
+		case m.maxCommandsScroll()>0 && trackPosition >= thumbTop && trackPosition < thumbTop+thumbHeight: return "█"
+		case trackPosition >= trackHeight: return " "
+		default: return "│"
+		}
+	}
+	rows := []string{padANSIToWidth(tabRim,width,fill)+railStyle.Render("^")}
+	if height > 1 {
+		rows=append(rows,padANSIToWidth(tabFace,width,fill)+railStyle.Render(railAt(0,false)))
+	}
+	if height > 2 {
+		rows=append(rows,padANSIToWidth(accent.Render(" "+strings.Repeat("─",max(0,width-1))),width,fill)+railStyle.Render(railAt(1,false)))
+	}
 	visible := max(0,height-len(rows))
 	for i:=0; i<visible; i++ {
 		line := ""
 		if index := m.commandsScroll+i; index < len(content) { line=content[index] }
-		rail := "│"
-		switch {
-		case i == visible-1: rail="v"
-		case m.maxCommandsScroll()>0 && i+1 >= thumbTop && i+1 < thumbTop+thumbHeight: rail="█"
-		case i+1>=trackHeight: rail=" "
-		}
-		rows=append(rows,padANSIToWidth(line,width,fill)+railStyle.Render(rail))
+		rows=append(rows,padANSIToWidth(line,width,fill)+railStyle.Render(railAt(i+2,i==visible-1)))
 	}
 	return m.chatBorderStyle().Width(m.width).Height(m.messageHeight()).Render(strings.Join(rows,"\n"))
 }
