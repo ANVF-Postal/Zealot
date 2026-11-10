@@ -15,7 +15,7 @@ func TestHandbookPublicCategoriesAndSplashButton(t *testing.T) {
 		handbookPages[2].Name != "LAUNCH" {
 		t.Fatalf("incorrect handbook categories: %+v", handbookPages)
 	}
-	if len(handbookPages[0].Entries) != 10 ||
+	if len(handbookPages[0].Entries) != 11 ||
 		len(handbookPages[1].Entries) != 4 ||
 		len(handbookPages[2].Entries) != 2 {
 		t.Fatal("handbook is missing public commands or click behaviors")
