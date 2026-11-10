@@ -25,6 +25,7 @@ var handbookPages = []struct {
 		{"/rainbow", "Toggle: messages you send will be in rainbow colors."},
 		{"/rb", "Sends a single message in rainbow colors."},
 		{"/coinflip", "Sends a special message with the result of a coin flip."},
+		{"/roll 2d6", "Rolls two six-sided dice. Use NdM notation, such as 1d20 or 3d8, for other rolls."},
 		{"/random 1-100", "Picks a random number between 1 and 100. You can specify your own minimum and maximum."},
 		{"/long", "Lets you write a long message (up to 100,000 characters). It appears in chat as [Long Message], which you can click to open."},
 		{"/spoiler", "Obfuscates the following text as # symbols. Click the spoiler message to reveal the text."},
