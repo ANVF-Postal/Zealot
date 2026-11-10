@@ -461,7 +461,16 @@ func (m model) Update(
 			return m, sendWhoCmd
 		}
 		if m.commandsOpen && mouse.Button == tea.MouseLeft {
-			if index := m.commandsTabAt(mouse.X,mouse.Y); index>=0 { m.selectCommandsTab(index); return m,nil }
+			// Compact tab navigation is drawn over the folder strip; its
+			// hitboxes must take priority over underlying tab artwork.
+			if direction := m.commandsNavigationAt(mouse.X, mouse.Y); direction != 0 {
+				m.selectCommandsTab(m.commandsTab + direction)
+				return m, nil
+			}
+			if index := m.commandsTabAt(mouse.X,mouse.Y); index>=0 {
+				m.selectCommandsTab(index)
+				return m,nil
+			}
 		}
 		if m.splashOpen && !m.themesOpen && !m.commandsOpen && mouse.Button == tea.MouseLeft && m.splashLogoContains(mouse.X, mouse.Y) {
 			m.cycleSplashLogo()
@@ -923,9 +932,9 @@ func (m model) Update(
 			case "ctrl+home": m.commandsScroll=0
 			case "ctrl+end": m.commandsScroll=m.maxCommandsScroll()
 			case "left":
-				if m.input.Value()=="" { m.selectCommandsTab((m.commandsTab+len(handbookPages)-1)%len(handbookPages)); return m,nil }
+				if m.input.Value()=="" { m.selectCommandsTab(m.commandsTab-1); return m,nil }
 			case "right":
-				if m.input.Value()=="" { m.selectCommandsTab((m.commandsTab+1)%len(handbookPages)); return m,nil }
+				if m.input.Value()=="" { m.selectCommandsTab(m.commandsTab+1); return m,nil }
 			}
 			switch keyMsg.Keystroke() {
 			case "pgup","pgdown","ctrl+home","ctrl+end":
