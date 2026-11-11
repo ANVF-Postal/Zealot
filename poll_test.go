@@ -353,3 +353,47 @@ func TestPollSpacingAndAdaptiveBars(t *testing.T) {
   t.Fatalf("adaptive bars failed: wide=%d narrow=%d rows=%q",wideBar,narrowBar,narrow)
  }
 }
+
+
+func TestSingleChoicePollCanRetractVote(t *testing.T) {
+	s := newServer()
+	room := s.room("polls", true)
+	var aliceOutput, bobOutput bytes.Buffer
+	alice := newPollTestClient("Alice", "alice", &aliceOutput)
+	bob := newPollTestClient("Bob", "bob", &bobOutput)
+	room.clients[alice.id] = alice
+	room.clients[bob.id] = bob
+
+	s.createPoll("polls", alice, "Are any good? | Nope | Not really", false)
+	takePollPackets(t, &aliceOutput)
+	takePollPackets(t, &bobOutput)
+
+	s.votePoll("polls", bob, &PollData{ID: "1", Choice: 1})
+	first := takePollPackets(t, &bobOutput)
+	takePollPackets(t, &aliceOutput)
+	if len(first) != 1 || first[0].Poll.Choice != 1 || first[0].Poll.Total != 1 {
+		t.Fatalf("first vote not counted: %+v", first)
+	}
+
+	// Clicking the same option again retracts the vote, including its count.
+	s.votePoll("polls", bob, &PollData{ID: "1", Choice: 1})
+	retracted := takePollPackets(t, &bobOutput)
+	other := takePollPackets(t, &aliceOutput)
+	if len(retracted) != 1 || retracted[0].Poll.Choice != 0 ||
+		len(retracted[0].Poll.Choices) != 0 || retracted[0].Poll.Total != 0 ||
+		retracted[0].Poll.ResultsVisible || len(retracted[0].Poll.Counts) != 0 {
+		t.Fatalf("retraction did not clear vote/results: %+v", retracted)
+	}
+	if len(other) != 1 || other[0].Poll.ResultsVisible {
+		t.Fatalf("other unvoted user should not see results: %+v", other)
+	}
+
+	// New selections still behave as ordinary single-choice votes.
+	s.votePoll("polls", bob, &PollData{ID: "1", Choice: 2})
+	selected := takePollPackets(t, &bobOutput)
+	takePollPackets(t, &aliceOutput)
+	if len(selected) != 1 || selected[0].Poll.Choice != 2 ||
+		selected[0].Poll.Total != 1 || selected[0].Poll.Counts[1] != 1 {
+		t.Fatalf("vote after retraction failed: %+v", selected)
+	}
+}
