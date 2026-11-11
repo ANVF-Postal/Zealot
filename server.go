@@ -299,7 +299,9 @@ func (s *server) handle(conn net.Conn) {
 
 		switch packet.Type {
 		case "poll_create":
-			s.createPoll(roomName, client, packet.Text)
+			s.createPoll(roomName, client, packet.Text, false)
+		case "multipoll_create":
+			s.createPoll(roomName, client, packet.Text, true)
 		case "poll_vote":
 			s.votePoll(roomName, client, packet.Poll)
 		case "poll_close":
