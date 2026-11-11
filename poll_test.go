@@ -284,3 +284,71 @@ func TestPollClientCommandsProduceOnlyRequests(t *testing.T) {
 		t.Fatalf("close request invalid: %+v",packets)
 	}
 }
+
+
+func TestMultiPollToggleAndPerUserPercentages(t *testing.T) {
+ s:=newServer()
+ room:=s.room("polls",true)
+ var aOut,bOut bytes.Buffer
+ alice:=newPollTestClient("Alice","a",&aOut)
+ bob:=newPollTestClient("Bob","b",&bOut)
+ room.clients[alice.id]=alice
+ room.clients[bob.id]=bob
+ s.createPoll("polls",alice,"Choose all | Go | Rust | Python",true)
+ created:=takePollPackets(t,&aOut)
+ if len(created)!=1 || !created[0].Poll.Multi {t.Fatalf("expected multipoll: %+v",created)}
+ takePollPackets(t,&bOut)
+ s.votePoll("polls",alice,&PollData{ID:"1",Choice:1})
+ takePollPackets(t,&aOut);takePollPackets(t,&bOut)
+ s.votePoll("polls",alice,&PollData{ID:"1",Choice:2})
+ update:=takePollPackets(t,&aOut)
+ takePollPackets(t,&bOut)
+ if len(update)!=1 || update[0].Poll.Total!=1 || len(update[0].Poll.Choices)!=2 ||
+  update[0].Poll.Counts[0]!=1 || update[0].Poll.Counts[1]!=1 {
+  t.Fatalf("multi vote not counted per user: %+v",update)
+ }
+ s.votePoll("polls",alice,&PollData{ID:"1",Choice:1})
+ update=takePollPackets(t,&aOut);takePollPackets(t,&bOut)
+ if update[0].Poll.Total!=1 || len(update[0].Poll.Choices)!=1 || update[0].Poll.Counts[0]!=0 {
+  t.Fatalf("toggle did not remove selection: %+v",update)
+ }
+ s.votePoll("polls",alice,&PollData{ID:"1",Choice:2})
+ update=takePollPackets(t,&aOut);takePollPackets(t,&bOut)
+ if update[0].Poll.Total!=0 || update[0].Poll.ResultsVisible {
+  t.Fatalf("removing last vote should hide results: %+v",update)
+ }
+ s.votePoll("polls",bob,&PollData{ID:"1",Choice:3})
+ takePollPackets(t,&aOut);takePollPackets(t,&bOut)
+ s.closePoll("polls",alice,"1")
+ closed:=takePollPackets(t,&aOut)
+ if len(closed)!=1 || !closed[0].Poll.Closed || closed[0].Poll.Counts[2]!=1 {t.Fatalf("multi close: %+v",closed)}
+}
+
+func TestMultiPollClientCommand(t *testing.T) {
+ m:=newMessageInteractionTestModel(90)
+ m.room="polls"
+ var output bytes.Buffer
+ m.client=&wireClient{enc:json.NewEncoder(&output)}
+ if !m.sendMessage("/multipoll Choose | A | B","") {t.Fatal("multipoll rejected")}
+ packets:=takePollPackets(t,&output)
+ if len(packets)!=1 || packets[0].Type!="multipoll_create" {t.Fatalf("wrong multipoll request: %+v",packets)}
+}
+
+func TestPollSpacingAndAdaptiveBars(t *testing.T) {
+ p:=testPollPacket()
+ p.Poll.Choice=1
+ p.Poll.Counts=[]int{1,0,0}
+ p.Poll.Total=1
+ p.Poll.ResultsVisible=true
+ m:=newMessageInteractionTestModel(100,p)
+ wide,choices:=m.pollLayout(p,100)
+ if len(choices)<7 || choices[2]!=0 || wide[2]!="" || wide[len(wide)-2]!="" {
+  t.Fatalf("missing spacing around options: %q",wide)
+ }
+ wideBar:=strings.Count(strings.Join(wide,"\n"),"█")
+ narrow,_:=m.pollLayout(p,51)
+ narrowBar:=strings.Count(strings.Join(narrow,"\n"),"█")
+ if wideBar<=12 || narrowBar>=wideBar || !strings.Contains(strings.Join(narrow,"\n"),"100%") {
+  t.Fatalf("adaptive bars failed: wide=%d narrow=%d rows=%q",wideBar,narrowBar,narrow)
+ }
+}
