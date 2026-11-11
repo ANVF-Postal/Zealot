@@ -178,7 +178,7 @@ func TestPollLayoutClickAndInPlaceResults(t *testing.T) {
 		if optionRow<0 {t.Fatalf("width %d: no Rust hitbox",width)}
 		left:=1
 		if narrowBordersHidden(width) {left=0}
-		if id,n:=m.pollOptionAt(left+3,2+optionRow);id!="7" || n!=2 {
+		if id,n:=m.pollOptionAt(left+3,2+optionRow);id!=p.ID || n!=2 {
 			t.Fatalf("width %d: poll click=(%s,%d), want 7,2",width,id,n)
 		}
 		m.mousePositionKnown=true
