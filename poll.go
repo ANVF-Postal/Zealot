@@ -12,6 +12,7 @@ import (
 // canonical room usernames, so reconnecting with the same name retains a vote.
 type pollState struct {
 	id string
+	version int
 	creator string
 	creatorID string
 	author User
@@ -52,7 +53,7 @@ func parsePollDefinition(input string) (string, []string, error) {
 func (p *pollState) snapshot(name, roomName string) Packet {
 	choice := p.votes[strings.ToLower(name)]
 	data := &PollData{
-		ID: p.id, Question: p.question,
+		ID: p.id, Version: p.version, Question: p.question,
 		Options: append([]string(nil), p.options...),
 		Closed: p.closed, Choice: choice,
 		ResultsVisible: choice != 0 || p.closed,
@@ -106,7 +107,7 @@ func (s *server) createPoll(roomName string, sender *serverClient, text string) 
 	room.pollSequence++
 	id := strconv.Itoa(room.pollSequence)
 	state := &pollState{
-		id:id, creator:sender.user.Name, creatorID:sender.id,
+		id:id, version:1, creator:sender.user.Name, creatorID:sender.id,
 		author:sender.user, question:question, options:options,
 		votes:make(map[string]int), time:time.Now().UTC(),
 		messageID:nextMessageID(),
@@ -135,6 +136,7 @@ func (s *server) votePoll(roomName string, sender *serverClient, request *PollDa
 		return
 	}
 	poll.votes[strings.ToLower(sender.user.Name)] = request.Choice
+	poll.version++
 	s.mu.Unlock()
 	s.notifyPoll(roomName,request.ID)
 }
@@ -157,6 +159,7 @@ func (s *server) closePoll(roomName string, sender *serverClient, id string) {
 		return
 	}
 	poll.closed = true
+	poll.version++
 	id = poll.id
 	s.mu.Unlock()
 	s.notifyPoll(roomName,id)
