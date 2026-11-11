@@ -36,7 +36,7 @@ func (m model) pollLayout(packet Packet, width int) ([]string, []int) {
 			count := 0
 			if i < len(p.Counts) {count=p.Counts[i]}
 			percent := 0
-			if p.Total > 0 { percent = count*100/p.Total }
+			if p.Total > 0 { percent = (count*100+p.Total/2)/p.Total }
 			if width > 48 && w >= 40 {
 				filled := 0
 				if p.Total > 0 {filled = count*12/p.Total}
