@@ -22,7 +22,9 @@ func (m model) pollLayout(packet Packet, width int) ([]string, []int) {
 		rows = append(rows, truncateANSI(text,w))
 		options = append(options,choice)
 	}
-	header := fmt.Sprintf("[%s] [POLL #%s] %s asks:", packet.Time.Local().Format("15:04"),p.ID,terminalSafeText(packet.User.Name))
+	kind := "POLL"
+	if p.Multi {kind="MULTIPOLL"}
+	header := fmt.Sprintf("[%s] [%s #%s] %s asks:", packet.Time.Local().Format("15:04"),kind,p.ID,terminalSafeText(packet.User.Name))
 	for _, line := range wrapANSIHardLine(header,w) { add(line,0) }
 	for _, line := range wrapANSIHardLine(terminalSafeText(p.Question),w) { add(line,0) }
 	add("",0)
@@ -76,7 +78,9 @@ func (m model) pollLayout(packet Packet, width int) ([]string, []int) {
 	} else if p.ResultsVisible {
 		add(fmt.Sprintf("%d votes • Open • /vote %s OPTION",p.Total,p.ID),0)
 	} else {
-		add(fmt.Sprintf("Vote to reveal results • /vote %s OPTION",p.ID),0)
+		hint:="Vote to reveal results"
+		if p.Multi {hint="Select one or more options to reveal results"}
+		add(fmt.Sprintf("%s • /vote %s OPTION",hint,p.ID),0)
 	}
 	return rows,options
 }
@@ -94,8 +98,10 @@ func (m model) renderPollLines(packet Packet, width int) []string {
 	headerRows := []string(nil)
 	if packet.Poll != nil {
 		nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(packet.User.Color)).Background(bg).Bold(true)
+		kind := "POLL"
+		if packet.Poll.Multi { kind="MULTIPOLL" }
 		styledHeader := muted.Render("["+packet.Time.Local().Format("15:04")+"] ") +
-			accent.Render("[POLL #"+packet.Poll.ID+"] ") +
+			accent.Render("["+kind+" #"+packet.Poll.ID+"] ") +
 			nameStyle.Render(terminalSafeText(packet.User.Name)) +
 			plain.Render(" asks:")
 		headerRows = wrapANSIHardLine(styledHeader,max(1,w))
