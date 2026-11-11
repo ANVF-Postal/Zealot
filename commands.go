@@ -27,8 +27,9 @@ func (m *model) sendCurrentMessage() {
 	m.stopCursorBlink()
 
 	if m.isTyping {
-		m.isTyping = false
 		m.sendTyping(false)
+		m.isTyping = false
+		m.typingWhisperTarget = ""
 	}
 }
 
