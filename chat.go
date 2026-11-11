@@ -54,7 +54,8 @@ func (m model) renderPacketLineCount(msg Packet, width int) int {
 		text := fmt.Sprintf("[%s] * %s %s", msg.Time.Local().Format("15:04"), msg.User.Name, msg.Text)
 		return max(1, wrapTextLineCount(text, contentWidth-2))
 	case "poll_result":
-		return max(1,func() int { rows,_:=m.pollLayout(msg,width); return len(rows) }())
+		rows, _ := m.pollLayout(msg, width)
+		return max(1, len(rows))
 	case "whisper_result":
 		// Private replies can add the same trailing [1]/[2] navigation rows
 		// as ordinary messages. Count them through the shared renderer.
