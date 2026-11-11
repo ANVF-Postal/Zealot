@@ -83,6 +83,7 @@ type model struct {
 	longReaderScrollbarHoldDirection int
 	longReaderScrollbarHoldGeneration int
 	messageByID map[string]Packet
+	pollIndexByID map[string]int
 	replyIDsByMessageID map[string][]string
 	messageRowsByID map[string]messageRowRange
 	// messageRowRanges stores the absolute row range of each message in history
