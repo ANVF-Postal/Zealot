@@ -301,8 +301,9 @@ func (m model) Update(
 		}
 		m.typingTimerPending = false
 		if m.isTyping {
-			m.isTyping = false
 			m.sendTyping(false)
+			m.isTyping = false
+			m.typingWhisperTarget = ""
 		}
 		return m, nil
 	}
@@ -1247,10 +1248,7 @@ func (m model) Update(
 			// Start blinking only when there is actual text.
 			blinkCmd := m.startCursorBlink()
 
-			if !m.isTyping {
-				m.isTyping = true
-				m.sendTyping(true)
-			}
+			m.syncTypingState()
 
 			// Consider the user to have stopped typing after
 			// 1.2 seconds without another editing key.
@@ -1425,13 +1423,61 @@ func (m *model) scheduleTypingClear() tea.Cmd {
 	})
 }
 
-func (m model) sendTyping(
-	typing bool,
-) {
-	_ = m.client.send(Packet{
-		Type:   "typing",
-		Room:   m.room,
-		User:   m.user,
-		Typing: typing,
-	})
+// draftWhisperTarget distinguishes a whisper draft from an ordinary chat
+// message. Resolve a full username only: a partial @d must never notify @don.
+// Existing whisper reply targets share the same private typing mechanism.
+func (m model) draftWhisperTarget() (private bool, target string) {
+	if m.replyTargetID != "" {
+		if parent, ok := m.messageByID[m.replyTargetID]; ok && parent.Type == "whisper_result" {
+			name := parent.User.Name
+			if strings.EqualFold(name, m.user.Name) {
+				name = parent.WhisperTo
+			}
+			if name != "" {
+				return true, "@" + name
+			}
+			return true, ""
+		}
+	}
+	fields := strings.Fields(m.input.Value())
+	if len(fields) == 0 || !strings.EqualFold(fields[0], "/whisper") {
+		return false, ""
+	}
+	if len(fields) < 2 || !strings.HasPrefix(fields[1], "@") {
+		return true, ""
+	}
+	for _, user := range m.onlineUsers {
+		if strings.EqualFold(user.Name, fields[1][1:]) {
+			return true, "@" + user.Name
+		}
+	}
+	return true, ""
+}
+
+func (m *model) syncTypingState() {
+	private, target := m.draftWhisperTarget()
+	if strings.TrimSpace(m.input.Value()) == "" {
+		target = ""
+		private = true
+	}
+	if m.isTyping && ((!private && m.typingWhisperTarget != "") ||
+		(private && (target == "" || m.typingWhisperTarget != target))) {
+		m.sendTyping(false)
+		m.isTyping = false
+		m.typingWhisperTarget = ""
+	}
+	if !m.isTyping && (!private || target != "") {
+		m.typingWhisperTarget = target
+		m.isTyping = true
+		m.sendTyping(true)
+	}
+}
+
+func (m model) sendTyping(typing bool) {
+	packet := Packet{Type: "typing", Room: m.room, Typing: typing}
+	if m.typingWhisperTarget != "" {
+		packet.Type = "whisper_typing"
+		packet.WhisperTo = m.typingWhisperTarget
+	}
+	_ = m.client.send(packet)
 }
