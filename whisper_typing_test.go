@@ -125,3 +125,69 @@ func TestPrivateTypingIndicatorUsesSenderColor(t *testing.T) {
 		t.Fatal("private typing indicator remained after stop")
 	}
 }
+
+func TestDaemonWhisperTypingOnlyReachesVerifiedRecipient(t *testing.T) {
+	s:=newServer()
+	room:=s.room("test",true)
+	var sourceData, targetData, bystanderData bytes.Buffer
+	sender:=&serverClient{id:"sender",room:"test",user:User{Name:"Daniel1",Color:"#ff3399"},enc:json.NewEncoder(&sourceData)}
+	target:=&serverClient{id:"recipient",room:"test",user:User{Name:"Daniel2",Color:"#33ff99"},enc:json.NewEncoder(&targetData)}
+	third:=&serverClient{id:"bystander",room:"test",user:User{Name:"Don"},enc:json.NewEncoder(&bystanderData)}
+	room.clients[sender.id]=sender
+	room.clients[target.id]=target
+	room.clients[third.id]=third
+
+	s.setWhisperTyping("test",sender,"@dan",true)
+	if targetData.Len()!=0 || bystanderData.Len()!=0 {
+		t.Fatal("daemon delivered typing to prefix match")
+	}
+	s.setWhisperTyping("test",sender,"@Daniel2",true)
+	packets:=decodeTypingPackets(t,&targetData)
+	if len(packets)!=1 || packets[0].Type!="whisper_typing" || !packets[0].Typing ||
+		packets[0].User.Name!="Daniel1" || packets[0].User.Color!="#ff3399" {
+		t.Fatalf("private typing metadata invalid: %+v",packets)
+	}
+	if bystanderData.Len()!=0 || sourceData.Len()!=0 {
+		t.Fatal("recipient-only typing leaked to sender or bystander")
+	}
+	if len(room.messages)!=0 || sender.typing || sender.whisperTarget!="Daniel2" {
+		t.Fatal("private typing incorrectly entered public history or roster")
+	}
+	s.setWhisperTyping("test",sender,"",false)
+	packets=decodeTypingPackets(t,&targetData)
+	if len(packets)!=1 || packets[0].Type!="whisper_typing" || packets[0].Typing {
+		t.Fatalf("stop whisper typing not delivered: %+v",packets)
+	}
+}
+
+func TestDaemonSwitchesPublicTypingOffWhenWhisperStarts(t *testing.T) {
+	s:=newServer()
+	room:=s.room("test",true)
+	var sourceData,targetData,thirdData bytes.Buffer
+	sender:=&serverClient{id:"sender",room:"test",user:User{Name:"Daniel1",Color:"#ff3399"},typing:true,enc:json.NewEncoder(&sourceData)}
+	target:=&serverClient{id:"target",room:"test",user:User{Name:"Daniel2"},enc:json.NewEncoder(&targetData)}
+	third:=&serverClient{id:"third",room:"test",user:User{Name:"Don"},enc:json.NewEncoder(&thirdData)}
+	room.clients[sender.id]=sender
+	room.clients[target.id]=target
+	room.clients[third.id]=third
+	s.setWhisperTyping("test",sender,"@Daniel2",true)
+	for _, stream := range []*bytes.Buffer{&sourceData,&thirdData} {
+		packets:=decodeTypingPackets(t,stream)
+		stopped:=false
+		for _,packet:=range packets {
+			if packet.Type=="whisper_typing" {t.Fatal("whisper typing leaked to the room")}
+			if packet.Type=="typing" && !packet.Typing && packet.User.Name=="Daniel1" {stopped=true}
+		}
+		if !stopped {t.Fatal("public typing did not stop on whisper transition")}
+	}
+	targetPackets:=decodeTypingPackets(t,&targetData)
+	privateStarted:=false
+	for _,packet:=range targetPackets {
+		if packet.Type=="whisper_typing" && packet.Typing && packet.User.Name=="Daniel1" {
+			privateStarted=true
+		}
+	}
+	if !privateStarted || sender.typing || sender.whisperTarget!="Daniel2" {
+		t.Fatalf("private typing never started: packets=%+v",targetPackets)
+	}
+}
