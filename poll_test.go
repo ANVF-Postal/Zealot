@@ -158,7 +158,7 @@ func TestPollHistoryPersonalizesVotesAndShowsActiveWithoutHistory(t *testing.T) 
 
 func testPollPacket() Packet {
 	return Packet{ID:"poll-message-1",Type:"poll_result",Time:time.Date(2026,time.January,2,15,4,0,0,time.UTC),
-		User:User{Name:"Postal",Color:"#33BB99"},Poll:&PollData{ID:"7",Question:"Best language?",Options:[]string{"Go","Rust","Python"}}}
+		User:User{Name:"Postal",Color:"#33BB99"},Poll:&PollData{ID:"7",Version:1,Question:"Best language?",Options:[]string{"Go","Rust","Python"}}}
 }
 
 func TestPollLayoutClickAndInPlaceResults(t *testing.T) {
@@ -188,7 +188,7 @@ func TestPollLayoutClickAndInPlaceResults(t *testing.T) {
 			t.Fatalf("width %d: hover did not select Rust",width)
 		}
 		updated:=p
-		updated.Poll=&PollData{ID:"7",Question:"Best language?",Options:p.Poll.Options,Counts:[]int{0,2,1},Total:3,Choice:2,ResultsVisible:true}
+		updated.Poll=&PollData{ID:"7",Version:2,Question:"Best language?",Options:p.Poll.Options,Counts:[]int{0,2,1},Total:3,Choice:2,ResultsVisible:true}
 		m.applyPollSnapshot(updated)
 		if len(m.messages)!=1 || m.messages[0].Poll.Total!=3 {
 			t.Fatalf("width %d: updated poll generated duplicate chat line",width)
