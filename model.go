@@ -97,6 +97,8 @@ type model struct {
 	messageBodyRangesByID map[string][]messageBodyRange
 	messageLinkRangesByID map[string][][]messageLinkRange
 	hoveredMessageID string
+	pollHoveredID string
+	pollHoveredOption int
 	mouseMotion *mouseMotionState
 	mouseMotionFrameGeneration int
 	replyTargetID string
