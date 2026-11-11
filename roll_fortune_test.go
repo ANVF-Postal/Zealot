@@ -197,3 +197,24 @@ func TestRollColorsUsernameAndDiceButNotVerbOrColon(t *testing.T) {
 		t.Fatalf("dice text changed while recoloring: %q", got)
 	}
 }
+
+func TestFortuneSayingsAreDistinctAndNonempty(t *testing.T) {
+	if len(fortuneSayings) < 150 {
+		t.Fatalf("fortune oracle unexpectedly shrank to %d sayings", len(fortuneSayings))
+	}
+	seen := make(map[string]bool, len(fortuneSayings))
+	for i, fortune := range fortuneSayings {
+		trimmed := strings.TrimSpace(fortune)
+		if trimmed == "" {
+			t.Fatalf("fortune %d is empty", i)
+		}
+		if len([]rune(trimmed)) > 280 {
+			t.Fatalf("fortune %d is too long for a short chat prophecy", i)
+		}
+		key := strings.ToLower(trimmed)
+		if seen[key] {
+			t.Fatalf("fortune %d is duplicated: %q", i, trimmed)
+		}
+		seen[key] = true
+	}
+}
