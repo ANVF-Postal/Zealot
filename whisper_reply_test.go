@@ -148,6 +148,58 @@ func TestWhisperBodyHitboxesWorkAtCompactWidths(t *testing.T) {
 	}
 }
 
+func TestWhisperReplyMarkerRemainsClickableAfterIncomingAppend(t *testing.T) {
+	// Both participants receive the same private packets but maintain
+	// independent viewport caches. Reproduce the incremental arrival of
+	// Daniel2's "bruh" reply on each client, rather than rebuilding history.
+	for _, name := range []string{"Daniel1", "Daniel2"} {
+		t.Run(name, func(t *testing.T) {
+			parent := whisperReplyTestPacket("whisper-daniel1", "Daniel1", "Daniel2", "hey")
+			reply := whisperReplyTestPacket("whisper-daniel2", "Daniel2", "Daniel1", "bruh")
+			reply.ReplyTo = parent.ID
+			m := newMessageInteractionTestModel(100, parent)
+			m.user.Name = name
+			// Prime the lazy interaction cache before the reply arrives.
+			if link := m.messageLinkRanges(parent, m.width); len(link) == 0 {
+				t.Fatal("initial private message did not have an interaction row")
+			}
+			m.appendMessage(reply)
+			m.renderMessageLines()
+
+			links := m.cachedLinkRangesForMessage(parent.ID, 0)
+			var link messageLinkRange
+			markerRow := -1
+			for row, entries := range links {
+				for _, entry := range entries {
+					if entry.TargetID == reply.ID {
+						link, markerRow = entry, row
+						break
+					}
+				}
+			}
+			if markerRow == -1 {
+				t.Fatalf("%s cannot find clickable [1] reply link", name)
+			}
+			absolute := m.messageRowsByID[parent.ID].Start + markerRow
+			visible := stripANSISequences(m.renderMessageLines()[absolute])
+			cells := []rune(visible)
+			if link.End > len(cells) || string(cells[link.Start:link.End]) != "[1]" {
+				t.Fatalf("%s reply link hitbox does not match displayed marker: row=%q hit=%+v", name, visible, link)
+			}
+			left := 1
+			x, y := left+link.Start+1, 2+markerRow
+			if target := m.messageLinkAt(x, y); target != reply.ID {
+				t.Fatalf("%s clicked [1] but got %q instead of %q", name, target, reply.ID)
+			}
+			updated, _ := m.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: x, Y: y})
+			m = updated.(model)
+			if m.highlightedMessageID != reply.ID {
+				t.Fatalf("%s clicking [1] did not navigate to the reply: selected %q", name, m.highlightedMessageID)
+			}
+		})
+	}
+}
+
 func TestIncomingWhisperReplyUpdatesParentMarkersIncrementally(t *testing.T) {
 	parent := whisperReplyTestPacket("private-live-parent","Alice","Postal","initial whisper")
 	reply := whisperReplyTestPacket("private-live-reply","Postal","Alice","private response")
