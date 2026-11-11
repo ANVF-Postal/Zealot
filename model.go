@@ -114,6 +114,8 @@ type model struct {
 
 	typing      map[string]User
 	typingOrder []string
+	privateTyping map[string]User
+	privateTypingOrder []string
 
 	input          textarea.Model
 	inputSelecting bool
@@ -142,6 +144,7 @@ type model struct {
 	typingTimerPending bool
 	lastTypingAt       time.Time
 	isTyping           bool
+	typingWhisperTarget string
 
 	styles uiStyles
 }
@@ -222,6 +225,7 @@ func newModel(
 		client:       client,
 		mouseMotion:  &mouseMotionState{},
 		typing:       make(map[string]User),
+		privateTyping: make(map[string]User),
 		userActivity: make(map[string]int),
 		input:        input,
 		connected:    true,
