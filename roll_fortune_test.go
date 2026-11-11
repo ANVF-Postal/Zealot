@@ -164,7 +164,7 @@ func TestDaemonRollAndFortuneRequestsCannotForgeResults(t *testing.T) {
 	select {case <-done:case <-time.After(time.Second):t.Fatal("daemon did not stop")}
 }
 
-func TestRollUsesUserColorOnlyForUsername(t *testing.T) {
+func TestRollColorsUsernameAndDiceButNotVerbOrColon(t *testing.T) {
 	m := newMessageInteractionTestModel(120)
 	user := User{Name: "Postal", Color: "#FF3399"}
 	packet := Packet{
@@ -177,14 +177,21 @@ func TestRollUsesUserColorOnlyForUsername(t *testing.T) {
 	normalStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.TextColor)).Background(bg)
 	for _, segment := range []string{
 		userStyle.Render("Postal"),
-		normalStyle.Render(" rolled 2d6: 4 + 6 = 10"),
+		normalStyle.Render(" rolled "),
+		userStyle.Render("2d6"),
+		normalStyle.Render(": 4 + 6 = 10"),
 	} {
 		if !strings.Contains(rendered, segment) {
 			t.Errorf("dice result missing correctly styled segment %q in %q", segment, rendered)
 		}
 	}
-	if strings.Contains(rendered, userStyle.Render("Postal rolled")) {
-		t.Fatal("dice roll verb is still painted with username color")
+	for _, segment := range []string{
+		userStyle.Render("Postal rolled"),
+		userStyle.Render("2d6:"),
+	} {
+		if strings.Contains(rendered, segment) {
+			t.Errorf("dice result colors wrong text with user color: %q", segment)
+		}
 	}
 	if got := stripANSISequences(rendered); !strings.Contains(got, "Postal rolled 2d6: 4 + 6 = 10") {
 		t.Fatalf("dice text changed while recoloring: %q", got)
