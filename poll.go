@@ -18,7 +18,8 @@ type pollState struct {
 	author User
 	question string
 	options []string
-	votes map[string]int // canonical lowercase user name -> one-based choice
+	votes map[string][]int // canonical lowercase name -> selected one-based choices
+	multi bool
 	closed bool
 	time time.Time
 	messageID string
@@ -51,19 +52,19 @@ func parsePollDefinition(input string) (string, []string, error) {
 }
 
 func (p *pollState) snapshot(name, roomName string) Packet {
-	choice := p.votes[strings.ToLower(name)]
+	choices := p.votes[strings.ToLower(name)]
+	choice := 0
+	if len(choices)>0 {choice=choices[0]}
 	data := &PollData{
 		ID: p.id, Version: p.version, Question: p.question,
 		Options: append([]string(nil), p.options...),
-		Closed: p.closed, Choice: choice,
-		ResultsVisible: choice != 0 || p.closed,
+		Closed: p.closed, Choice: choice, Choices: append([]int(nil),choices...), Multi: p.multi,
+		ResultsVisible: len(choices)>0 || p.closed,
 	}
 	if data.ResultsVisible {
 		data.Counts = make([]int, len(p.options))
-		for _, selected := range p.votes {
-			if selected > 0 && selected <= len(data.Counts) {
-				data.Counts[selected-1]++
-			}
+		for _, choices := range p.votes {
+			for _, selected := range choices {if selected>0 && selected<=len(data.Counts) {data.Counts[selected-1]++}}
 		}
 		data.Total = len(p.votes)
 	}
@@ -92,7 +93,7 @@ func (s *server) notifyPoll(roomName string, id string) {
 	}
 }
 
-func (s *server) createPoll(roomName string, sender *serverClient, text string) {
+func (s *server) createPoll(roomName string, sender *serverClient, text string, multi bool) {
 	question, options, err := parsePollDefinition(text)
 	if err != nil {
 		sender.send(Packet{Type:"system",Text:err.Error(),Time:time.Now().UTC()})
@@ -109,7 +110,7 @@ func (s *server) createPoll(roomName string, sender *serverClient, text string) 
 	state := &pollState{
 		id:id, version:1, creator:sender.user.Name, creatorID:sender.id,
 		author:sender.user, question:question, options:options,
-		votes:make(map[string]int), time:time.Now().UTC(),
+		votes:make(map[string][]int), multi:multi, time:time.Now().UTC(),
 		messageID:nextMessageID(),
 	}
 	room.polls[id] = state
@@ -135,7 +136,20 @@ func (s *server) votePoll(roomName string, sender *serverClient, request *PollDa
 		sender.send(Packet{Type:"system",Text:"Poll not found, closed, or invalid option.",Time:time.Now().UTC()})
 		return
 	}
-	poll.votes[strings.ToLower(sender.user.Name)] = request.Choice
+	name:=strings.ToLower(sender.user.Name)
+	if poll.multi {
+		old:=poll.votes[name]
+		selected:=make([]int,0,len(old)+1)
+		found:=false
+		for _,option:=range old {
+			if option==request.Choice {found=true;continue}
+			selected=append(selected,option)
+		}
+		if !found {selected=append(selected,request.Choice)}
+		if len(selected)==0 {delete(poll.votes,name)} else {poll.votes[name]=selected}
+	} else {
+		poll.votes[name]=[]int{request.Choice}
+	}
 	poll.version++
 	s.mu.Unlock()
 	s.notifyPoll(roomName,request.ID)
