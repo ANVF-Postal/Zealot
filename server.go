@@ -34,6 +34,7 @@ type serverClient struct {
 	room      string
 	user      User
 	typing    bool
+	whisperTarget string
 	ephemeral bool
 }
 
@@ -320,7 +321,11 @@ func (s *server) handle(conn net.Conn) {
 			}
 			s.broadcastGameResult(roomName, client, result)
 
+		case "whisper_typing":
+			s.setWhisperTyping(roomName, client, packet.WhisperTo, packet.Typing)
+
 		case "whisper":
+			s.setWhisperTyping(roomName, client, "", false)
 			if err := s.sendWhisper(roomName, client, packet.WhisperTo, packet.Text, packet.ReplyTo); err != nil {
 				client.send(Packet{Type: "system", Room: roomName, Text: err.Error(), Time: time.Now().UTC()})
 			}
@@ -440,6 +445,7 @@ func (s *server) handle(conn net.Conn) {
 			s.broadcastRoster(roomName)
 
 		case "rename":
+			s.setWhisperTyping(roomName, client, "", false)
 			requested := strings.TrimSpace(packet.User.Name)
 			if requested == "" || len([]rune(requested)) > 32 || strings.ContainsAny(requested, "\r\n\t") {
 				client.send(Packet{Type: "system", Room: roomName, Text: "Usage: /rename name (1–32 characters).", Time: time.Now().UTC()})
@@ -552,6 +558,8 @@ func (s *server) handle(conn net.Conn) {
 func (s *server) removeClient(
 	client *serverClient,
 ) {
+	// Notify a private recipient before the sender leaves the room.
+	s.setWhisperTyping(client.room, client, "", false)
 	s.mu.Lock()
 
 	room := s.rooms[client.room]
