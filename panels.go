@@ -798,7 +798,7 @@ func (m *model) appendMessages(packets []Packet) {
 	// list below, so only messages already present in the cache are replaced.
 	parents := make(map[string]struct{})
 	for _, packet := range packets {
-		if packet.Type != "message" || packet.ReplyTo == "" {
+		if (packet.Type != "message" && packet.Type != "whisper_result") || packet.ReplyTo == "" {
 			continue
 		}
 		if _, cached := m.messageRowsByID[packet.ReplyTo]; cached {
