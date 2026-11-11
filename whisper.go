@@ -47,9 +47,8 @@ func (s *server) sendWhisper(roomName string, sender *serverClient, target, body
 		User: sender.user, WhisperTo: recipient.user.Name, Text: body,
 		Time: time.Now().UTC(),
 	}
-	// Take the recipient and sender write locks while the room membership
-	// lock is held. Once released, no unrelated broadcasts can interleave
-	// with this private packet in an ambiguous way.
+	// Snapshot the authorized recipients under the room lock, then send
+	// only to those connections. No room-wide fan-out or history storage.
 	s.mu.Unlock()
 	sender.send(result)
 	if recipient != sender {
