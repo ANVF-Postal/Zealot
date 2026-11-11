@@ -486,10 +486,6 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 		outcome := msg.Text
 		if msg.Type == "roll_result" {
 			label = "[ROLL]"
-			// Only the roller's name uses their user color. The verb,
-			// notation, colon and individual dice all use normal text.
-			action = msg.User.Name
-			outcome = " rolled " + msg.Text
 		}
 		if msg.Type == "random_result" {
 			label = "[RANDOM]"
@@ -505,8 +501,19 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 		}
 		userStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.User.Color)).Background(bg)
 		styled := normalBodyStyle.Render("["+msg.Time.Local().Format("15:04")+"] ") +
-			m.styles.accent.Render(label) + normalBodyStyle.Render(" ") +
-			userStyle.Render(action) + normalBodyStyle.Render(outcome)
+			m.styles.accent.Render(label) + normalBodyStyle.Render(" ")
+		if msg.Type == "roll_result" {
+			// Highlight both the username and dice notation in the roller's
+			// color, but keep " rolled ", the colon and results in normal text.
+			styled += userStyle.Render(msg.User.Name) + normalBodyStyle.Render(" rolled ")
+			if colon := strings.Index(msg.Text, ":"); colon >= 0 {
+				styled += userStyle.Render(msg.Text[:colon]) + normalBodyStyle.Render(msg.Text[colon:])
+			} else {
+				styled += normalBodyStyle.Render(msg.Text)
+			}
+		} else {
+			styled += userStyle.Render(action) + normalBodyStyle.Render(outcome)
+		}
 		var result []string
 		for _, line := range wrapANSIHardLine(styled, max(1, contentWidth-2)) {
 			result = append(result, renderChatRow(rowFill, "  "+line, contentWidth))
