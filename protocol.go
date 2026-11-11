@@ -23,6 +23,7 @@ type User struct {
 // viewer has voted or the poll has closed. Choice is one-based (zero = none).
 type PollData struct {
 	ID string `json:"id"`
+	Version int `json:"version"`
 	Question string `json:"question"`
 	Options []string `json:"options"`
 	Counts []int `json:"counts,omitempty"`
