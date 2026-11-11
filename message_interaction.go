@@ -216,7 +216,7 @@ func (m model) cachedLinkRangesForMessage(messageID string, lineCount int) [][]m
 	packet, exists := m.messageByID[messageID]
 	if !exists {
 		for _, candidate := range m.messages {
-			if candidate.ID == messageID && candidate.Type == "message" {
+			if candidate.ID == messageID && (candidate.Type == "message" || candidate.Type == "whisper_result") {
 				packet, exists = candidate, true
 				break
 			}
