@@ -43,7 +43,9 @@ func (m model) pollLayout(packet Packet, width int) ([]string, []int) {
 			if width>48 && w>=40 {
 				pct:=fmt.Sprintf(" %d%%",percent)
 				room:=max(0,w-lipgloss.Width(lead)-lipgloss.Width(pct)-1)
-				barWidth:=min(32,max(0,room-20))
+				// Give the option its natural width where possible before shrinking bars.
+				labelReserve:=min(lipgloss.Width(terminalSafeText(option)),room)
+				barWidth:=min(32,max(0,room-labelReserve))
 				if barWidth>0 {
 					filled:=0
 					if p.Total>0 {filled=(count*barWidth+p.Total/2)/p.Total}
