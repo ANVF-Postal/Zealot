@@ -25,10 +25,13 @@ func (m model) pollLayout(packet Packet, width int) ([]string, []int) {
 	header := fmt.Sprintf("[%s] [POLL #%s] %s asks:", packet.Time.Local().Format("15:04"),p.ID,terminalSafeText(packet.User.Name))
 	for _, line := range wrapANSIHardLine(header,w) { add(line,0) }
 	for _, line := range wrapANSIHardLine(terminalSafeText(p.Question),w) { add(line,0) }
+	add("",0)
 	for i, option := range p.Options {
 		choice := i+1
 		lead := fmt.Sprintf("  %d. ",choice)
-		if p.Choice == choice {
+		selected:=p.Choice==choice
+		if p.Multi {selected=false;for _,n:=range p.Choices {if n==choice {selected=true;break}}}
+		if selected {
 			lead = fmt.Sprintf("> %d. ",choice)
 		}
 		suffix := ""
@@ -37,19 +40,22 @@ func (m model) pollLayout(packet Packet, width int) ([]string, []int) {
 			if i < len(p.Counts) {count=p.Counts[i]}
 			percent := 0
 			if p.Total > 0 { percent = (count*100+p.Total/2)/p.Total }
-			if width > 48 && w >= 40 {
-				filled := 0
-				if p.Total > 0 {filled = count*12/p.Total}
-				suffix = fmt.Sprintf(" %s%s %d%%",
-					strings.Repeat("█",filled),strings.Repeat("░",12-filled),percent)
-			} else {
-				suffix = fmt.Sprintf(" %d%%",percent)
-			}
+			if width>48 && w>=40 {
+				pct:=fmt.Sprintf(" %d%%",percent)
+				room:=max(0,w-lipgloss.Width(lead)-lipgloss.Width(pct)-1)
+				barWidth:=min(32,max(0,room-20))
+				if barWidth>0 {
+					filled:=0
+					if p.Total>0 {filled=(count*barWidth+p.Total/2)/p.Total}
+					suffix=" "+strings.Repeat("█",filled)+strings.Repeat("░",barWidth-filled)+pct
+				} else {suffix=pct}
+			} else {suffix=fmt.Sprintf(" %d%%",percent)}
 		}
 		available := max(1,w-lipgloss.Width(lead)-lipgloss.Width(suffix))
 		label := truncateANSI(terminalSafeText(option),available)
 		add(lead+label+suffix,choice)
 	}
+	add("",0)
 	if p.Closed {
 		best, winners := -1, make([]string,0,len(p.Options))
 		for i, count := range p.Counts {
@@ -101,7 +107,7 @@ func (m model) renderPollLines(packet Packet, width int) []string {
 		switch {
 		case choices[i]>0 && m.pollHoveredID==packet.ID && m.pollHoveredOption==choices[i]:
 			style=highlight
-		case choices[i]>0 && packet.Poll != nil && packet.Poll.Choice==choices[i]:
+		case choices[i]>0 && packet.Poll != nil && strings.HasPrefix(line, "> "):
 			style=accent
 		case i==len(rows)-1:
 			style=muted
