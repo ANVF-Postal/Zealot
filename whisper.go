@@ -10,7 +10,7 @@ import (
 // currently connected room member. It deliberately never calls broadcast and
 // never appends to room history. The authenticated connection, not the request
 // packet, supplies the sender's identity and room.
-func (s *server) sendWhisper(roomName string, sender *serverClient, target, body string) error {
+func (s *server) sendWhisper(roomName string, sender *serverClient, target, body, replyTo string) error {
 	body = strings.TrimSpace(body)
 	if !strings.HasPrefix(target, "@") || len(target) < 2 || strings.TrimSpace(target[1:]) == "" {
 		return fmt.Errorf("Usage: /whisper @user message")
@@ -44,7 +44,7 @@ func (s *server) sendWhisper(roomName string, sender *serverClient, target, body
 
 	result := Packet{
 		ID: nextMessageID(), Type: "whisper_result", Room: roomName,
-		User: sender.user, WhisperTo: recipient.user.Name, Text: body,
+		User: sender.user, WhisperTo: recipient.user.Name, Text: body, ReplyTo: replyTo,
 		Time: time.Now().UTC(),
 	}
 	// Snapshot the authorized recipients under the room lock, then send
