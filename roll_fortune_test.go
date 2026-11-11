@@ -218,3 +218,12 @@ func TestFortuneSayingsAreDistinctAndNonempty(t *testing.T) {
 		seen[key] = true
 	}
 }
+
+func TestFortuneCollectionIncludesBruh(t *testing.T) {
+	for _, saying := range fortuneSayings {
+		if saying == "Bruh" {
+			return
+		}
+	}
+	t.Fatal("the oracle has forgotten Bruh")
+}
