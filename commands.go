@@ -95,6 +95,30 @@ func (m *model) sendMessage(text string, replyTo string) bool {
 		}
 		_ = m.client.send(Packet{Type: "whisper", Room: m.room, WhisperTo: parts[1], Text: body})
 		return true
+	case "/poll":
+		body := strings.TrimSpace(strings.TrimPrefix(trimmed, fields[0]))
+		if len(fields) == 3 && strings.EqualFold(fields[1], "close") {
+			_ = m.client.send(Packet{Type:"poll_close",Room:m.room,Text:fields[2]})
+			return true
+		}
+		if _, _, err := parsePollDefinition(body); err != nil {
+			m.appendMessage(Packet{Type:"system",Text:err.Error(),Time:time.Now().UTC()})
+			return false
+		}
+		_ = m.client.send(Packet{Type:"poll_create",Room:m.room,Text:body})
+		return true
+	case "/vote":
+		if len(fields) != 3 {
+			m.appendMessage(Packet{Type:"system",Text:"Usage: /vote POLL_ID OPTION_NUMBER",Time:time.Now().UTC()})
+			return false
+		}
+		option, err := strconv.Atoi(fields[2])
+		if err != nil || option < 1 || option > 6 {
+			m.appendMessage(Packet{Type:"system",Text:"Usage: /vote POLL_ID OPTION_NUMBER (1–6)",Time:time.Now().UTC()})
+			return false
+		}
+		_ = m.client.send(Packet{Type:"poll_vote",Room:m.room,Poll:&PollData{ID:fields[1],Choice:option}})
+		return true
 	case "/coinflip":
 		if len(fields) != 1 {
 			m.appendMessage(Packet{Type: "system", Text: "Usage: /coinflip", Time: time.Now().UTC()})
