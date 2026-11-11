@@ -375,7 +375,7 @@ func (m *model) addMessageToIndexes(packet Packet) {
 		m.rebuildMessageIndexes()
 		return
 	}
-	if packet.Type != "message" || packet.ID == "" {
+	if (packet.Type != "message" && packet.Type != "whisper_result") || packet.ID == "" {
 		return
 	}
 	m.messageByID[packet.ID] = packet
