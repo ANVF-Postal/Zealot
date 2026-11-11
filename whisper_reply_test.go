@@ -314,3 +314,34 @@ func TestWhisperReplyHitboxesMatchContextualHeader(t *testing.T) {
 		}
 	}
 }
+
+func TestOutgoingWhisperUsesRecipientUsernameColor(t *testing.T) {
+	for _, width := range []int{40, 100} {
+		packet := whisperReplyTestPacket("recipient-color", "Daniel1", "Daniel2", "bruh")
+		packet.User.Color = "#FF3399"
+		m := newMessageInteractionTestModel(width, packet)
+		m.user.Name = "Daniel1"
+		m.onlineUsers = []User{
+			{Name: "Daniel1", Color: "#FF3399"},
+			{Name: "Daniel2", Color: "#11CC88"},
+		}
+		rendered := strings.Join(m.renderPacketBaseLines(packet, width), "\n")
+		recipientStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#11CC88")).
+			Background(m.messageBackground(packet)).Bold(true)
+		if !strings.Contains(rendered, recipientStyle.Render("Daniel2")) {
+			t.Errorf("width %d: outgoing recipient name is not their own color: %q", width, rendered)
+		}
+		senderStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FF3399")).
+			Background(m.messageBackground(packet)).Bold(true)
+		if strings.Contains(rendered, senderStyle.Render("Daniel2")) {
+			t.Errorf("width %d: outgoing recipient was incorrectly colored as the sender", width)
+		}
+		m.user.Name = "Daniel2"
+		rendered = strings.Join(m.renderPacketBaseLines(packet, width), "\n")
+		if !strings.Contains(rendered, senderStyle.Render("Daniel1")) {
+			t.Errorf("width %d: incoming sender lost their username color", width)
+		}
+	}
+}
