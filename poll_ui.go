@@ -141,5 +141,5 @@ func (m model) pollOptionAt(x,y int) (string,int) {
 	_,choices:=m.pollLayout(packet,m.width)
 	relative:=row-span.Start
 	if relative<0 || relative>=len(choices) || choices[relative]==0 {return "",0}
-	return packet.Poll.ID,choices[relative]
+	return packet.ID,choices[relative]
 }
