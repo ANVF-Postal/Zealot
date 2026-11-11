@@ -255,10 +255,10 @@ func TestWhisperHeadingsAreContextualAndUnpadded(t *testing.T) {
 				if !strings.HasPrefix(first, "[W] ") {
 					t.Fatalf("compact whisper did not start with [W]: %q", first)
 				}
-				if got := strings.TrimSpace(stripANSISequences(lines[len(lines)-1])); got != "[15:04]" {
+				if got := strings.TrimSpace(stripANSISequences(lines[len(lines)-1])); got != "["+parent.Time.Local().Format("15:04")+"]" {
 					t.Fatalf("compact whisper missing separate timestamp: %q", got)
 				}
-			} else if !strings.HasPrefix(first, "[15:04] ") {
+			} else if !strings.HasPrefix(first, "["+parent.Time.Local().Format("15:04")+"] ") {
 				t.Fatalf("wide whisper timestamp is not left-aligned: %q", first)
 			}
 			if got,want := m.renderPacketLineCount(parent,tc.width),len(m.renderPacketLines(parent,tc.width));got!=want {
@@ -288,7 +288,7 @@ func TestWhisperReplyHitboxesMatchContextualHeader(t *testing.T) {
 					if hit.TargetID == parent.ID {
 						badgeRow = row
 						visible := []rune(stripANSISequences(m.renderPacketLines(reply,width)[row]))
-						if hit.End>len(visible) || string(visible[hit.Start:hit.End])!="[Re]" {
+						if hit.End>len(visible) || string(visible[hit.Start:hit.End])!=replyBadgeLabelForWidth(width) {
 							t.Fatalf("width=%d viewer=%s reply badge not aligned: hit=%+v line=%q",width,viewer,hit,string(visible))
 						}
 					}
