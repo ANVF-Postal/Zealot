@@ -269,19 +269,21 @@ func (m *model) refreshMessageHover() {
 		return
 	}
 	hoveredID := ""
+	pollID, pollChoice := "", 0
 	if !m.usersOpen && !m.splashOpen {
 		hoveredID = m.messageIDAt(m.lastMouseX, m.lastMouseY)
+		pollID, pollChoice = m.pollOptionAt(m.lastMouseX, m.lastMouseY)
 	}
-	if hoveredID == m.hoveredMessageID {
+	if hoveredID == m.hoveredMessageID && pollID == m.pollHoveredID && pollChoice == m.pollHoveredOption {
 		return
 	}
 
-	previousID := m.hoveredMessageID
+	previousID, previousPoll := m.hoveredMessageID, m.pollHoveredID
 	m.hoveredMessageID = hoveredID
-	// Hover changes only foreground styling; they do not change wrapping or
-	// hitboxes. Restyle the affected cached rows in place instead of laying
-	// out the entire chat history on every pointer transition.
-	if !m.restyleMessageRows(previousID) || !m.restyleMessageRows(hoveredID) {
+	m.pollHoveredID, m.pollHoveredOption = pollID, pollChoice
+	// Reuse the same targeted row restyling for chat and poll options.
+	if !m.restyleMessageRows(previousID) || !m.restyleMessageRows(hoveredID) ||
+		!m.restyleMessageRows(previousPoll) || !m.restyleMessageRows(pollID) {
 		m.rebuildMessageCache()
 	}
 }
