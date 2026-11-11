@@ -191,3 +191,28 @@ func TestDaemonSwitchesPublicTypingOffWhenWhisperStarts(t *testing.T) {
 		t.Fatalf("private typing never started: packets=%+v",targetPackets)
 	}
 }
+
+func TestSendingWhisperClearsPrivateTypingImmediately(t *testing.T) {
+	m:=newMessageInteractionTestModel(100)
+	m.connected=true
+	m.room="test"
+	m.user=User{Name:"Alice"}
+	m.onlineUsers=[]User{{Name:"Daniel2"}}
+	var output bytes.Buffer
+	m.client=&wireClient{enc:json.NewEncoder(&output)}
+	m.input.SetValue("/whisper @Daniel2 bruh")
+	m.syncTypingState()
+	started:=decodeTypingPackets(t,&output)
+	if len(started)!=1 || started[0].Type!="whisper_typing" || !started[0].Typing {
+		t.Fatalf("private typing did not start: %+v",started)
+	}
+	m.sendCurrentMessage()
+	packets:=decodeTypingPackets(t,&output)
+	if len(packets)!=2 ||
+		packets[0].Type!="whisper" || packets[0].WhisperTo!="@Daniel2" ||
+		packets[0].Text!="bruh" ||
+		packets[1].Type!="whisper_typing" || packets[1].Typing ||
+		m.isTyping || m.typingWhisperTarget!="" {
+		t.Fatalf("sending whisper did not clear typing state immediately: %+v",packets)
+	}
+}
