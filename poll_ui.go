@@ -76,7 +76,9 @@ func (m model) pollLayout(packet Packet, width int) ([]string, []int) {
 		}
 		for _, line := range wrapANSIHardLine(fmt.Sprintf("%d votes • Closed • %s",p.Total,verdict),w) {add(line,0)}
 	} else if p.ResultsVisible {
-		add(fmt.Sprintf("%d votes • Open • /vote %s OPTION",p.Total,p.ID),0)
+		hint := fmt.Sprintf("%d votes • Open • /vote %s OPTION",p.Total,p.ID)
+		if !p.Multi {hint += " (again to retract)"}
+		add(hint,0)
 	} else {
 		hint:="Vote to reveal results"
 		if p.Multi {hint="Select one or more options to reveal results"}
