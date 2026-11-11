@@ -83,6 +83,7 @@ var fortuneSayings = []string{
 	"Your next adventure begins with a misplaced comma.",
 	"The wind carries news, but refuses to cite its sources.",
 	"A ridiculous plan will be remembered fondly.",
+	"Bruh",
 	"An ancient printer will awaken and demand a better title.",
 	"Your luck is buffering, but the progress bar looks promising.",
 	"A wise mushroom will approve of your next decision.",
