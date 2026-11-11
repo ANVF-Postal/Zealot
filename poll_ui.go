@@ -115,25 +115,40 @@ func (m model) renderPollLines(packet Packet, width int) []string {
 // server sends snapshots, not new chat lines, on every vote and close.
 func (m *model) applyPollSnapshot(packet Packet) {
 	if packet.Poll == nil || packet.ID == "" {return}
-	for i := range m.messages {
-		if m.messages[i].ID != packet.ID || m.messages[i].Type != "poll_result" {continue}
-		if m.messages[i].Poll != nil && m.messages[i].Poll.Version >= packet.Poll.Version {return}
-		m.messages[i]=packet
-		if m.messageByID != nil {m.messageByID[packet.ID]=packet}
-		if m.renderCacheValid && m.renderCacheWidth==m.width {
-			oldRows:=m.messageRowsByID[packet.ID]
-			if _,ok:=m.replaceCachedMessageRows(packet.ID);ok {
-				newRows:=m.messageRowsByID[packet.ID]
-				if m.scroll>0 {m.scroll+=newRows.End-newRows.Start-(oldRows.End-oldRows.Start)}
-				m.clampScroll()
-				m.refreshRenderedWindow()
-				return
+	index, exists := m.pollIndexByID[packet.ID]
+	if !exists || index<0 || index>=len(m.messages) {
+		// Older models or direct tests may not have an index yet.
+		for i, previous := range m.messages {
+			if previous.ID == packet.ID && previous.Type == "poll_result" {
+				index, exists = i, true
+				break
 			}
 		}
-		m.rebuildMessageCache()
+	}
+	if !exists || m.messages[index].Type != "poll_result" {
+		m.appendMessage(packet)
 		return
 	}
-	m.appendMessage(packet)
+	if old := m.messages[index].Poll; old != nil && old.Version >= packet.Poll.Version {
+		return
+	}
+	m.messages[index] = packet
+	if m.pollIndexByID == nil {m.pollIndexByID = make(map[string]int)}
+	m.pollIndexByID[packet.ID] = index
+	if m.messageByID != nil {m.messageByID[packet.ID] = packet}
+	if m.renderCacheValid && m.renderCacheWidth == m.width {
+		oldRows := m.messageRowsByID[packet.ID]
+		if _, ok := m.replaceCachedMessageRows(packet.ID); ok {
+			newRows := m.messageRowsByID[packet.ID]
+			if m.scroll > 0 {
+				m.scroll += (newRows.End-newRows.Start)-(oldRows.End-oldRows.Start)
+			}
+			m.clampScroll()
+			m.refreshRenderedWindow()
+			return
+		}
+	}
+	m.rebuildMessageCache()
 }
 
 // pollOptionAt maps a mouse position to one of the visible poll's option
