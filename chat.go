@@ -309,7 +309,7 @@ func trimANSIEndPadding(line string) string {
 
 func (m model) renderPacketLines(msg Packet, width int) []string {
 	lines := m.renderPacketBaseLines(msg, width)
-	if msg.Type != "message" || msg.ID == "" || msg.XKeyscore > 0 {
+	if (msg.Type != "message" && msg.Type != "whisper_result") || msg.ID == "" || msg.XKeyscore > 0 {
 		return lines
 	}
 	replies := m.repliesFor(msg.ID)
@@ -354,7 +354,7 @@ func (m *model) rebuildMessageIndexes() {
 	messagesByID := make(map[string]Packet, len(m.messages))
 	repliesByMessageID := make(map[string][]string)
 	for _, packet := range m.messages {
-		if packet.Type != "message" || packet.ID == "" {
+		if (packet.Type != "message" && packet.Type != "whisper_result") || packet.ID == "" {
 			continue
 		}
 		messagesByID[packet.ID] = packet
@@ -389,7 +389,7 @@ func (m model) repliesFor(messageID string) []string {
 	}
 	var replies []string
 	for _, packet := range m.messages {
-		if packet.Type == "message" && packet.ReplyTo == messageID && packet.ID != "" {
+		if (packet.Type == "message" || packet.Type == "whisper_result") && packet.ReplyTo == messageID && packet.ID != "" {
 			replies = append(replies, packet.ID)
 		}
 	}
@@ -405,7 +405,7 @@ func (m model) hasMessageID(messageID string) bool {
 		return exists
 	}
 	for _, packet := range m.messages {
-		if packet.ID == messageID && packet.Type == "message" {
+		if packet.ID == messageID && (packet.Type == "message" || packet.Type == "whisper_result") {
 			return true
 		}
 	}
@@ -456,7 +456,7 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 	} else if original.Spoiler && !m.revealedSpoilers[original.ID] {
 		bodyStyle = bodyStyle.Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor))
 	}
-	hovered := msg.Type == "message" && msg.ID != "" && (msg.ID == m.hoveredMessageID || msg.ID == m.highlightedMessageID)
+	hovered := (msg.Type == "message" || msg.Type == "whisper_result") && msg.ID != "" && (msg.ID == m.hoveredMessageID || msg.ID == m.highlightedMessageID)
 	if hovered && !isSpecialMessage(original) {
 		hoverColor := lipgloss.Color(m.cfg.Theme.HoverTextColor)
 		bodyStyle = bodyStyle.Foreground(hoverColor)
@@ -474,9 +474,10 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 		styled := normalBodyStyle.Render("["+msg.Time.Local().Format("15:04")+"] ") +
 			accent.Render("[WHISPER]") + normalBodyStyle.Render(" ") +
 			senderStyle.Render(terminalSafeText(msg.User.Name)) +
+			m.renderReplyBadgeForWidth(msg, width) +
 			normalBodyStyle.Render(" → ") +
 			accent.Render("@"+terminalSafeText(msg.WhisperTo)) +
-			normalBodyStyle.Render(": "+terminalSafeText(msg.Text))
+			normalBodyStyle.Render(": ") + bodyStyle.Render(terminalSafeText(msg.Text))
 		var result []string
 		for _, line := range wrapANSIHardLine(styled, max(1, contentWidth-2)) {
 			result = append(result, renderChatRow(rowFill, "  "+line, contentWidth))
