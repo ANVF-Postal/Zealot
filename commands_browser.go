@@ -22,6 +22,7 @@ var handbookPages = []struct {
 	{"CHAT", []handbookEntry{
 		{"@user", "Lets you send a message that will be highlighted on the specified user's screen."},
 		{"/me", "Sends a message written in the third person."},
+		{"/whisper @user message", "Sends a private message visible only to you and the specified user. Whispers are not saved in public room history."},
 		{"/rainbow", "Toggle: messages you send will be in rainbow colors."},
 		{"/rb", "Sends a single message in rainbow colors."},
 		{"/coinflip", "Sends a special message with the result of a coin flip."},
