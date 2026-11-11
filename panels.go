@@ -774,8 +774,15 @@ func (m *model) appendMessages(packets []Packet) {
 	if m.messageByID == nil || m.replyIDsByMessageID == nil {
 		m.rebuildMessageIndexes()
 	} else {
-		for _, packet := range packets {
+		if m.pollIndexByID == nil {
+			m.pollIndexByID = make(map[string]int)
+		}
+		startIndex := len(m.messages) - len(packets)
+		for i, packet := range packets {
 			m.addMessageToIndexes(packet)
+			if packet.Type == "poll_result" && packet.ID != "" {
+				m.pollIndexByID[packet.ID] = startIndex + i
+			}
 		}
 	}
 
