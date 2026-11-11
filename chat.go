@@ -53,6 +53,10 @@ func (m model) renderPacketLineCount(msg Packet, width int) int {
 	case "me":
 		text := fmt.Sprintf("[%s] * %s %s", msg.Time.Local().Format("15:04"), msg.User.Name, msg.Text)
 		return max(1, wrapTextLineCount(text, contentWidth-2))
+	case "whisper_result":
+		// Private replies can add the same trailing [1]/[2] navigation rows
+		// as ordinary messages. Count them through the shared renderer.
+		return max(1, len(m.renderPacketLines(msg, width)))
 	case "message":
 		if msg.XKeyscore > 0 {
 			return m.xkeyscoreLineCount(msg, width)
