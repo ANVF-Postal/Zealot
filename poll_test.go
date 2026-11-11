@@ -397,3 +397,75 @@ func TestSingleChoicePollCanRetractVote(t *testing.T) {
 		t.Fatalf("vote after retraction failed: %+v", selected)
 	}
 }
+
+
+func TestPollResultsExpandIntoAlignedClickableBars(t *testing.T) {
+	p := testPollPacket()
+	p.Poll.Options = []string{"Go", "A much longer option name", "Rust"}
+	m := newMessageInteractionTestModel(90, p)
+	m.height = 35
+	m.rebuildMessageCache()
+	compact, compactChoices := m.pollLayout(p, m.width)
+	for _, line := range compact {
+		if strings.Contains(line, "█") || strings.Contains(line, "░") {
+			t.Fatalf("unvoted poll unexpectedly displayed results: %q", compact)
+		}
+	}
+	updated := p
+	updated.Poll = &PollData{
+		ID: "7", Version: 2, Question: p.Poll.Question,
+		Options: p.Poll.Options, Counts: []int{2, 1, 0},
+		Total: 3, Choice: 2, ResultsVisible: true,
+	}
+	m.applyPollSnapshot(updated)
+	expanded, choices := m.pollLayout(updated, m.width)
+	if len(expanded) <= len(compact) {
+		t.Fatalf("results did not expand the poll: compact=%d expanded=%d", len(compact), len(expanded))
+	}
+	barWidths := []int{}
+	for i, line := range expanded {
+		if strings.ContainsAny(line, "█░") {
+			barWidths = append(barWidths, strings.Count(line, "█")+strings.Count(line, "░"))
+			if choices[i] == 0 {
+				t.Fatalf("bar row is not clickable: %q", line)
+			}
+			left := 1
+			if narrowBordersHidden(m.width) { left = 0 }
+			id, selected := m.pollOptionAt(left+3, 2+i)
+			if id != updated.ID || selected != choices[i] {
+				t.Fatalf("bar row click did not select option: (%s,%d), want (%s,%d)", id, selected, updated.ID, choices[i])
+			}
+		}
+	}
+	if len(barWidths) != len(p.Poll.Options) {
+		t.Fatalf("expected one result bar per option, got %d", len(barWidths))
+	}
+	for _, n := range barWidths {
+		if n != barWidths[0] || n < 20 {
+			t.Fatalf("unequal or unexpectedly short bars: %v", barWidths)
+		}
+	}
+	_ = compactChoices
+	// Retracting the vote collapses the poll back to its compact state.
+	retracted := updated
+	retracted.Poll = &PollData{ID: "7", Version: 3, Question: p.Poll.Question, Options: p.Poll.Options}
+	m.applyPollSnapshot(retracted)
+	collapsed, _ := m.pollLayout(retracted, m.width)
+	if len(collapsed) != len(compact) {
+		t.Fatalf("retracted poll did not collapse: compact=%d collapsed=%d", len(compact), len(collapsed))
+	}
+}
+
+func TestCompactPollResultsDoNotDrawBars(t *testing.T) {
+	p := testPollPacket()
+	p.Poll.Counts = []int{2, 1, 0}
+	p.Poll.Total = 3
+	p.Poll.Choice = 2
+	p.Poll.ResultsVisible = true
+	m := newMessageInteractionTestModel(40, p)
+	rows, _ := m.pollLayout(p, 40)
+	text := strings.Join(rows, "\n")
+	if !strings.Contains(text, "67%") || strings.ContainsAny(text, "█░") {
+		t.Fatalf("compact poll no longer uses percentage-only display: %q", text)
+	}
+}
