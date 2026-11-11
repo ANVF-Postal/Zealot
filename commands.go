@@ -59,6 +59,21 @@ func (m *model) sendMessage(text string, replyTo string) bool {
 			Text: body, Long: longMessage, Spoiler: !longMessage,
 		})
 		return true
+	case "/whisper":
+		// Split the message only twice: the body may contain arbitrary spaces,
+		// punctuation and line breaks, but the recipient must be a single name.
+		parts := strings.Fields(trimmed)
+		if len(parts) < 3 || !strings.HasPrefix(parts[1], "@") || len(parts[1]) < 2 {
+			m.appendMessage(Packet{Type: "system", Text: "Usage: /whisper @user message", Time: time.Now().UTC()})
+			return false
+		}
+		body := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(strings.TrimPrefix(trimmed, fields[0])), parts[1]))
+		if body == "" || len([]rune(body)) > maxMessage {
+			m.appendMessage(Packet{Type: "system", Text: fmt.Sprintf("Whispers must contain 1–%d characters. Usage: /whisper @user message", maxMessage), Time: time.Now().UTC()})
+			return false
+		}
+		_ = m.client.send(Packet{Type: "whisper", Room: m.room, WhisperTo: parts[1], Text: body})
+		return true
 	case "/coinflip":
 		if len(fields) != 1 {
 			m.appendMessage(Packet{Type: "system", Text: "Usage: /coinflip", Time: time.Now().UTC()})
