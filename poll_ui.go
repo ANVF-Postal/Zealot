@@ -106,6 +106,7 @@ func (m *model) applyPollSnapshot(packet Packet) {
 	if packet.Poll == nil || packet.ID == "" {return}
 	for i := range m.messages {
 		if m.messages[i].ID != packet.ID || m.messages[i].Type != "poll_result" {continue}
+		if m.messages[i].Poll != nil && m.messages[i].Poll.Version >= packet.Poll.Version {return}
 		m.messages[i]=packet
 		if m.messageByID != nil {m.messageByID[packet.ID]=packet}
 		if m.renderCacheValid && m.renderCacheWidth==m.width {
