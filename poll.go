@@ -30,14 +30,14 @@ func parsePollDefinition(input string) (string, []string, error) {
 		return "", nil, fmt.Errorf("Usage: /poll question | option1 | option2 (2–6 options)")
 	}
 	question := strings.TrimSpace(parts[0])
-	if question == "" || len([]rune(question)) > 160 {
+	if question == "" || len([]rune(question)) > 160 || strings.ContainsAny(question, "\r\n\t") {
 		return "", nil, fmt.Errorf("Poll question must contain 1–160 characters")
 	}
 	options := make([]string, 0, len(parts)-1)
 	seen := make(map[string]bool)
 	for _, raw := range parts[1:] {
 		option := strings.TrimSpace(raw)
-		if option == "" || len([]rune(option)) > 60 {
+		if option == "" || len([]rune(option)) > 60 || strings.ContainsAny(option, "\r\n\t") {
 			return "", nil, fmt.Errorf("Poll options must contain 1–60 characters")
 		}
 		key := strings.ToLower(option)
