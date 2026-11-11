@@ -253,6 +253,18 @@ func (m model) View() tea.View {
 	if typing != "" {
 		typingLine = m.styles.accent.Width(chatContentWidth(m.width)).Render("  " + typing)
 	}
+	// A private notification shares the permanent typing row, but only the
+	// addressed client receives the event. Give it priority if both exist.
+	for _, name := range m.privateTypingOrder {
+		if user, ok := m.privateTyping[name]; ok {
+			typingLine = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(user.Color)).
+				Background(lipgloss.Color(m.cfg.Theme.Background)).
+				Width(chatContentWidth(m.width)).
+				Render("  " + terminalSafeText(user.Name) + " is whispering to you…")
+			break
+		}
+	}
 	typingLine = truncateANSI(typingLine, chatContentWidth(m.width)) + scrollbarRows[chatHeight]
 	chat += "\n" + typingLine
 
