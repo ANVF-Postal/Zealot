@@ -29,6 +29,8 @@ type PollData struct {
 	Counts []int `json:"counts,omitempty"`
 	Total int `json:"total"`
 	Choice int `json:"choice,omitempty"`
+	Choices []int `json:"choices,omitempty"`
+	Multi bool `json:"multi,omitempty"`
 	Closed bool `json:"closed,omitempty"`
 	ResultsVisible bool `json:"results_visible,omitempty"`
 }
