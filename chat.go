@@ -360,7 +360,11 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 func (m *model) rebuildMessageIndexes() {
 	messagesByID := make(map[string]Packet, len(m.messages))
 	repliesByMessageID := make(map[string][]string)
-	for _, packet := range m.messages {
+	pollsByID := make(map[string]int)
+	for index, packet := range m.messages {
+		if packet.Type == "poll_result" && packet.ID != "" {
+			pollsByID[packet.ID] = index
+		}
 		if (packet.Type != "message" && packet.Type != "whisper_result" && packet.Type != "poll_result") || packet.ID == "" {
 			continue
 		}
@@ -371,6 +375,7 @@ func (m *model) rebuildMessageIndexes() {
 	}
 	m.messageByID = messagesByID
 	m.replyIDsByMessageID = repliesByMessageID
+	m.pollIndexByID = pollsByID
 }
 
 func (m *model) addMessageToIndexes(packet Packet) {
