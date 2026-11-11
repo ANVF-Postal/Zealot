@@ -158,6 +158,26 @@ func (m model) Update(
 		case "history_state":
 			m.historyEnabled = packet.AddHistory
 
+		case "whisper_typing":
+			key := packet.User.Name
+			if packet.Typing {
+				if m.privateTyping == nil {
+					m.privateTyping = make(map[string]User)
+				}
+				if _, exists := m.privateTyping[key]; !exists {
+					m.privateTypingOrder = append(m.privateTypingOrder, key)
+				}
+				m.privateTyping[key] = packet.User
+			} else {
+				delete(m.privateTyping, key)
+				for i, name := range m.privateTypingOrder {
+					if name == key {
+						m.privateTypingOrder = append(m.privateTypingOrder[:i], m.privateTypingOrder[i+1:]...)
+						break
+					}
+				}
+			}
+
 		case "typing":
 			key := packet.User.Name
 
