@@ -150,3 +150,72 @@ func TestClientCannotForgeWhisperResultPacket(t *testing.T) {
 	case <-time.After(time.Second): t.Fatal("daemon did not stop after disconnect")
 	}
 }
+
+func TestWhisperDoesNotReachOtherRooms(t *testing.T) {
+	s := newServer()
+	origin := s.room("origin", true)
+	other := s.room("other", true)
+	var senderData, otherData bytes.Buffer
+	sender := &serverClient{
+		id: "sender", room: "origin", user: User{Name: "Postal"},
+		enc: json.NewEncoder(&senderData),
+	}
+	stranger := &serverClient{
+		id: "stranger", room: "other", user: User{Name: "Alice"},
+		enc: json.NewEncoder(&otherData),
+	}
+	origin.clients[sender.id] = sender
+	other.clients[stranger.id] = stranger
+	if err := s.sendWhisper("origin", sender, "@Alice", "secret"); err == nil {
+		t.Fatal("daemon resolved a whisper target from a different room")
+	}
+	if senderData.Len() != 0 || otherData.Len() != 0 {
+		t.Fatal("failed cross-room whisper leaked its content")
+	}
+	if len(origin.messages) != 0 || len(other.messages) != 0 {
+		t.Fatal("failed cross-room whisper entered room history")
+	}
+}
+
+func TestWhisperRequestUsesDaemonIdentityEndToEnd(t *testing.T) {
+	s := newServer()
+	serverConn, peerConn := net.Pipe()
+	done := make(chan struct{})
+	go func() { s.handle(serverConn); close(done) }()
+	defer peerConn.Close()
+	enc := json.NewEncoder(peerConn)
+	dec := json.NewDecoder(bufio.NewReader(peerConn))
+	if err := peerConn.SetReadDeadline(time.Now().Add(3*time.Second)); err != nil { t.Fatal(err) }
+	if err := enc.Encode(Packet{Type: "hello", Room: "quiet", User: User{Name: "Postal"}}); err != nil { t.Fatal(err) }
+	for {
+		var p Packet
+		if err := dec.Decode(&p); err != nil { t.Fatal(err) }
+		if p.Type == "users" { break }
+	}
+	// A self-whisper exercises the full protocol with one connected client,
+	// avoiding unrelated sockets while checking authoritative metadata.
+	if err := enc.Encode(Packet{
+		Type: "whisper", Room: "some-other-room", WhisperTo: "@postal",
+		User: User{Name: "Impostor", Color: "#ff0000"}, Text: "Private test",
+	}); err != nil { t.Fatal(err) }
+	var result Packet
+	if err := dec.Decode(&result); err != nil { t.Fatal(err) }
+	if result.Type != "whisper_result" || result.Room != "quiet" ||
+		result.User.Name != "Postal" || result.WhisperTo != "Postal" ||
+		result.Text != "Private test" {
+		t.Fatalf("daemon trusted forged whisper metadata: %+v", result)
+	}
+	s.mu.Lock()
+	history := append([]Packet(nil), s.rooms["quiet"].messages...)
+	s.mu.Unlock()
+	for _, item := range history {
+		if item.Type == "whisper_result" || item.Text == "Private test" {
+			t.Fatalf("private whisper was saved to room history: %+v", item)
+		}
+	}
+	_ = peerConn.Close()
+	select {
+	case <-done:
+	case <-time.After(time.Second): t.Fatal("daemon did not stop after disconnect")
+	}
+}
