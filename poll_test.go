@@ -58,7 +58,7 @@ func TestPollVotingIsAuthoritativeAndResultsRequireVoting(t *testing.T) {
 	room.clients[bob.id]=bob
 	room.clients[carol.id]=carol
 
-	s.createPoll("polls",alice,"Which? | Go | Rust")
+	s.createPoll("polls",alice,"Which? | Go | Rust",false)
 	created:=takePollPackets(t,&aliceOutput)
 	if len(created)!=1 || created[0].Type!="poll_result" || created[0].Poll==nil {
 		t.Fatalf("poll create did not deliver: %+v",created)
@@ -111,7 +111,7 @@ func TestOnlyCreatorMayClosePollAndClosedPollRejectsVotes(t *testing.T) {
 	b:=newPollTestClient("Bob","b",&bOut)
 	room.clients[a.id]=a
 	room.clients[b.id]=b
-	s.createPoll("polls",a,"Go? | yes | no")
+	s.createPoll("polls",a,"Go? | yes | no",false)
 	takePollPackets(t,&aOut)
 	takePollPackets(t,&bOut)
 	s.closePoll("polls",b,"1")
@@ -138,7 +138,7 @@ func TestPollHistoryPersonalizesVotesAndShowsActiveWithoutHistory(t *testing.T) 
 	var aOut bytes.Buffer
 	a:=newPollTestClient("Alice","a",&aOut)
 	room.clients[a.id]=a
-	s.createPoll("polls",a,"Vote? | one | two")
+	s.createPoll("polls",a,"Vote? | one | two",false)
 	takePollPackets(t,&aOut)
 	s.votePoll("polls",a,&PollData{ID:"1",Choice:2})
 	takePollPackets(t,&aOut)
