@@ -147,3 +147,25 @@ func TestWhisperBodyHitboxesWorkAtCompactWidths(t *testing.T) {
 		}
 	}
 }
+
+func TestIncomingWhisperReplyUpdatesParentMarkersIncrementally(t *testing.T) {
+	parent := whisperReplyTestPacket("private-live-parent","Alice","Postal","initial whisper")
+	reply := whisperReplyTestPacket("private-live-reply","Postal","Alice","private response")
+	reply.ReplyTo = parent.ID
+	m := newMessageInteractionTestModel(100,parent)
+	originalRows := m.messageRowsByID[parent.ID]
+	m.appendMessage(reply)
+	if got:=m.messageByID[reply.ID].ID; got!=reply.ID {
+		t.Fatalf("new whisper reply was not indexed: %q",got)
+	}
+	replies:=m.repliesFor(parent.ID)
+	if len(replies)!=1 || replies[0]!=reply.ID {
+		t.Fatalf("private reply not connected to parent: %v",replies)
+	}
+	if got:=m.messageRowsByID[parent.ID];got.Start!=originalRows.Start {
+		t.Fatalf("parent whisper was displaced: %+v",got)
+	}
+	if !strings.Contains(stripANSISequences(strings.Join(m.renderPacketLines(parent,m.width),"\n")),"[1]") {
+		t.Fatal("new private reply did not add the shared numbered reply marker")
+	}
+}
