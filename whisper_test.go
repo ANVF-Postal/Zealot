@@ -35,7 +35,7 @@ func TestWhisperIsDeliveredOnlyToSenderAndRecipient(t *testing.T) {
 	room.clients[target.id] = target
 	room.clients[bystander.id] = bystander
 
-	if err := s.sendWhisper("quiet", sender, "@aLiCe", "A secret for Alice."); err != nil {
+	if err := s.sendWhisper("quiet", sender, "@aLiCe", "A secret for Alice.", ""); err != nil {
 		t.Fatalf("whisper send: %v", err)
 	}
 	if bystanderData.Len() != 0 {
@@ -73,14 +73,14 @@ func TestWhisperRejectsMissingOrInvalidRecipientAndBody(t *testing.T) {
 		{"@Postal", strings.Repeat("z", maxMessage+1)},
 		{"@Postal another", "hello"},
 	} {
-		if err := s.sendWhisper("quiet", sender, tc.target, tc.body); err == nil {
+		if err := s.sendWhisper("quiet", sender, tc.target, tc.body, ""); err == nil {
 			t.Errorf("allowed whisper with target %q and body length %d", tc.target, len(tc.body))
 		}
 	}
 	if senderData.Len() != 0 || len(room.messages) != 0 {
 		t.Fatal("invalid whisper delivered a packet or was saved to history")
 	}
-	if err := s.sendWhisper("quiet", sender, "@postal", "whisper to myself"); err != nil { t.Fatal(err) }
+	if err := s.sendWhisper("quiet", sender, "@postal", "whisper to myself", ""); err != nil { t.Fatal(err) }
 	if got := bytes.Count(senderData.Bytes(), []byte(`"type":"whisper_result"`)); got != 1 {
 		t.Fatalf("self whisper delivered %d duplicate packets", got)
 	}
@@ -166,7 +166,7 @@ func TestWhisperDoesNotReachOtherRooms(t *testing.T) {
 	}
 	origin.clients[sender.id] = sender
 	other.clients[stranger.id] = stranger
-	if err := s.sendWhisper("origin", sender, "@Alice", "secret"); err == nil {
+	if err := s.sendWhisper("origin", sender, "@Alice", "secret", ""); err == nil {
 		t.Fatal("daemon resolved a whisper target from a different room")
 	}
 	if senderData.Len() != 0 || otherData.Len() != 0 {
