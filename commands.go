@@ -95,9 +95,9 @@ func (m *model) sendMessage(text string, replyTo string) bool {
 		}
 		_ = m.client.send(Packet{Type: "whisper", Room: m.room, WhisperTo: parts[1], Text: body})
 		return true
-	case "/poll":
+	case "/poll", "/multipoll":
 		body := strings.TrimSpace(strings.TrimPrefix(trimmed, fields[0]))
-		if len(fields) == 3 && strings.EqualFold(fields[1], "close") {
+		if strings.EqualFold(fields[0], "/poll") && len(fields) == 3 && strings.EqualFold(fields[1], "close") {
 			_ = m.client.send(Packet{Type:"poll_close",Room:m.room,Text:fields[2]})
 			return true
 		}
@@ -105,7 +105,9 @@ func (m *model) sendMessage(text string, replyTo string) bool {
 			m.appendMessage(Packet{Type:"system",Text:err.Error(),Time:time.Now().UTC()})
 			return false
 		}
-		_ = m.client.send(Packet{Type:"poll_create",Room:m.room,Text:body})
+		packetType:="poll_create"
+		if strings.EqualFold(fields[0],"/multipoll") {packetType="multipoll_create"}
+		_ = m.client.send(Packet{Type:packetType,Room:m.room,Text:body})
 		return true
 	case "/vote":
 		if len(fields) != 3 {
