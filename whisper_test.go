@@ -96,10 +96,9 @@ func TestWhisperChatRenderingIsDistinctAndWrapped(t *testing.T) {
 	}
 	lines := m.renderPacketBaseLines(packet, m.width)
 	plain := stripANSISequences(strings.Join(lines, "\n"))
-	if !strings.Contains(plain, "[WHISPER]") ||
-		!strings.Contains(plain, "Postal → @Alice: ") ||
+	if !strings.Contains(plain, "Postal whispers: ") ||
 		len(lines) < 2 {
-		t.Fatalf("whisper lost label/recipient/wrapping: %q", plain)
+		t.Fatalf("whisper lost incoming header/wrapping: %q", plain)
 	}
 	for _, line := range lines {
 		if lipgloss.Width(line) > chatContentWidth(m.width) {
