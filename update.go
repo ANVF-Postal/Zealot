@@ -118,6 +118,9 @@ func (m model) Update(
 			m.clampUsersScroll()
 			m.refreshMentionUsernames()
 
+		case "poll_result":
+			m.applyPollSnapshot(packet)
+
 		case "message", "system", "me", "letter", "coinflip_result", "random_result", "roll_result", "fortune_result", "whisper_result":
 			m.appendMessage(packet)
 			if (packet.Type == "message" || packet.Type == "whisper_result") && packet.User.Name != m.user.Name {
@@ -713,6 +716,10 @@ func (m model) Update(
 				}
 			}
 			if !m.usersOpen && !m.splashOpen {
+				if pollID, option := m.pollOptionAt(mouse.X, mouse.Y); option > 0 {
+					_ = m.client.send(Packet{Type:"poll_vote",Room:m.room,Poll:&PollData{ID:pollID,Choice:option}})
+					return m,nil
+				}
 				if username := m.messageUsernameAt(mouse.X, mouse.Y); username != "" {
 					return m, m.insertMention(username)
 				}
