@@ -494,10 +494,22 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 		name := terminalSafeText(otherName)
 		_, _, compact := m.whisperHeaderParts(msg, width)
 		accent := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).Background(bg).Bold(true)
-		nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.User.Color)).Background(bg).Bold(true)
+		nameColor := msg.User.Color
 		if outgoing {
-			nameStyle = accent
+			// The whisper packet carries the sender's color, not the
+			// recipient's. Resolve the addressee from the live room roster
+			// so outgoing headers use that person's own username color.
+			nameColor = m.cfg.Theme.AccentColor
+			for _, user := range m.onlineUsers {
+				if strings.EqualFold(user.Name, msg.WhisperTo) {
+					if user.Color != "" {
+						nameColor = user.Color
+					}
+					break
+				}
+			}
 		}
+		nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(nameColor)).Background(bg).Bold(true)
 		timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).Background(bg)
 		styled := ""
 		if compact {
