@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 func whisperReplyTestPacket(id, sender, recipient, body string) Packet {
@@ -219,5 +220,97 @@ func TestIncomingWhisperReplyUpdatesParentMarkersIncrementally(t *testing.T) {
 	}
 	if !strings.Contains(stripANSISequences(strings.Join(m.renderPacketLines(parent,m.width),"\n")),"[1]") {
 		t.Fatal("new private reply did not add the shared numbered reply marker")
+	}
+}
+
+func TestWhisperHeadingsAreContextualAndUnpadded(t *testing.T) {
+	parent := whisperReplyTestPacket("context-parent", "Daniel1", "Daniel2", "hello")
+	reply := whisperReplyTestPacket("context-reply", "Daniel2", "Daniel1", "bruh")
+	reply.ReplyTo = parent.ID
+	for _, tc := range []struct {
+		viewer string
+		width int
+		heading string
+	}{
+		{"Daniel1", 100, "Whispered to Daniel2:"},
+		{"Daniel2", 100, "Daniel1 whispers:"},
+		{"Daniel1", 40, "[W] Daniel2:"},
+		{"Daniel2", 40, "[W] Daniel1:"},
+	} {
+		t.Run(tc.viewer+"/"+tc.heading, func(t *testing.T) {
+			m := newMessageInteractionTestModel(tc.width, parent, reply)
+			m.user.Name = tc.viewer
+			// Original private message must have a short, viewer-specific
+			// heading, regardless of the reply markers attached to it.
+			lines := m.renderPacketBaseLines(parent, tc.width)
+			plain := stripANSISequences(strings.Join(lines, "\n"))
+			if !strings.Contains(plain, tc.heading) {
+				t.Fatalf("whisper heading %q missing from %q", tc.heading, plain)
+			}
+			first := stripANSISequences(lines[0])
+			if strings.HasPrefix(first, " ") {
+				t.Fatalf("whisper starts with unwanted padding: %q", first)
+			}
+			if tc.width <= 48 {
+				if !strings.HasPrefix(first, "[W] ") {
+					t.Fatalf("compact whisper did not start with [W]: %q", first)
+				}
+				if got := strings.TrimSpace(stripANSISequences(lines[len(lines)-1])); got != "[15:04]" {
+					t.Fatalf("compact whisper missing separate timestamp: %q", got)
+				}
+			} else if !strings.HasPrefix(first, "[15:04] ") {
+				t.Fatalf("wide whisper timestamp is not left-aligned: %q", first)
+			}
+			if got,want := m.renderPacketLineCount(parent,tc.width),len(m.renderPacketLines(parent,tc.width));got!=want {
+				t.Fatalf("whisper cached row count=%d; renderer=%d",got,want)
+			}
+			for _, line := range lines {
+				if width := lipgloss.Width(line);width > chatContentWidth(tc.width) {
+					t.Fatalf("whisper row overflows chat: %d > %d",width,chatContentWidth(tc.width))
+				}
+			}
+		})
+	}
+}
+
+func TestWhisperReplyHitboxesMatchContextualHeader(t *testing.T) {
+	for _, width := range []int{40, 100} {
+		for _, viewer := range []string{"Daniel1", "Daniel2"} {
+			parent := whisperReplyTestPacket("ctx-original","Daniel1","Daniel2","hello")
+			reply := whisperReplyTestPacket("ctx-reply","Daniel2","Daniel1","bruh")
+			reply.ReplyTo = parent.ID
+			m := newMessageInteractionTestModel(width,parent,reply)
+			m.user.Name=viewer
+			m.rebuildMessageCache()
+			badgeRow := -1
+			for row, hits := range m.messageLinkRanges(reply,width) {
+				for _, hit := range hits {
+					if hit.TargetID == parent.ID {
+						badgeRow = row
+						visible := []rune(stripANSISequences(m.renderPacketLines(reply,width)[row]))
+						if hit.End>len(visible) || string(visible[hit.Start:hit.End])!="[Re]" {
+							t.Fatalf("width=%d viewer=%s reply badge not aligned: hit=%+v line=%q",width,viewer,hit,string(visible))
+						}
+					}
+				}
+			}
+			if badgeRow < 0 {
+				t.Fatalf("width=%d viewer=%s no reply badge hitbox",width,viewer)
+			}
+			parentLines := m.renderPacketLines(parent,width)
+			parentLinks := m.messageLinkRanges(parent,width)
+			found := false
+			for row,hits := range parentLinks {
+				for _,hit := range hits {
+					if hit.TargetID!=reply.ID {continue}
+					visible:=[]rune(stripANSISequences(parentLines[row]))
+					if hit.End>len(visible) || string(visible[hit.Start:hit.End])!="[1]" {
+						t.Fatalf("width=%d viewer=%s numbered link not aligned: hit=%+v line=%q",width,viewer,hit,string(visible))
+					}
+					found=true
+				}
+			}
+			if !found {t.Fatalf("width=%d viewer=%s [1] missing",width,viewer)}
+		}
 	}
 }
