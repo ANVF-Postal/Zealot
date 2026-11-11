@@ -462,6 +462,28 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 		bodyStyle = bodyStyle.Foreground(hoverColor)
 	}
 
+	if msg.Type == "whisper_result" {
+		// Private messages are shown in the normal chat stream but have
+		// a conspicuous label. Only the sender's name uses their user color.
+		// The daemon supplies both authoritative sender and recipient names.
+		accent := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).
+			Background(bg).Bold(true)
+		senderStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(msg.User.Color)).Background(bg).Bold(true)
+		styled := normalBodyStyle.Render("["+msg.Time.Local().Format("15:04")+"] ") +
+			accent.Render("[WHISPER]") + normalBodyStyle.Render(" ") +
+			senderStyle.Render(terminalSafeText(msg.User.Name)) +
+			normalBodyStyle.Render(" → ") +
+			accent.Render("@"+terminalSafeText(msg.WhisperTo)) +
+			normalBodyStyle.Render(": "+terminalSafeText(msg.Text))
+		var result []string
+		for _, line := range wrapANSIHardLine(styled, max(1, contentWidth-2)) {
+			result = append(result, renderChatRow(rowFill, "  "+line, contentWidth))
+		}
+		return result
+	}
+
 	if msg.Type == "fortune_result" {
 		prefix := terminalSafeText(msg.User.Name) + "'s Fortune: "
 		if msg.FortuneTo != "" {
