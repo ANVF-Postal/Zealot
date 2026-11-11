@@ -49,20 +49,21 @@ func (m model) messageBodyRangesForLineCount(msg Packet, width, lineCount int) [
 
 	contentWidth := chatContentWidth(width)
 	if msg.Type == "whisper_result" {
-		// Reuse the ordinary message hitbox machinery. Whisper headers
-		// occupy an ANSI-styled prefix, followed by the same wrapped body
-		// and any shared reply markers. Only actual whisper text is clickable.
-		limit := max(1, contentWidth-2)
-		header := "["+msg.Time.Local().Format("15:04")+"] [WHISPER] "+
-			terminalSafeText(msg.User.Name) + " → @" +
-			terminalSafeText(msg.WhisperTo) + ": "
-		headerWidth := lipgloss.Width(header) + lipgloss.Width(m.renderReplyBadgeForWidth(msg, width))
+		// Use the same contextual header geometry as the renderer; all
+		// coordinates start at the first chat cell, with no special padding.
+		before, after, compact := m.whisperHeaderParts(msg, width)
+		headerWidth := lipgloss.Width(before+after) +
+			lipgloss.Width(m.renderReplyBadgeForWidth(msg, width))
 		bodyWidth := lipgloss.Width(terminalSafeText(msg.Text))
+		limit := max(1, contentWidth)
 		for row := range ranges {
+			if compact && row == len(ranges)-1 {
+				break // muted timestamp occupies a separate final row
+			}
 			start := max(0, headerWidth-row*limit)
 			end := min(limit, headerWidth+bodyWidth-row*limit)
 			if start < limit && end > start {
-				ranges[row] = clippedMessageBodyRange(2+start, 2+end, contentWidth)
+				ranges[row] = clippedMessageBodyRange(start, end, contentWidth)
 			}
 		}
 		return ranges
@@ -445,15 +446,16 @@ func (m model) messageLinkRangesForLineCount(msg Packet, width, lineCount int) [
 
 	if msg.ReplyTo != "" && m.hasMessageID(msg.ReplyTo) {
 		if msg.Type == "whisper_result" {
-			// The badge appears directly after the sender's name in the
-			// whisper header. Map its visible cells to the existing jump.
-			start := lipgloss.Width("["+msg.Time.Local().Format("15:04")+"] [WHISPER] "+terminalSafeText(msg.User.Name))
-			limit := max(1, chatContentWidth(width)-2)
+			// Reuse the contextual header's pre-badge text rather than
+			// guessing at the sender/recipient layout.
+			before, _, _ := m.whisperHeaderParts(msg, width)
+			start := lipgloss.Width(before)
+			limit := max(1, chatContentWidth(width))
 			row, column := start/limit, start%limit
 			badgeWidth := lipgloss.Width(replyBadgeLabelForWidth(width))
 			if row < len(regions) && column+badgeWidth <= limit {
 				regions[row] = append(regions[row], messageLinkRange{
-					Start: 2+column, End: 2+column+badgeWidth, TargetID: msg.ReplyTo,
+					Start: column, End: column+badgeWidth, TargetID: msg.ReplyTo,
 				})
 			}
 		} else {
