@@ -336,6 +336,7 @@ func TestMultiPollClientCommand(t *testing.T) {
 
 func TestPollSpacingAndAdaptiveBars(t *testing.T) {
  p:=testPollPacket()
+ p.Poll.Options[0]="An exceptionally long option"
  p.Poll.Choice=1
  p.Poll.Counts=[]int{1,0,0}
  p.Poll.Total=1
