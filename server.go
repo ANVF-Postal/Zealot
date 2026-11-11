@@ -321,7 +321,7 @@ func (s *server) handle(conn net.Conn) {
 			s.broadcastGameResult(roomName, client, result)
 
 		case "whisper":
-			if err := s.sendWhisper(roomName, client, packet.WhisperTo, packet.Text); err != nil {
+			if err := s.sendWhisper(roomName, client, packet.WhisperTo, packet.Text, packet.ReplyTo); err != nil {
 				client.send(Packet{Type: "system", Room: roomName, Text: err.Error(), Time: time.Now().UTC()})
 			}
 			// No broadcast, history, roster update, or public typing event.
