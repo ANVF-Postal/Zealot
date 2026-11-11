@@ -486,11 +486,10 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 		outcome := msg.Text
 		if msg.Type == "roll_result" {
 			label = "[ROLL]"
-			action = msg.User.Name + " rolled "
-			if colon := strings.LastIndex(msg.Text, ": "); colon >= 0 {
-				action += msg.Text[:colon+2]
-				outcome = msg.Text[colon+2:]
-			}
+			// Only the roller's name uses their user color. The verb,
+			// notation, colon and individual dice all use normal text.
+			action = msg.User.Name
+			outcome = " rolled " + msg.Text
 		}
 		if msg.Type == "random_result" {
 			label = "[RANDOM]"
