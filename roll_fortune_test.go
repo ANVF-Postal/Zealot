@@ -227,3 +227,28 @@ func TestFortuneCollectionIncludesBruh(t *testing.T) {
 	}
 	t.Fatal("the oracle has forgotten Bruh")
 }
+
+func TestSpecialMessageTimestampsAndLeftAlignment(t *testing.T) {
+	m := newMessageInteractionTestModel(100)
+	user := User{Name:"Postal",Color:"#ff3399"}
+	stamp := time.Date(2026,time.January,2,15,4,0,0,time.Local)
+	for _, packet := range []Packet{
+		{Type:"roll_result",User:user,Text:"2d6: 4 + 6 = 10",Time:stamp},
+		{Type:"fortune_result",User:user,Text:"Bruh",Time:stamp},
+		{Type:"whisper_result",User:user,WhisperTo:"Alice",Text:"private",Time:stamp},
+	} {
+		m.user.Name = "Postal"
+		lines := m.renderPacketBaseLines(packet,100)
+		if len(lines)==0 {t.Fatalf("%s rendered no rows",packet.Type)}
+		rendered := lines[0]
+		if plain := stripANSISequences(rendered);!strings.HasPrefix(plain,"[15:04] ") {
+			t.Errorf("%s timestamp has extra left padding: %q",packet.Type,plain)
+		}
+		stampStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).
+			Background(m.messageBackground(packet))
+		if !strings.Contains(rendered,stampStyle.Render("[15:04] ")) {
+			t.Errorf("%s timestamp does not use normal muted timestamp style",packet.Type)
+		}
+	}
+}
