@@ -19,6 +19,19 @@ type User struct {
 	Typing bool   `json:"typing,omitempty"`
 }
 
+// PollData is a per-viewer snapshot. Vote totals are withheld until that
+// viewer has voted or the poll has closed. Choice is one-based (zero = none).
+type PollData struct {
+	ID string `json:"id"`
+	Question string `json:"question"`
+	Options []string `json:"options"`
+	Counts []int `json:"counts,omitempty"`
+	Total int `json:"total"`
+	Choice int `json:"choice,omitempty"`
+	Closed bool `json:"closed,omitempty"`
+	ResultsVisible bool `json:"results_visible,omitempty"`
+}
+
 type Packet struct {
 	Type       string    `json:"type"`
 	ID         string    `json:"id,omitempty"`
@@ -28,6 +41,7 @@ type Packet struct {
 	Text       string    `json:"text,omitempty"`
 	FortuneTo  string    `json:"fortune_to,omitempty"`
 	WhisperTo  string    `json:"whisper_to,omitempty"`
+	Poll       *PollData `json:"poll,omitempty"`
 	Mentions   []string  `json:"mentions,omitempty"`
 	Time       time.Time `json:"time,omitempty"`
 	Typing     bool      `json:"typing,omitempty"`
