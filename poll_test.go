@@ -226,3 +226,61 @@ func TestPollMouseVotingUsesExistingClickDispatcher(t *testing.T) {
 		t.Fatalf("poll click not sent to daemon: %+v",packets)
 	}
 }
+
+func TestPollSnapshotsIgnoreStaleUpdates(t *testing.T) {
+	initial:=testPollPacket()
+	m:=newMessageInteractionTestModel(90,initial)
+	newer:=initial
+	newer.Poll=&PollData{ID:"7",Version:3,Question:initial.Poll.Question,
+		Options:initial.Poll.Options,Counts:[]int{2,0,0},Total:2,Choice:1,ResultsVisible:true}
+	m.applyPollSnapshot(newer)
+	older:=initial
+	older.Poll=&PollData{ID:"7",Version:2,Question:initial.Poll.Question,
+		Options:initial.Poll.Options,Counts:[]int{0,1,0},Total:1,Choice:2,ResultsVisible:true}
+	m.applyPollSnapshot(older)
+	if got:=m.messages[0].Poll;got.Version!=3 || got.Total!=2 || got.Choice!=1 {
+		t.Fatalf("out-of-order vote notification reverted current poll: %+v",got)
+	}
+}
+
+func TestClosedPollOptionsCannotBeClicked(t *testing.T) {
+	p:=testPollPacket()
+	p.Poll.Closed=true
+	p.Poll.ResultsVisible=true
+	p.Poll.Counts=[]int{1,0,0}
+	p.Poll.Total=1
+	m:=newMessageInteractionTestModel(90,p)
+	_,choiceRows:=m.pollLayout(p,m.width)
+	for i,n:=range choiceRows {
+		if n==0 {continue}
+		if id,choice:=m.pollOptionAt(4,2+i);id!="" || choice!=0 {
+			t.Fatalf("closed poll allowed mouse choice (%s,%d)",id,choice)
+		}
+	}
+}
+
+func TestPollClientCommandsProduceOnlyRequests(t *testing.T) {
+	m:=newMessageInteractionTestModel(90)
+	m.room="polls"
+	var output bytes.Buffer
+	m.client=&wireClient{enc:json.NewEncoder(&output)}
+	if !m.sendMessage("/poll Best? | One | Two","") {
+		t.Fatal("valid poll command rejected")
+	}
+	packets:=takePollPackets(t,&output)
+	if len(packets)!=1 || packets[0].Type!="poll_create" ||
+		packets[0].Text!="Best? | One | Two" || packets[0].Poll!=nil {
+		t.Fatalf("client forged a poll result instead of requesting creation: %+v",packets)
+	}
+	if !m.sendMessage("/vote 17 2","") {t.Fatal("vote command rejected")}
+	packets=takePollPackets(t,&output)
+	if len(packets)!=1 || packets[0].Type!="poll_vote" || packets[0].Poll.ID!="17" ||
+		packets[0].Poll.Choice!=2 || len(packets[0].Poll.Counts)!=0 {
+		t.Fatalf("vote request invalid: %+v",packets)
+	}
+	if !m.sendMessage("/poll close 17","") {t.Fatal("close command rejected")}
+	packets=takePollPackets(t,&output)
+	if len(packets)!=1 || packets[0].Type!="poll_close" || packets[0].Text!="17" {
+		t.Fatalf("close request invalid: %+v",packets)
+	}
+}
