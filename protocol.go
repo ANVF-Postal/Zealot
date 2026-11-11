@@ -27,6 +27,7 @@ type Packet struct {
 	User       User      `json:"user,omitempty"`
 	Text       string    `json:"text,omitempty"`
 	FortuneTo  string    `json:"fortune_to,omitempty"`
+	WhisperTo  string    `json:"whisper_to,omitempty"`
 	Mentions   []string  `json:"mentions,omitempty"`
 	Time       time.Time `json:"time,omitempty"`
 	Typing     bool      `json:"typing,omitempty"`
