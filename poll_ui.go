@@ -16,75 +16,90 @@ func (m model) pollLayout(packet Packet, width int) ([]string, []int) {
 	}
 	p := packet.Poll
 	w := max(1, chatContentWidth(width))
-	rows := make([]string, 0, len(p.Options)+8)
-	options := make([]int, 0, len(p.Options)+8)
+	rows := make([]string, 0, len(p.Options)*3+8)
+	options := make([]int, 0, len(p.Options)*3+8)
 	add := func(text string, choice int) {
-		rows = append(rows, truncateANSI(text,w))
-		options = append(options,choice)
+		rows = append(rows, truncateANSI(text, w))
+		options = append(options, choice)
 	}
 	kind := "POLL"
-	if p.Multi {kind="MULTIPOLL"}
-	header := fmt.Sprintf("[%s] [%s #%s] %s asks:", packet.Time.Local().Format("15:04"),kind,p.ID,terminalSafeText(packet.User.Name))
-	for _, line := range wrapANSIHardLine(header,w) { add(line,0) }
-	for _, line := range wrapANSIHardLine(terminalSafeText(p.Question),w) { add(line,0) }
-	add("",0)
+	if p.Multi { kind = "MULTIPOLL" }
+	header := fmt.Sprintf("[%s] [%s #%s] %s asks:", packet.Time.Local().Format("15:04"), kind, p.ID, terminalSafeText(packet.User.Name))
+	for _, line := range wrapANSIHardLine(header, w) { add(line, 0) }
+	for _, line := range wrapANSIHardLine(terminalSafeText(p.Question), w) { add(line, 0) }
+	add("", 0)
+
+	// Compact polls show choices only. Once results are visible, each choice
+	// receives a full-width, consistently aligned bar underneath its label.
+	// Very narrow terminals retain the percentage-only compact presentation.
+	expanded := p.ResultsVisible && width > 48 && w >= 40
 	for i, option := range p.Options {
 		choice := i+1
-		lead := fmt.Sprintf("  %d. ",choice)
-		selected:=p.Choice==choice
-		if p.Multi {selected=false;for _,n:=range p.Choices {if n==choice {selected=true;break}}}
-		if selected {
-			lead = fmt.Sprintf("> %d. ",choice)
+		selected := p.Choice == choice
+		if p.Multi {
+			selected = false
+			for _, n := range p.Choices {
+				if n == choice { selected = true; break }
+			}
 		}
-		suffix := ""
+		lead := fmt.Sprintf("  %d. ", choice)
+		if selected { lead = fmt.Sprintf("> %d. ", choice) }
+		label := terminalSafeText(option)
+		count, percent := 0, 0
 		if p.ResultsVisible {
-			count := 0
-			if i < len(p.Counts) {count=p.Counts[i]}
-			percent := 0
+			if i < len(p.Counts) { count = p.Counts[i] }
 			if p.Total > 0 { percent = (count*100+p.Total/2)/p.Total }
-			if width>48 && w>=40 {
-				pct:=fmt.Sprintf(" %d%%",percent)
-				room:=max(0,w-lipgloss.Width(lead)-lipgloss.Width(pct)-1)
-				// Give the option its natural width where possible before shrinking bars.
-				labelReserve:=min(lipgloss.Width(terminalSafeText(option)),room)
-				barWidth:=min(32,max(0,room-labelReserve))
-				if barWidth>0 {
-					filled:=0
-					if p.Total>0 {filled=(count*barWidth+p.Total/2)/p.Total}
-					suffix=" "+strings.Repeat("█",filled)+strings.Repeat("░",barWidth-filled)+pct
-				} else {suffix=pct}
-			} else {suffix=fmt.Sprintf(" %d%%",percent)}
 		}
-		available := max(1,w-lipgloss.Width(lead)-lipgloss.Width(suffix))
-		label := truncateANSI(terminalSafeText(option),available)
-		add(lead+label+suffix,choice)
+		if p.ResultsVisible && !expanded {
+			suffix := fmt.Sprintf(" %d%%", percent)
+			available := max(1, w-lipgloss.Width(lead)-lipgloss.Width(suffix))
+			add(lead+truncateANSI(label, available)+suffix, choice)
+			continue
+		}
+		labelWidth := max(1, w-lipgloss.Width(lead))
+		wrapped := wrapANSIHardLine(label, labelWidth)
+		for j, line := range wrapped {
+			prefix := strings.Repeat(" ", lipgloss.Width(lead))
+			if j == 0 { prefix = lead }
+			add(prefix+line, choice)
+		}
+		if expanded {
+			// All options use exactly the same bar width, regardless of label
+			// length. The percentage always fits at the right edge.
+			pct := fmt.Sprintf(" %d%%", percent)
+			indent := "     "
+			barWidth := max(0, w-lipgloss.Width(indent)-lipgloss.Width(pct))
+			filled := 0
+			if p.Total > 0 { filled = (count*barWidth+p.Total/2)/p.Total }
+			add(indent+strings.Repeat("█", filled)+strings.Repeat("░", barWidth-filled)+pct, choice)
+		}
 	}
-	add("",0)
+	add("", 0)
 	if p.Closed {
-		best, winners := -1, make([]string,0,len(p.Options))
+		best, winners := -1, make([]string, 0, len(p.Options))
 		for i, count := range p.Counts {
-			if count>best {
-				best=count
-				winners=[]string{p.Options[i]}
-			} else if count==best {
-				winners=append(winners,p.Options[i])
+			if count > best {
+				best = count
+				winners = []string{p.Options[i]}
+			} else if count == best {
+				winners = append(winners, p.Options[i])
 			}
 		}
 		verdict := "No votes"
 		if best > 0 {
-			if len(winners)==1 {verdict="Winner: "+winners[0]} else {verdict="Tie: "+strings.Join(winners,", ")}
+			if len(winners) == 1 { verdict = "Winner: "+winners[0] } else { verdict = "Tie: "+strings.Join(winners, ", ") }
 		}
-		for _, line := range wrapANSIHardLine(fmt.Sprintf("%d votes • Closed • %s",p.Total,verdict),w) {add(line,0)}
+		for _, line := range wrapANSIHardLine(fmt.Sprintf("%d votes • Closed • %s", p.Total, verdict), w) { add(line, 0) }
 	} else if p.ResultsVisible {
-		hint := fmt.Sprintf("%d votes • Open • /vote %s OPTION",p.Total,p.ID)
-		if !p.Multi {hint += " (again to retract)"}
-		add(hint,0)
+		hint := fmt.Sprintf("%d votes • Open • /vote %s OPTION", p.Total, p.ID)
+		if !p.Multi { hint += " (again to retract)" }
+		for _, line := range wrapANSIHardLine(hint, w) { add(line, 0) }
 	} else {
-		hint:="Vote to reveal results"
-		if p.Multi {hint="Select one or more options to reveal results"}
-		add(fmt.Sprintf("%s • /vote %s OPTION",hint,p.ID),0)
+		hint := "Vote to reveal results"
+		if p.Multi { hint = "Select one or more options to reveal results" }
+		for _, line := range wrapANSIHardLine(fmt.Sprintf("%s • /vote %s OPTION", hint, p.ID), w) { add(line, 0) }
 	}
-	return rows,options
+	return rows, options
 }
 
 func (m model) renderPollLines(packet Packet, width int) []string {
@@ -154,9 +169,13 @@ func (m *model) applyPollSnapshot(packet Packet) {
 	if m.messageByID != nil {m.messageByID[packet.ID] = packet}
 	if m.renderCacheValid && m.renderCacheWidth == m.width {
 		oldRows := m.messageRowsByID[packet.ID]
+		// Preserve the top visible history row only when the expanding poll
+		// is entirely above the viewport. Otherwise leave the scroll offset
+		// alone so an in-view poll can expand without jumping the reader.
+		oldTop := max(0, len(m.renderedLines)-max(1, m.messageHeight()-1)-m.scroll)
 		if _, ok := m.replaceCachedMessageRows(packet.ID); ok {
 			newRows := m.messageRowsByID[packet.ID]
-			if m.scroll > 0 {
+			if m.scroll > 0 && oldRows.End <= oldTop {
 				m.scroll += (newRows.End-newRows.Start)-(oldRows.End-oldRows.Start)
 			}
 			m.clampScroll()
