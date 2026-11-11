@@ -43,11 +43,30 @@ func (m model) messageBodyRanges(msg Packet, width int) []messageBodyRange {
 func (m model) messageBodyRangesForLineCount(msg Packet, width, lineCount int) []messageBodyRange {
 	msg = m.displayedMessage(msg)
 	ranges := make([]messageBodyRange, lineCount)
-	if msg.Type != "message" || msg.Text == "" || msg.XKeyscore > 0 || lineCount == 0 {
+	if (msg.Type != "message" && msg.Type != "whisper_result") || msg.Text == "" || msg.XKeyscore > 0 || lineCount == 0 {
 		return ranges
 	}
 
 	contentWidth := chatContentWidth(width)
+	if msg.Type == "whisper_result" {
+		// Reuse the ordinary message hitbox machinery. Whisper headers
+		// occupy an ANSI-styled prefix, followed by the same wrapped body
+		// and any shared reply markers. Only actual whisper text is clickable.
+		limit := max(1, contentWidth-2)
+		header := "["+msg.Time.Local().Format("15:04")+"] [WHISPER] "+
+			terminalSafeText(msg.User.Name) + " → @" +
+			terminalSafeText(msg.WhisperTo) + ": "
+		headerWidth := lipgloss.Width(header) + lipgloss.Width(m.renderReplyBadgeForWidth(msg, width))
+		bodyWidth := lipgloss.Width(terminalSafeText(msg.Text))
+		for row := range ranges {
+			start := max(0, headerWidth-row*limit)
+			end := min(limit, headerWidth+bodyWidth-row*limit)
+			if start < limit && end > start {
+				ranges[row] = clippedMessageBodyRange(2+start, 2+end, contentWidth)
+			}
+		}
+		return ranges
+	}
 	if contentWidth < 1 {
 		return ranges
 	}
@@ -164,7 +183,7 @@ func (m model) cachedBodyRangesForMessage(messageID string, lineCount int) []mes
 	packet, exists := m.messageByID[messageID]
 	if !exists {
 		for _, candidate := range m.messages {
-			if candidate.ID == messageID && candidate.Type == "message" {
+			if candidate.ID == messageID && (candidate.Type == "message" || candidate.Type == "whisper_result") {
 				packet, exists = candidate, true
 				break
 			}
@@ -420,11 +439,24 @@ func (m model) messageLinkRanges(msg Packet, width int) [][]messageLinkRange {
 
 func (m model) messageLinkRangesForLineCount(msg Packet, width, lineCount int) [][]messageLinkRange {
 	regions := make([][]messageLinkRange, lineCount)
-	if len(regions) == 0 || msg.Type != "message" {
+	if len(regions) == 0 || (msg.Type != "message" && msg.Type != "whisper_result") {
 		return regions
 	}
 
 	if msg.ReplyTo != "" && m.hasMessageID(msg.ReplyTo) {
+		if msg.Type == "whisper_result" {
+			// The badge appears directly after the sender's name in the
+			// whisper header. Map its visible cells to the existing jump.
+			start := lipgloss.Width("["+msg.Time.Local().Format("15:04")+"] [WHISPER] "+terminalSafeText(msg.User.Name))
+			limit := max(1, chatContentWidth(width)-2)
+			row, column := start/limit, start%limit
+			badgeWidth := lipgloss.Width(replyBadgeLabelForWidth(width))
+			if row < len(regions) && column+badgeWidth <= limit {
+				regions[row] = append(regions[row], messageLinkRange{
+					Start: 2+column, End: 2+column+badgeWidth, TargetID: msg.ReplyTo,
+				})
+			}
+		} else {
 		badgeRow, badgeStart := 0, 0
 		widthForBadge := width
 		badge := m.renderReplyBadgeForWidth(msg, width)
@@ -454,6 +486,7 @@ func (m model) messageLinkRangesForLineCount(msg Packet, width, lineCount int) [
 		}
 		if badgeRow < len(regions) {
 			regions[badgeRow] = append(regions[badgeRow], messageLinkRange{Start: badgeStart, End: badgeStart + lipgloss.Width(replyBadgeLabelForWidth(widthForBadge)), TargetID: msg.ReplyTo})
+		}
 		}
 	}
 	replies := m.repliesFor(msg.ID)
@@ -570,7 +603,7 @@ func (m *model) beginReply(id string) {
 		return
 	}
 	for _, packet := range m.messages {
-		if packet.ID == id && packet.Type == "message" {
+		if packet.ID == id && (packet.Type == "message" || packet.Type == "whisper_result") {
 			if packet.Spoiler && !m.revealedSpoilers[id] {
 				return
 			}
