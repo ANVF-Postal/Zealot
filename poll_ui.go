@@ -83,14 +83,25 @@ func (m model) renderPollLines(packet Packet, width int) []string {
 	highlight := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.HoverTextColor)).Background(bg)
 	muted := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).Background(bg)
 	rendered := make([]string,len(rows))
+	headerRows := []string(nil)
+	if packet.Poll != nil {
+		nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(packet.User.Color)).Background(bg).Bold(true)
+		styledHeader := muted.Render("["+packet.Time.Local().Format("15:04")+"] ") +
+			accent.Render("[POLL #"+packet.Poll.ID+"] ") +
+			nameStyle.Render(terminalSafeText(packet.User.Name)) +
+			plain.Render(" asks:")
+		headerRows = wrapANSIHardLine(styledHeader,max(1,w))
+	}
 	for i,line := range rows {
+		if i<len(headerRows) {
+			rendered[i]=renderChatRow(rowFill,headerRows[i],w)
+			continue
+		}
 		style := plain
 		switch {
 		case choices[i]>0 && m.pollHoveredID==packet.ID && m.pollHoveredOption==choices[i]:
 			style=highlight
 		case choices[i]>0 && packet.Poll != nil && packet.Poll.Choice==choices[i]:
-			style=accent
-		case i==0:
 			style=accent
 		case i==len(rows)-1:
 			style=muted
