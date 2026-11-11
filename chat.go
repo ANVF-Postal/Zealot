@@ -53,6 +53,8 @@ func (m model) renderPacketLineCount(msg Packet, width int) int {
 	case "me":
 		text := fmt.Sprintf("[%s] * %s %s", msg.Time.Local().Format("15:04"), msg.User.Name, msg.Text)
 		return max(1, wrapTextLineCount(text, contentWidth-2))
+	case "poll_result":
+		return max(1,func() int { rows,_:=m.pollLayout(msg,width); return len(rows) }())
 	case "whisper_result":
 		// Private replies can add the same trailing [1]/[2] navigation rows
 		// as ordinary messages. Count them through the shared renderer.
@@ -358,7 +360,7 @@ func (m *model) rebuildMessageIndexes() {
 	messagesByID := make(map[string]Packet, len(m.messages))
 	repliesByMessageID := make(map[string][]string)
 	for _, packet := range m.messages {
-		if (packet.Type != "message" && packet.Type != "whisper_result") || packet.ID == "" {
+		if (packet.Type != "message" && packet.Type != "whisper_result" && packet.Type != "poll_result") || packet.ID == "" {
 			continue
 		}
 		messagesByID[packet.ID] = packet
@@ -375,7 +377,7 @@ func (m *model) addMessageToIndexes(packet Packet) {
 		m.rebuildMessageIndexes()
 		return
 	}
-	if (packet.Type != "message" && packet.Type != "whisper_result") || packet.ID == "" {
+	if (packet.Type != "message" && packet.Type != "whisper_result" && packet.Type != "poll_result") || packet.ID == "" {
 		return
 	}
 	m.messageByID[packet.ID] = packet
@@ -485,6 +487,9 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 		bodyStyle = bodyStyle.Foreground(hoverColor)
 	}
 
+	if msg.Type == "poll_result" {
+		return m.renderPollLines(msg,width)
+	}
 	if msg.Type == "whisper_result" {
 		otherName := msg.User.Name
 		outgoing := strings.EqualFold(otherName, m.user.Name)
