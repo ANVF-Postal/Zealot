@@ -23,6 +23,7 @@ var handbookPages = []struct {
 		{"@user", "Lets you send a message that will be highlighted on the specified user's screen."},
 		{"/me", "Sends a message written in the third person."},
 		{"/poll question | option1 | option2", "Creates a poll with 2–6 choices. Click an option to vote; results appear once you vote."},
+		{"/multipoll question | option1 | option2", "Creates a poll allowing multiple selections. Click an option again to remove it."},
 		{"/vote ID OPTION", "Votes for an option in poll ID; you may change your choice until it closes."},
 		{"/poll close ID", "Closes one of your polls and reveals final results."},
 		{"/whisper @user message", "Sends a private message visible only to you and the specified user. Whispers are not saved in public room history."},
