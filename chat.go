@@ -442,6 +442,25 @@ func (m model) renderReplyBadgeForWidth(msg Packet, width int) string {
 	return style.Render(replyBadgeLabelForWidth(width))
 }
 
+// whisperHeaderParts keeps the private header and its click geometry in sync.
+// Compact whispers trade the long conversational heading for a short [W] label.
+func (m model) whisperHeaderParts(msg Packet, width int) (beforeBadge, afterBadge string, compact bool) {
+	name := msg.User.Name
+	if strings.EqualFold(name, m.user.Name) {
+		name = msg.WhisperTo
+	}
+	name = terminalSafeText(name)
+	compact = width <= 48
+	if compact {
+		return "[W] " + name, ": ", true
+	}
+	stamp := "[" + msg.Time.Local().Format("15:04") + "] "
+	if strings.EqualFold(msg.User.Name, m.user.Name) {
+		return stamp + "Whispered to " + name, ": ", false
+	}
+	return stamp + name + " whispers", ": ", false
+}
+
 func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 	original := msg
 	msg = m.displayedMessage(msg)
@@ -467,24 +486,39 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 	}
 
 	if msg.Type == "whisper_result" {
-		// Private messages are shown in the normal chat stream but have
-		// a conspicuous label. Only the sender's name uses their user color.
-		// The daemon supplies both authoritative sender and recipient names.
-		accent := lipgloss.NewStyle().
-			Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).
-			Background(bg).Bold(true)
-		senderStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color(msg.User.Color)).Background(bg).Bold(true)
-		styled := normalBodyStyle.Render("["+msg.Time.Local().Format("15:04")+"] ") +
-			accent.Render("[WHISPER]") + normalBodyStyle.Render(" ") +
-			senderStyle.Render(terminalSafeText(msg.User.Name)) +
-			m.renderReplyBadgeForWidth(msg, width) +
-			normalBodyStyle.Render(" → ") +
-			accent.Render("@"+terminalSafeText(msg.WhisperTo)) +
+		otherName := msg.User.Name
+		outgoing := strings.EqualFold(otherName, m.user.Name)
+		if outgoing {
+			otherName = msg.WhisperTo
+		}
+		name := terminalSafeText(otherName)
+		_, _, compact := m.whisperHeaderParts(msg, width)
+		accent := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).Background(bg).Bold(true)
+		nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.User.Color)).Background(bg).Bold(true)
+		if outgoing {
+			nameStyle = accent
+		}
+		timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).Background(bg)
+		styled := ""
+		if compact {
+			styled = accent.Render("[W] ") + nameStyle.Render(name)
+		} else {
+			styled = timeStyle.Render("["+msg.Time.Local().Format("15:04")+"] ")
+			if outgoing {
+				styled += accent.Render("Whispered to ") + nameStyle.Render(name)
+			} else {
+				styled += nameStyle.Render(name) + accent.Render(" whispers")
+			}
+		}
+		styled += m.renderReplyBadgeForWidth(msg, width) +
 			normalBodyStyle.Render(": ") + bodyStyle.Render(terminalSafeText(msg.Text))
 		var result []string
-		for _, line := range wrapANSIHardLine(styled, max(1, contentWidth-2)) {
-			result = append(result, renderChatRow(rowFill, "  "+line, contentWidth))
+		for _, line := range wrapANSIHardLine(styled, max(1, contentWidth)) {
+			result = append(result, renderChatRow(rowFill, line, contentWidth))
+		}
+		if compact {
+			result = append(result, renderChatRow(rowFill,
+				timeStyle.Render("["+msg.Time.Local().Format("15:04")+"]"), contentWidth))
 		}
 		return result
 	}
@@ -498,11 +532,11 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 			Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).
 			Background(bg).
 			Bold(true)
-		styled := normalBodyStyle.Render("["+msg.Time.Local().Format("15:04")+"] ") +
+		styled := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).Background(bg).Render("["+msg.Time.Local().Format("15:04")+"] ") +
 			fortuneAccent.Render(prefix) + normalBodyStyle.Render(terminalSafeText(msg.Text))
 		var result []string
-		for _, line := range wrapANSIHardLine(styled, max(1, contentWidth-2)) {
-			result = append(result, renderChatRow(rowFill, "  "+line, contentWidth))
+		for _, line := range wrapANSIHardLine(styled, max(1, contentWidth)) {
+			result = append(result, renderChatRow(rowFill, line, contentWidth))
 		}
 		return result
 	}
@@ -527,7 +561,7 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 			}
 		}
 		userStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.User.Color)).Background(bg)
-		styled := normalBodyStyle.Render("["+msg.Time.Local().Format("15:04")+"] ") +
+		styled := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).Background(bg).Render("["+msg.Time.Local().Format("15:04")+"] ") +
 			m.styles.accent.Render(label) + normalBodyStyle.Render(" ")
 		if msg.Type == "roll_result" {
 			// Highlight both the username and dice notation in the roller's
@@ -542,8 +576,8 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 			styled += userStyle.Render(action) + normalBodyStyle.Render(outcome)
 		}
 		var result []string
-		for _, line := range wrapANSIHardLine(styled, max(1, contentWidth-2)) {
-			result = append(result, renderChatRow(rowFill, "  "+line, contentWidth))
+		for _, line := range wrapANSIHardLine(styled, max(1, contentWidth)) {
+			result = append(result, renderChatRow(rowFill, line, contentWidth))
 		}
 		return result
 	}
