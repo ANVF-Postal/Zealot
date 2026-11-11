@@ -206,11 +206,10 @@ func (s *server) handle(conn net.Conn) {
 	user.Name = uniqueUserName(room, user.Name)
 	client.user = user
 	room.clients[client.id] = client
-	var history []Packet
 	historyEnabled := room.historyEnabled
-	if historyEnabled {
-		history = append([]Packet(nil), room.messages...)
-	}
+	// Poll snapshots are tailored to this client's vote. Active polls are
+	// also introduced to new arrivals when public history is disabled.
+	history := s.personalizePollHistory(room, user.Name, roomName)
 
 	// Hold this client's write lock before releasing the server lock. Any
 	// concurrent broadcast will wait behind the welcome/history sequence,
