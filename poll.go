@@ -148,7 +148,12 @@ func (s *server) votePoll(roomName string, sender *serverClient, request *PollDa
 		if !found {selected=append(selected,request.Choice)}
 		if len(selected)==0 {delete(poll.votes,name)} else {poll.votes[name]=selected}
 	} else {
-		poll.votes[name]=[]int{request.Choice}
+		// Clicking the currently selected option retracts a single-choice vote.
+		if previous := poll.votes[name]; len(previous) == 1 && previous[0] == request.Choice {
+			delete(poll.votes, name)
+		} else {
+			poll.votes[name] = []int{request.Choice}
+		}
 	}
 	poll.version++
 	s.mu.Unlock()
