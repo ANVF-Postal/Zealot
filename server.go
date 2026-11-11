@@ -42,6 +42,8 @@ type roomState struct {
 	messages       []Packet
 	clients        map[string]*serverClient
 	historyEnabled bool
+	polls map[string]*pollState
+	pollSequence int
 }
 
 type server struct {
@@ -56,6 +58,7 @@ func newServer() *server {
 func (s *server) room(name string, historyEnabled bool) *roomState {
 	r := &roomState{
 		clients:        make(map[string]*serverClient),
+		polls:          make(map[string]*pollState),
 		historyEnabled: historyEnabled,
 	}
 	s.rooms[name] = r
@@ -296,6 +299,13 @@ func (s *server) handle(conn net.Conn) {
 		}
 
 		switch packet.Type {
+		case "poll_create":
+			s.createPoll(roomName, client, packet.Text)
+		case "poll_vote":
+			s.votePoll(roomName, client, packet.Poll)
+		case "poll_close":
+			s.closePoll(roomName, client, packet.Text)
+
 		case "coinflip":
 			result, err := newCoinflipResult(roomName, client.user)
 			if err != nil {
