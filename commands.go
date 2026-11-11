@@ -38,6 +38,26 @@ func (m *model) sendMessage(text string, replyTo string) bool {
 	if len(fields) == 0 {
 		return false
 	}
+	// Replying to a whisper always stays private, even when the draft
+	// resembles a slash command. Reuse the selected reply target rather
+	// than creating a separate composer or interaction state.
+	if replyTo != "" {
+		if original, ok := m.messageByID[replyTo]; ok && original.Type == "whisper_result" {
+			recipient := original.User.Name
+			if strings.EqualFold(recipient, m.user.Name) {
+				recipient = original.WhisperTo
+			}
+			if recipient == "" || len([]rune(trimmed)) > maxMessage {
+				m.appendMessage(Packet{Type: "system", Text: "Cannot send whisper reply: invalid recipient or message length.", Time: time.Now().UTC()})
+				return false
+			}
+			_ = m.client.send(Packet{
+				Type: "whisper", Room: m.room, WhisperTo: "@"+recipient,
+				Text: trimmed, ReplyTo: replyTo,
+			})
+			return true
+		}
+	}
 	switch strings.ToLower(fields[0]) {
 	case "/long", "/spoiler":
 		body := strings.TrimSpace(strings.TrimPrefix(trimmed, fields[0]))
