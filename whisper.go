@@ -56,3 +56,54 @@ func (s *server) sendWhisper(roomName string, sender *serverClient, target, body
 	}
 	return nil
 }
+
+// setWhisperTyping delivers transient typing state only to the resolved
+// recipient. The daemon uses connection identities and never trusts the
+// sender/room fields in a client-supplied packet.
+func (s *server) setWhisperTyping(roomName string, sender *serverClient, requested string, active bool) {
+	s.mu.Lock()
+	room := s.rooms[roomName]
+	if room == nil || room.clients[sender.id] != sender {
+		s.mu.Unlock()
+		return
+	}
+	var recipient *serverClient
+	if active && strings.HasPrefix(requested, "@") && !strings.ContainsAny(requested, " \t\r\n") {
+		for _, member := range room.clients {
+			if member != sender && strings.EqualFold(member.user.Name, requested[1:]) {
+				recipient = member
+				break
+			}
+		}
+	}
+	previous := sender.whisperTarget
+	var oldRecipient *serverClient
+	if previous != "" {
+		for _, member := range room.clients {
+			if strings.EqualFold(member.user.Name, previous) {
+				oldRecipient = member
+				break
+			}
+		}
+	}
+	next := ""
+	if recipient != nil {
+		next = recipient.user.Name
+	}
+	sender.whisperTarget = next
+	wasPublic := sender.typing
+	sender.typing = false
+	user := sender.user
+	s.mu.Unlock()
+
+	if oldRecipient != nil && (recipient != oldRecipient || !active) {
+		oldRecipient.send(Packet{Type: "whisper_typing", Room: roomName, User: user, Typing: false})
+	}
+	if recipient != nil && recipient != oldRecipient {
+		recipient.send(Packet{Type: "whisper_typing", Room: roomName, User: user, Typing: true})
+	}
+	if wasPublic {
+		s.broadcast(roomName, Packet{Type: "typing", Room: roomName, User: user, Typing: false})
+		s.broadcastRoster(roomName)
+	}
+}
