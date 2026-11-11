@@ -470,6 +470,22 @@ func (s *server) handle(conn net.Conn) {
 				requested = uniqueUserName(room, requested)
 				room.clients[client.id] = client
 			}
+			// Carry the existing vote across a rename. Otherwise a user
+			// could change their name and count twice in the same poll.
+			var changedPolls []string
+			if room != nil {
+				for _, poll := range room.polls {
+					if choice, voted := poll.votes[strings.ToLower(oldName)]; voted {
+						delete(poll.votes, strings.ToLower(oldName))
+						poll.votes[strings.ToLower(requested)] = choice
+						poll.version++
+						changedPolls = append(changedPolls, poll.id)
+					}
+					if poll.creatorID == client.id {
+						poll.creator = requested
+					}
+				}
+			}
 			// Clear any typing state under the old name before changing identity.
 			wasTyping := client.typing
 			client.typing = false
@@ -482,6 +498,9 @@ func (s *server) handle(conn net.Conn) {
 			s.systemMessage(roomName, fmt.Sprintf("%s is now %s", oldName, requested))
 			client.send(Packet{Type: "identity", Room: roomName, User: client.user})
 			s.broadcastRoster(roomName)
+			for _, id := range changedPolls {
+				s.notifyPoll(roomName, id)
+			}
 
 		case "color":
 			color := strings.TrimSpace(packet.User.Color)
