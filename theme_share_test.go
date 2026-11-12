@@ -18,7 +18,7 @@ func TestSharedThemeValidationRejectsUnsafeData(t *testing.T) {
 	if err:=validateSharedTheme(&valid);err!=nil {t.Fatal(err)}
 	if err:=validateSharedTheme(nil);err==nil {t.Fatal("accepted missing theme")}
 	for _, modify := range []func(*ThemePreset){
-		func(p *ThemePreset){p.Name="Unsafe\\x00name"},
+		func(p *ThemePreset){p.Name="Unsafe\x00name"},
 		func(p *ThemePreset){p.Name="Unsafe\x1b[2J"},
 		func(p *ThemePreset){p.Description="Bad\ncontrol"},
 		func(p *ThemePreset){p.Description=strings.Repeat("X",maxSharedThemeDescription+1)},
