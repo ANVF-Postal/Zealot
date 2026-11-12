@@ -35,6 +35,10 @@ type model struct {
 	commandsDragOffset int
 	commandsHoldDirection int
 	commandsHoldGeneration int
+	commandsRowsCache []string
+	commandsRowsCacheWidth int
+	commandsRowsCacheTab int
+	commandsRowsCacheTheme Theme
 	themesOpen                       bool
 	themeEntries                     []themeListEntry
 	themeSelected                    int
