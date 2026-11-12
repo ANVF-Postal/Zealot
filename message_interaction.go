@@ -510,9 +510,11 @@ func (m model) messageLinkRangesForLineCount(msg Packet, width, lineCount int) [
 		column, contentWidth := visibleChatTextWidth(trimmed), chatContentWidth(width)
 		for n, replyID := range replies {
 			markerWidth := lipgloss.Width(fmt.Sprintf("[%d]", n+1))
-			if column+1+markerWidth <= contentWidth {
-				regions[row] = append(regions[row], messageLinkRange{Start:column+1,End:column+1+markerWidth,TargetID:replyID})
-				column += 1+markerWidth
+			separatorWidth := 1
+			if msg.Long {separatorWidth = 3}
+			if column+separatorWidth+markerWidth <= contentWidth {
+				regions[row] = append(regions[row], messageLinkRange{Start:column+separatorWidth,End:column+separatorWidth+markerWidth,TargetID:replyID})
+				column += separatorWidth+markerWidth
 			} else {
 				row++; column=0
 				if row >= len(regions) { break }
