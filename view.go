@@ -561,7 +561,7 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	}
 
 	targets := footerTargets{}
-	includeSend := !m.themePacking && !usersOpen && (!splashOpen || m.themesOpen)
+	includeSend := !m.themePacking && m.themeIncoming == nil && !m.themeShareConfirm && !usersOpen && (!splashOpen || m.themesOpen)
 	sendPrefix := "Enter: "
 	sendText := "[Send]"
 	quitWidth := lipgloss.Width(quitText)
