@@ -351,7 +351,7 @@ func (m model) Update(
 		if mouse.Button == tea.MouseLeft && m.themeDetailsScrollbarContains(mouse.X, mouse.Y) {
 			return m,m.handleThemeScrollbarClick(themeDetailsPane,mouse.Y)
 		}
-		if mouse.Button == tea.MouseLeft && m.themeEditField == "" && m.themeApplyButtonContains(mouse.X, mouse.Y) {
+		if mouse.Button == tea.MouseLeft && m.themeEditField == "" && m.themeIncoming == nil && !m.themeShareConfirm && m.themeApplyButtonContains(mouse.X, mouse.Y) {
 			m.applySelectedTheme()
 			return m, nil
 		}
@@ -509,6 +509,16 @@ func (m model) Update(
 			return m, nil
 		}
 		if m.themesOpen && mouse.Button == tea.MouseLeft {
+			if m.themeIncoming != nil {
+				if m.themeInstallButtonContains(mouse.X,mouse.Y) {m.installReceivedTheme()}
+				if m.themeCloseButtonContains(mouse.X,mouse.Y) {m.closeReceivedTheme()}
+				return m,nil
+			}
+			if m.themeShareConfirm {
+				if m.themeShareConfirmButtonContains(mouse.X,mouse.Y) {m.confirmThemeShare()}
+				if m.themeShareCancelButtonContains(mouse.X,mouse.Y) {m.themeShareConfirm=false;m.themeEditError=""}
+				return m,nil
+			}
 			if m.themePacking {
 				if m.themePackButtonContains(mouse.X, mouse.Y) {
 					m.beginThemePackNaming()
@@ -533,6 +543,7 @@ func (m model) Update(
 				m.createFreshTheme()
 				return m, nil
 			}
+			if m.themeShareButtonContains(mouse.X,mouse.Y) {m.beginThemeShare();return m,nil}
 			if m.themeCloneButtonContains(mouse.X, mouse.Y) {
 				m.cloneSelectedTheme()
 				return m, nil
@@ -716,6 +727,7 @@ func (m model) Update(
 				}
 			}
 			if !m.usersOpen && !m.splashOpen {
+				if shared, ok := m.sharedThemeLinkAt(mouse.X,mouse.Y); ok {m.openReceivedTheme(shared);return m,nil}
 				if pollMessageID, option := m.pollOptionAt(mouse.X, mouse.Y); option > 0 {
 					if poll, ok := m.messageByID[pollMessageID]; ok && poll.Poll != nil {
 						_ = m.client.send(Packet{Type:"poll_vote",Room:m.room,Poll:&PollData{ID:poll.Poll.ID,Choice:option}})
@@ -998,6 +1010,15 @@ func (m model) Update(
 			}
 		}
 		if m.themesOpen {
+			if m.themeIncoming != nil {
+				if keyMsg.Keystroke()=="esc" || keyMsg.Keystroke()=="escape" {m.closeReceivedTheme();return m,nil}
+				return m,nil
+			}
+			if m.themeShareConfirm {
+				if keyMsg.Keystroke()=="esc" || keyMsg.Keystroke()=="escape" {m.themeShareConfirm=false;m.themeEditError="";return m,nil}
+				if keyMsg.Keystroke()=="enter" {m.confirmThemeShare();return m,nil}
+				return m,nil
+			}
 			if m.themePacking {
 				if m.themePackNaming {
 					switch keyMsg.Keystroke() {
