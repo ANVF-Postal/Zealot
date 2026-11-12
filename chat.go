@@ -53,6 +53,8 @@ func (m model) renderPacketLineCount(msg Packet, width int) int {
 	case "me":
 		text := fmt.Sprintf("[%s] * %s %s", msg.Time.Local().Format("15:04"), msg.User.Name, msg.Text)
 		return max(1, wrapTextLineCount(text, contentWidth-2))
+	case "theme_result":
+		return max(1, len(m.renderThemeShareLines(msg, width)))
 	case "poll_result":
 		rows, _ := m.pollLayout(msg, width)
 		return max(1, len(rows))
