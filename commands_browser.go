@@ -58,6 +58,7 @@ func (m *model) openCommandsBrowser() {
 	m.commandsDragging = false
 	m.commandsHoldDirection = 0
 	m.commandsHoldGeneration++
+	m.cacheCommandsTextRows()
 	m.input.Focus()
 }
 
