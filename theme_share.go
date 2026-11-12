@@ -43,6 +43,18 @@ func validateSharedTheme(p *ThemePreset) error {
 		return fmt.Errorf("invalid theme description")
 	}
 	if err := validateThemeColors(p.Colors); err != nil { return err }
+	// validateThemeColors accepts whitespace-trimmed colors for local legacy
+	// configuration. Network themes must contain exact canonical values to
+	// avoid persisting control/whitespace bytes in trusted theme files.
+	for _, value := range []string{
+		p.Colors.Background, p.Colors.TextColor, p.Colors.BorderColor,
+		p.Colors.AccentColor, p.Colors.HoverTextColor, p.Colors.MutedTextColor,
+		p.Colors.MentionBackgroundColor, p.Colors.SelectionBackgroundColor,
+	} {
+		if value != strings.TrimSpace(value) || !utf8.ValidString(value) {
+			return fmt.Errorf("theme colors must be plain hex or ANSI values")
+		}
+	}
 	return nil
 }
 
