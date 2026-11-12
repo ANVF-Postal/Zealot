@@ -66,6 +66,7 @@ func (m model) Update(
 		// when the window is expanded again.
 		m.clampUsersScroll()
 		m.clampSplashScroll()
+		if m.commandsOpen && oldWidth != m.width { m.cacheCommandsTextRows() }
 		m.clampCommandsScroll()
 		m.commandsDragging = false
 		m.commandsHoldDirection = 0
