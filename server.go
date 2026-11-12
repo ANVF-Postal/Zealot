@@ -298,6 +298,8 @@ func (s *server) handle(conn net.Conn) {
 		}
 
 		switch packet.Type {
+		case "theme_share":
+			s.shareTheme(roomName, client, packet.Theme)
 		case "poll_create":
 			s.createPoll(roomName, client, packet.Text, false)
 		case "multipoll_create":
