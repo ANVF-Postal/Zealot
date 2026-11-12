@@ -511,6 +511,9 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 	if msg.Type == "poll_result" {
 		return m.renderPollLines(msg,width)
 	}
+	if msg.Type == "theme_result" {
+		return m.renderThemeShareLines(msg,width)
+	}
 	if msg.Type == "whisper_result" {
 		otherName := msg.User.Name
 		outgoing := strings.EqualFold(otherName, m.user.Name)
