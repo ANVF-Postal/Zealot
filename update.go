@@ -121,7 +121,7 @@ func (m model) Update(
 		case "poll_result":
 			m.applyPollSnapshot(packet)
 
-		case "message", "system", "me", "letter", "coinflip_result", "random_result", "roll_result", "fortune_result", "whisper_result":
+		case "message", "system", "me", "letter", "coinflip_result", "random_result", "roll_result", "fortune_result", "whisper_result", "theme_result":
 			m.appendMessage(packet)
 			if (packet.Type == "message" || packet.Type == "whisper_result") && packet.User.Name != m.user.Name {
 				m.userActivity[packet.User.Name] = 6
