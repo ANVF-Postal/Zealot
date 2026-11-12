@@ -64,9 +64,9 @@ func (m model) pollLayout(packet Packet, width int) ([]string, []int) {
 			add(prefix+line, choice)
 		}
 		if expanded {
-			// All options use exactly the same bar width, regardless of label
-			// length. The percentage always fits at the right edge.
-			pct := fmt.Sprintf(" %d%%", percent)
+			// Reserve a fixed five-column percentage field (" 100%")
+			// so every bar has the same length, even for 0% and 100%.
+			pct := fmt.Sprintf(" %3d%%", percent)
 			indent := "     "
 			barWidth := max(0, w-lipgloss.Width(indent)-lipgloss.Width(pct))
 			filled := 0
