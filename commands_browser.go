@@ -76,6 +76,7 @@ func (m *model) selectCommandsTab(index int) {
 		return
 	}
 	m.commandsTab = index
+	m.cacheCommandsTextRows()
 	m.commandsScroll = 0
 	m.commandsDragging = false
 	m.commandsHoldDirection = 0
