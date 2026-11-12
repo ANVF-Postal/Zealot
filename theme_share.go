@@ -1,10 +1,8 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 	"unicode"
@@ -144,6 +142,78 @@ func (m model) sharedThemeLinkAt(x, y int) (Packet, bool) {
 	return Packet{}, false
 }
 
-// Keep os.ErrExist in scope to make the O_EXCL contract explicit.
-var _ = errors.Is
-var _ = filepath.Base
+
+func (m *model) beginThemeShare() {
+	entry, ok := m.selectedThemeEntry()
+	if !ok || !themeEntryEditable(entry) || !m.connected || m.client == nil || m.themeDirty || m.themeEditField != "" {
+		m.themeEditError = "Only saved custom themes can be shared while connected. Clone a built-in theme first."
+		return
+	}
+	if err := validateSharedTheme(&entry.Preset); err != nil {
+		m.themeEditError = "Cannot share this theme: "+err.Error()
+		return
+	}
+	m.themeShareConfirm = true
+	m.themeDetailsScroll = 0
+	m.themeEditError = ""
+}
+
+func (m *model) confirmThemeShare() {
+	if !m.themeShareConfirm { return }
+	entry, ok := m.selectedThemeEntry()
+	if !ok || !themeEntryEditable(entry) || !m.connected || m.client == nil || m.themeDirty {
+		m.themeEditError = "Cannot share this theme."
+		m.themeShareConfirm = false
+		return
+	}
+	if err := validateSharedTheme(&entry.Preset); err != nil {
+		m.themeEditError = "Cannot share: "+err.Error()
+		m.themeShareConfirm = false
+		return
+	}
+	preset := entry.Preset
+	if err := m.client.send(Packet{Type: "theme_share", Room: m.room, Theme: &preset}); err != nil {
+		m.themeEditError = "Could not send theme: "+err.Error()
+		m.themeShareConfirm = false
+		return
+	}
+	m.themeShareConfirm = false
+	m.themesOpen = false
+	m.splashOpen = false
+}
+
+func (m *model) openReceivedTheme(packet Packet) {
+	if packet.Type != "theme_result" || validateSharedTheme(packet.Theme) != nil { return }
+	m.openThemeBrowser()
+	theme := *packet.Theme
+	m.themeIncoming = &theme
+	m.themeIncomingSender = terminalSafeText(packet.User.Name)
+	m.themeDetailsScroll = 0
+	m.themeError = ""
+	m.themeEditError = ""
+}
+
+func (m *model) closeReceivedTheme() {
+	m.themeIncoming = nil
+	m.themeIncomingSender = ""
+	m.themesOpen = false
+	m.splashOpen = false
+	m.themeError = ""
+	m.themeEditError = ""
+}
+
+func (m *model) installReceivedTheme() {
+	if m.themeIncoming == nil { return }
+	entry, err := installSharedTheme(*m.themeIncoming)
+	if err != nil {
+		m.themeEditError = "Install failed: "+err.Error()
+		m.themeDetailsScroll = m.maxThemeDetailsScroll()
+		return
+	}
+	m.themeIncoming = nil
+	m.themeIncomingSender = ""
+	m.reloadThemeEntries(entry.FileName,entry.Preset.ID)
+	m.themesOpen = false
+	m.splashOpen = false
+	m.appendMessage(Packet{Type:"system",Room:m.room,Text:"Installed theme "+entry.Preset.Name+" as "+entry.FileName+". Open Themes to apply it.",Time:time.Now().UTC()})
+}
