@@ -511,7 +511,7 @@ func (m model) messageLinkRangesForLineCount(msg Packet, width, lineCount int) [
 		for n, replyID := range replies {
 			markerWidth := lipgloss.Width(fmt.Sprintf("[%d]", n+1))
 			separatorWidth := 1
-			if msg.Long {separatorWidth = 3}
+			if msg.Long && n == 0 {separatorWidth = 3}
 			if column+separatorWidth+markerWidth <= contentWidth {
 				regions[row] = append(regions[row], messageLinkRange{Start:column+separatorWidth,End:column+separatorWidth+markerWidth,TargetID:replyID})
 				column += separatorWidth+markerWidth
