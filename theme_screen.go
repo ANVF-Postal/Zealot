@@ -958,6 +958,7 @@ func (m model) themeDetailsRows(width int) []string {
 // applySelectedTheme commits the selected preset, then refreshes all live UI
 // styles without rebuilding the model or disturbing the current composer.
 func (m *model) applySelectedTheme() {
+	if m.themeIncoming != nil || m.themeShareConfirm { return }
 	if len(m.themeEntries) == 0 {
 		return
 	}
