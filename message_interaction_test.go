@@ -831,3 +831,33 @@ func TestUnexpectedConnectionCloseStillShowsDisconnected(t *testing.T) {
 		t.Fatal("unexpected connection close should not quit the application")
 	}
 }
+
+
+func TestLongMessageReplyMarkersAndClickableRanges(t *testing.T) {
+	parent := interactionTestPacket("long-reply-parent", "A long message with replies")
+	parent.Long = true
+	first := interactionTestPacket("long-child-1", "First")
+	first.ReplyTo = parent.ID
+	second := interactionTestPacket("long-child-2", "Second")
+	second.ReplyTo = parent.ID
+	third := interactionTestPacket("long-child-3", "Third")
+	third.ReplyTo = parent.ID
+
+	for _, width := range []int{48, 90} {
+		m := newMessageInteractionTestModel(width, parent, first, second, third)
+		lines := m.renderPacketLines(parent, width)
+		plain := stripANSISequences(strings.Join(lines, "\n"))
+		if !strings.Contains(plain, "[Long Message] | [1] [2] [3]") {
+			t.Fatalf("width %d: long message reply markers missing or misplaced: %q", width, plain)
+		}
+		regions := m.messageLinkRanges(parent, width)
+		links := []messageLinkRange{}
+		for _, row := range regions { links = append(links, row...) }
+		if len(links) != 3 ||
+			links[0].TargetID != first.ID ||
+			links[1].TargetID != second.ID ||
+			links[2].TargetID != third.ID {
+			t.Fatalf("width %d: reply markers not linked: %+v", width, links)
+		}
+	}
+}
