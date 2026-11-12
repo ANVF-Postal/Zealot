@@ -522,7 +522,7 @@ func (m model) renderThemeShortcutFooter() (string, footerTargets) {
 // immediately after the Ctrl+C hint, and the composer Send action anchored
 // to the right edge. The measured layout supplies matching mouse hitboxes.
 func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTargets) {
-	if m.themesOpen && m.themeError == "" && m.themeEditField == "" && !m.themeDirty && !m.themePacking && m.width >= 12 {
+	if m.themesOpen && m.themeIncoming == nil && !m.themeShareConfirm && m.themeError == "" && m.themeEditField == "" && !m.themeDirty && !m.themePacking && m.width >= 12 {
 		return m.renderThemeShortcutFooter()
 	}
 	availableWidth := max(1, m.width-1) // reserve one final cell as a styled blank
