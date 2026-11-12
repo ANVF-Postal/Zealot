@@ -45,6 +45,7 @@ type Packet struct {
 	FortuneTo  string    `json:"fortune_to,omitempty"`
 	WhisperTo  string    `json:"whisper_to,omitempty"`
 	Poll       *PollData `json:"poll,omitempty"`
+	Theme      *ThemePreset `json:"theme,omitempty"`
 	Mentions   []string  `json:"mentions,omitempty"`
 	Time       time.Time `json:"time,omitempty"`
 	Typing     bool      `json:"typing,omitempty"`
