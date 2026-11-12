@@ -577,7 +577,14 @@ func (m model) Update(
 				return m, nil
 			}
 			if index, ok := m.themeBrowserListIndexAt(mouse.X, mouse.Y); ok {
-				m.selectThemeEntry(index)
+				// First click previews a theme; clicking the already-selected
+				// entry applies it. Keep pack selection and incoming previews
+				// on their dedicated paths above.
+				if index == m.themeSelected {
+					m.applySelectedTheme()
+				} else {
+					m.selectThemeEntry(index)
+				}
 				return m, nil
 			}
 		}
