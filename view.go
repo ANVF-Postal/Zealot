@@ -536,6 +536,10 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	includeApply := m.themesOpen && m.themeIncoming == nil && !m.themeShareConfirm && m.themeError == "" && m.themeEditField == "" && !m.themeDirty && !m.themePacking
 	if m.themesOpen {
 		switch {
+		case m.themeIncoming != nil:
+			scrollTail = ": Esc: close preview • Ctrl+C: "
+		case m.themeShareConfirm:
+			scrollTail = ": Enter: share • Esc: cancel • Ctrl+C: "
 		case m.themePackNaming:
 			scrollLabel = "Pack"
 			scrollTail = ": Enter: save pack • Esc: cancel • Ctrl+C: "
