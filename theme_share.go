@@ -207,6 +207,12 @@ func (m *model) openReceivedTheme(packet Packet) {
 	theme := *packet.Theme
 	m.themeIncoming = &theme
 	m.themeIncomingSender = terminalSafeText(packet.User.Name)
+	// The left pane should show the received theme, not highlight an
+	// unrelated local preset while the right pane previews the share.
+	m.themeEntries = []themeListEntry{{Preset:theme,PackName:"Shared theme",ThemeCount:1}}
+	m.themeSelected = 0
+	m.themeScroll = 0
+	m.themeSavedPreset = theme
 	m.themeDetailsScroll = 0
 	m.themeError = ""
 	m.themeEditError = ""
