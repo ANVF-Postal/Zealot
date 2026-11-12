@@ -417,6 +417,8 @@ func (m model) Update(
 			return m, nil
 		}
 		if (m.usersOpen || m.splashOpen) && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width("[X]") && mouse.X < m.width {
+			if m.themeIncoming != nil { m.closeReceivedTheme(); return m,nil }
+			if m.themeShareConfirm { m.themeShareConfirm = false; m.themeEditError = "" }
 			if m.commandsOpen { m.closeCommandsBrowser(); return m,nil }
 			m.usersOpen = false
 			m.splashOpen = false
@@ -1011,12 +1013,43 @@ func (m model) Update(
 		}
 		if m.themesOpen {
 			if m.themeIncoming != nil {
-				if keyMsg.Keystroke()=="esc" || keyMsg.Keystroke()=="escape" {m.closeReceivedTheme();return m,nil}
+				switch keyMsg.Keystroke() {
+				case "esc", "escape":
+					m.closeReceivedTheme()
+					return m,nil
+				case "up", "pgup":
+					m.scrollThemeDetails(-3)
+					return m,nil
+				case "down", "pgdown":
+					m.scrollThemeDetails(3)
+					return m,nil
+				case "ctrl+home":
+					m.themeDetailsScroll = 0
+					return m,nil
+				case "ctrl+end":
+					m.themeDetailsScroll = m.maxThemeDetailsScroll()
+					return m,nil
+				case "ctrl+c", "ctrl+q":
+					m.sendTyping(false)
+					m.quitting = true
+					return m,tea.Quit
+				}
 				return m,nil
 			}
 			if m.themeShareConfirm {
-				if keyMsg.Keystroke()=="esc" || keyMsg.Keystroke()=="escape" {m.themeShareConfirm=false;m.themeEditError="";return m,nil}
-				if keyMsg.Keystroke()=="enter" {m.confirmThemeShare();return m,nil}
+				switch keyMsg.Keystroke() {
+				case "esc", "escape":
+					m.themeShareConfirm = false
+					m.themeEditError = ""
+					return m,nil
+				case "enter":
+					m.confirmThemeShare()
+					return m,nil
+				case "ctrl+c", "ctrl+q":
+					m.sendTyping(false)
+					m.quitting = true
+					return m,tea.Quit
+				}
 				return m,nil
 			}
 			if m.themePacking {
