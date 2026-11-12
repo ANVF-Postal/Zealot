@@ -350,7 +350,7 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 		separatorWidth := 1
 		if msg.Long && n == 0 { separatorWidth = 3 }
 		if used+separatorWidth+lipgloss.Width(marker) <= contentWidth {
-			lines[markerRow] = renderChatRow(rowFill, trimmed+separatorStyle.Render(func() string { if msg.Long { return " | " }; return " " }())+styled, contentWidth)
+			lines[markerRow] = renderChatRow(rowFill, trimmed+separatorStyle.Render(func() string { if msg.Long && n == 0 { return " | " }; return " " }())+styled, contentWidth)
 		} else {
 			lines = append(lines, renderChatRow(rowFill, styled, contentWidth))
 			markerRow = len(lines) - 1
