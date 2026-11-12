@@ -348,7 +348,7 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 		trimmed := trimANSIEndPadding(lines[markerRow])
 		used := visibleChatTextWidth(trimmed)
 		separatorWidth := 1
-		if msg.Long { separatorWidth = 3 }
+		if msg.Long && n == 0 { separatorWidth = 3 }
 		if used+separatorWidth+lipgloss.Width(marker) <= contentWidth {
 			lines[markerRow] = renderChatRow(rowFill, trimmed+separatorStyle.Render(func() string { if msg.Long { return " | " }; return " " }())+styled, contentWidth)
 		} else {
