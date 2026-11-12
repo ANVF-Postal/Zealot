@@ -57,6 +57,9 @@ type model struct {
 	themePacking                     bool
 	themePackNaming                  bool
 	themePackSelected                map[string]bool
+	themeShareConfirm bool
+	themeIncoming *ThemePreset
+	themeIncomingSender string
 	themeLeftWidth                   int
 	themeDividerDragging             bool
 	splashScroll                     int
