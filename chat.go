@@ -347,8 +347,10 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 		styled := replyMarkerStyle.Render(marker)
 		trimmed := trimANSIEndPadding(lines[markerRow])
 		used := visibleChatTextWidth(trimmed)
-		if used+1+lipgloss.Width(marker) <= contentWidth {
-			lines[markerRow] = renderChatRow(rowFill, trimmed+separatorStyle.Render(" ")+styled, contentWidth)
+		separatorWidth := 1
+		if msg.Long { separatorWidth = 3 }
+		if used+separatorWidth+lipgloss.Width(marker) <= contentWidth {
+			lines[markerRow] = renderChatRow(rowFill, trimmed+separatorStyle.Render(func() string { if msg.Long { return " | " }; return " " }())+styled, contentWidth)
 		} else {
 			lines = append(lines, renderChatRow(rowFill, styled, contentWidth))
 			markerRow = len(lines) - 1
@@ -469,6 +471,16 @@ func (m model) whisperHeaderParts(msg Packet, width int) (beforeBadge, afterBadg
 	return stamp + name + " whispers", ": ", false
 }
 
+// renderSpoilerBodyAt keeps the visible spoiler marker muted even after the
+// body is revealed. The marker is a display suffix, never stored in the packet.
+func renderSpoilerBodyAt(part string, spoiler bool, mentions []string, bodyStyle, mentionStyle, tagStyle lipgloss.Style, rainbow bool, phase float64, offset int) string {
+	if spoiler && strings.HasSuffix(part, "(spoiler)") {
+		body := strings.TrimSuffix(part, "(spoiler)")
+		return renderMentionBodyAt(body, mentions, bodyStyle, mentionStyle, rainbow, phase, offset) + tagStyle.Render("(spoiler)")
+	}
+	return renderMentionBodyAt(part, mentions, bodyStyle, mentionStyle, rainbow, phase, offset)
+}
+
 func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 	original := msg
 	msg = m.displayedMessage(msg)
@@ -481,6 +493,7 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 	text := lipgloss.Color(m.cfg.Theme.TextColor)
 	rowFill := lipgloss.NewStyle().Width(contentWidth).Background(bg)
 	normalBodyStyle := lipgloss.NewStyle().Foreground(text).Background(bg)
+	spoilerTagStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).Background(bg)
 	bodyStyle := normalBodyStyle
 	if original.Long {
 		bodyStyle = bodyStyle.Foreground(lipgloss.Color(m.cfg.Theme.AccentColor))
@@ -672,7 +685,7 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 		if width <= 48 {
 			header := msg
 			header.Text = ""
-			lines = renderCompactMessage(rowFill, bodyStyle, normalBodyStyle, nameStyle, mentionStyle, timeStyle, replyBadge, header, timeText, contentWidth)
+			lines = renderCompactMessage(rowFill, bodyStyle, normalBodyStyle, nameStyle, mentionStyle, timeStyle, spoilerTagStyle, replyBadge, header, timeText, contentWidth)
 		} else {
 			prefix := timeStyle.Render("[" + timeText + "]") + normalBodyStyle.Render(" ") + nameStyle.Render(msg.User.Name)
 			if replyBadge != "" {
@@ -682,7 +695,7 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 			if lipgloss.Width(prefix) >= contentWidth {
 				header := msg
 				header.Text = ""
-				lines = renderCompactMessage(rowFill, bodyStyle, normalBodyStyle, nameStyle, mentionStyle, timeStyle, m.renderReplyBadgeForWidth(msg, 48), header, timeText, contentWidth)
+				lines = renderCompactMessage(rowFill, bodyStyle, normalBodyStyle, nameStyle, mentionStyle, timeStyle, spoilerTagStyle, m.renderReplyBadgeForWidth(msg, 48), header, timeText, contentWidth)
 			} else {
 				logoIndent = lipgloss.Width(prefix)
 				lines = append(lines, renderChatRow(rowFill, prefix, contentWidth))
@@ -801,7 +814,7 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 		if hovered {
 			displayMessage.Rainbow = false
 		}
-		return renderCompactMessage(rowFill, bodyStyle, normalBodyStyle, nameStyle, mentionStyle, timeStyle, replyBadge, displayMessage, timeText, contentWidth)
+		return renderCompactMessage(rowFill, bodyStyle, normalBodyStyle, nameStyle, mentionStyle, timeStyle, spoilerTagStyle, replyBadge, displayMessage, timeText, contentWidth)
 	}
 
 	timestamp := timeStyle.Render("[" + timeText + "]")
@@ -817,7 +830,7 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 		if hovered {
 			displayMessage.Rainbow = false
 		}
-		return renderCompactMessage(rowFill, bodyStyle, normalBodyStyle, nameStyle, mentionStyle, timeStyle, m.renderReplyBadgeForWidth(msg, 48), displayMessage, timeText, contentWidth)
+		return renderCompactMessage(rowFill, bodyStyle, normalBodyStyle, nameStyle, mentionStyle, timeStyle, spoilerTagStyle, m.renderReplyBadgeForWidth(msg, 48), displayMessage, timeText, contentWidth)
 	}
 
 	wrapped := wrapText(msg.Text, contentWidth-prefixWidth)
@@ -827,12 +840,12 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 
 	lines := make([]string, 0, len(wrapped))
 	runeOffset := 0
-	firstBody := renderMentionBodyAt(wrapped[0], msg.Mentions, bodyStyle, mentionStyle, msg.Rainbow && !hovered, msg.RainbowPhase, runeOffset)
+	firstBody := renderSpoilerBodyAt(wrapped[0], msg.Spoiler, msg.Mentions, bodyStyle, mentionStyle, spoilerTagStyle, msg.Rainbow && !hovered, msg.RainbowPhase, runeOffset)
 	lines = append(lines, renderChatRow(rowFill, prefix+firstBody, contentWidth))
 	runeOffset += utf8.RuneCountInString(wrapped[0])
 	indent := strings.Repeat(" ", prefixWidth)
 	for _, line := range wrapped[1:] {
-		body := renderMentionBodyAt(line, msg.Mentions, bodyStyle, mentionStyle, msg.Rainbow && !hovered, msg.RainbowPhase, runeOffset)
+		body := renderSpoilerBodyAt(line, msg.Spoiler, msg.Mentions, bodyStyle, mentionStyle, spoilerTagStyle, msg.Rainbow && !hovered, msg.RainbowPhase, runeOffset)
 		lines = append(lines, renderChatRow(rowFill, normalBodyStyle.Render(indent)+body, contentWidth))
 		runeOffset += utf8.RuneCountInString(line)
 	}
@@ -849,6 +862,7 @@ func renderCompactMessage(
 	nameStyle lipgloss.Style,
 	mentionStyle lipgloss.Style,
 	timeStyle lipgloss.Style,
+	spoilerTagStyle lipgloss.Style,
 	replyBadge string,
 	msg Packet,
 	timeText string,
@@ -869,7 +883,7 @@ func renderCompactMessage(
 	lines := make([]string, 0, 4)
 	runeOffset := 0
 	renderBody := func(part string) string {
-		rendered := renderMentionBodyAt(part, msg.Mentions, bodyStyle, mentionStyle, msg.Rainbow, msg.RainbowPhase, runeOffset)
+		rendered := renderSpoilerBodyAt(part, msg.Spoiler, msg.Mentions, bodyStyle, mentionStyle, spoilerTagStyle, msg.Rainbow, msg.RainbowPhase, runeOffset)
 		runeOffset += utf8.RuneCountInString(part)
 		return rendered
 	}
