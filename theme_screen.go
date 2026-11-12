@@ -558,6 +558,7 @@ func wrapThemeDescription(description string, width int) []string {
 }
 
 func (m model) themeDescriptionLines(width int) []string {
+	if m.themeIncoming != nil { return wrapThemeDescription(m.themeIncoming.Description,width) }
 	entry, ok := m.selectedThemeEntry()
 	if !ok {
 		return []string{"No description yet · click to add"}
