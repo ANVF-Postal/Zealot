@@ -181,11 +181,27 @@ func TestThemeDetailsLongDescriptionCanScrollToLastRow(t *testing.T) {
 	if y < 2 || y >= 2+m.messageHeight() {
 		t.Fatalf("last action row is still inaccessible: y=%d",y)
 	}
-	start,end,ok := themeActionButtonBounds(width,themeApplyButtonLabel,false)
-	if !ok {t.Fatal("missing Apply action")}
-	x := m.themeBrowserDividerX()+1+(start+end)/2
-	if !m.themeApplyButtonContains(x,y) {
-		t.Fatalf("Apply button hitbox is not reachable after scrolling to end at (%d,%d)",x,y)
+	// Use the live button layout. Custom themes now include Share between
+	// Clone and Apply, so the old two-button helper gives a stale Apply X.
+	buttons := themeActionButtonLayoutForMode(width,m.themeDirty,themeEntryEditable(entry),"",m.connected)
+	for _, label := range []string{themeApplyButtonLabel,themeShareButtonLabel} {
+		found := false
+		for _, button := range buttons {
+			if button.Label != label { continue }
+			found = true
+			x := m.themeBrowserDividerX()+1+(button.Start+button.End)/2
+			var reachable bool
+			switch label {
+			case themeApplyButtonLabel:
+				reachable = m.themeApplyButtonContains(x,y)
+			case themeShareButtonLabel:
+				reachable = m.themeShareButtonContains(x,y)
+			}
+			if !reachable {
+				t.Fatalf("%s button hitbox is not reachable after scrolling to end at (%d,%d)",label,x,y)
+			}
+		}
+		if !found {t.Fatalf("missing %s action in the live button layout",label)}
 	}
 }
 
