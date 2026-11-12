@@ -257,3 +257,31 @@ func TestLongReaderCloseButtonAndScrollbarColors(t *testing.T) {
 		t.Fatal("reader [X] should return to main chat")
 	}
 }
+
+
+func TestSpoilerTagPersistsAndUsesMutedColor(t *testing.T) {
+	for _, width := range []int{40, 90} {
+		spoiler := interactionTestPacket("spoiler-tag", "The answer is 42")
+		spoiler.Spoiler = true
+		m := newMessageInteractionTestModel(width, spoiler)
+		muted := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).
+			Background(m.messageBackground(spoiler)).Render("(spoiler)")
+		for _, revealed := range []bool{false, true} {
+			if revealed {
+				m.revealedSpoilers = map[string]bool{spoiler.ID: true}
+			}
+			rows := m.renderPacketLines(spoiler, width)
+			rendered := strings.Join(rows, "\n")
+			if !strings.Contains(stripANSISequences(rendered), "(spoiler)") {
+				t.Fatalf("width %d revealed %v: missing spoiler tag: %q", width, revealed, rendered)
+			}
+			if !strings.Contains(rendered, muted) {
+				t.Fatalf("width %d revealed %v: spoiler tag is not muted: %q", width, revealed, rendered)
+			}
+			if got := m.renderPacketLineCount(spoiler, width); got != len(rows) {
+				t.Fatalf("width %d revealed %v: line geometry %d != %d", width, revealed, got, len(rows))
+			}
+		}
+	}
+}
