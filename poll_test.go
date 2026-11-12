@@ -469,3 +469,30 @@ func TestCompactPollResultsDoNotDrawBars(t *testing.T) {
 		t.Fatalf("compact poll no longer uses percentage-only display: %q", text)
 	}
 }
+
+
+func TestExpandedPollVoteCountsAndBoundedBars(t *testing.T) {
+	p := testPollPacket()
+	p.Poll.Options = []string{"Bosnia", "The longest country name", "Other"}
+	p.Poll.Counts = []int{2, 1, 0}
+	p.Poll.Total = 2
+	p.Poll.Choice = 1
+	p.Poll.ResultsVisible = true
+	m := newMessageInteractionTestModel(120, p)
+	rows, choices := m.pollLayout(p, 120)
+	joined := strings.Join(rows, "\n")
+	for _, want := range []string{"Bosnia (2 votes)", "The longest country name (1 vote)", "Other (0 votes)", "100%", "50%", "0%"} {
+		if !strings.Contains(joined, want) {t.Errorf("missing %q in %q", want, joined)}
+	}
+	bars := 0
+	for i, row := range rows {
+		if strings.ContainsAny(row, "█░") {
+			bars++
+			width := strings.Count(row, "█") + strings.Count(row, "░")
+			if width != 48 || choices[i] == 0 {
+				t.Errorf("bar %d: width=%d choice=%d: %q", bars, width, choices[i], row)
+			}
+		}
+	}
+	if bars != 3 { t.Fatalf("got %d bars; want 3", bars) }
+}
