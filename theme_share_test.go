@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 func testSharedPreset() ThemePreset {
@@ -126,7 +128,8 @@ func TestReceivedThemePreviewAndClickableMessage(t *testing.T) {
 	// Normal wide layouts have one outer border column.
 	got,ok:=m.sharedThemeLinkAt(1+x,2)
 	if !ok || got.ID!=shared.ID {t.Fatalf("theme link failed: %+v, %v",got,ok)}
-	m.openReceivedTheme(got)
+	updated, _ := m.Update(tea.MouseClickMsg{X:1+x,Y:2,Button:tea.MouseLeft})
+	m=updated.(model)
 	if m.themeIncoming==nil || !m.themesOpen || m.themeIncoming.Name!="Bosnia" {
 		t.Fatalf("received preview not opened: %+v",m.themeIncoming)
 	}
@@ -137,7 +140,18 @@ func TestReceivedThemePreviewAndClickableMessage(t *testing.T) {
 	if strings.Contains(details,"[APPLY]") || strings.Contains(details,"[CLONE]") {
 		t.Fatal("incoming theme offered local edit/apply actions")
 	}
-	m.installReceivedTheme()
+	leftWidth,rightWidth:=m.themeBrowserColumnWidths()
+	buttons:=themeActionButtonLayoutForMode(rightWidth-1,false,false,"incoming",m.connected)
+	installX:=-1
+	for _,button:=range buttons {
+		if button.Label==themeInstallButtonLabel {
+			installX=m.themeBrowserContentStartX()+leftWidth+1+(button.Start+button.End)/2
+		}
+	}
+	if installX<0 {t.Fatal("install button missing")}
+	installY:=2+m.themeActionButtonRowForWidth(rightWidth-1)-m.themeDetailsScroll
+	updated,_=m.Update(tea.MouseClickMsg{X:installX,Y:installY,Button:tea.MouseLeft})
+	m=updated.(model)
 	if m.themeIncoming!=nil || m.themesOpen {t.Fatal("install did not return to chat")}
 	if _,err:=os.Stat(filepath.Join(themesDir(),"theme-bosnia.toml"));err!=nil {t.Fatal(err)}
 }
