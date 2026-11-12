@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
+
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -154,4 +156,36 @@ func TestReceivedThemePreviewAndClickableMessage(t *testing.T) {
 	m=updated.(model)
 	if m.themeIncoming!=nil || m.themesOpen {t.Fatal("install did not return to chat")}
 	if _,err:=os.Stat(filepath.Join(themesDir(),"theme-bosnia.toml"));err!=nil {t.Fatal(err)}
+}
+
+
+func TestSharedThemeLinkUsesSentPaletteColors(t *testing.T) {
+	m := newMessageInteractionTestModel(100)
+	preset := testSharedPreset()
+	preset.Colors.AccentColor = "#12ABEF"
+	preset.Colors.Background = "#203040"
+	packet := Packet{
+		ID: "shared-colors",
+		Type: "theme_result",
+		User: User{Name: "Alice", Color: "#FFFFFF"},
+		Theme: &preset,
+	}
+	rows := m.renderThemeShareLines(packet, 100)
+	rendered := strings.Join(rows, "\n")
+	linkStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(preset.Colors.AccentColor)).
+		Background(lipgloss.Color(preset.Colors.Background)).
+		Bold(true)
+	if !strings.Contains(rendered, linkStyle.Render("[Theme]")) {
+		t.Fatalf("theme link does not use shared palette accent and background: %q", rendered)
+	}
+	normalStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.cfg.Theme.TextColor)).
+		Background(m.messageBackground(packet))
+	if !strings.Contains(rendered, normalStyle.Render("!")) {
+		t.Fatalf("theme link changed surrounding chat styling: %q", rendered)
+	}
+	if !strings.Contains(stripANSISequences(rendered), "Alice sent a [Theme]!") {
+		t.Fatalf("the styled theme link changed the message text: %q", rendered)
+	}
 }
