@@ -437,7 +437,7 @@ func (m model) renderThemeBrowser() string {
 		}
 		entry := m.themeEntries[index]
 		label := entry.Preset.Name
-		if entry.Preset.Colors == m.cfg.Theme {
+		if entry.Preset.Colors == m.cfg.Theme && m.themeIncoming == nil {
 			label += "  *"
 		}
 		marker := " "
@@ -877,7 +877,7 @@ func (m model) themeDetailsRows(width int) []string {
 	preset := entry.Preset
 	editable := themeEntryEditable(entry) && m.themeIncoming == nil && !m.themeShareConfirm
 	title := preset.Name
-	description := "Built-in · read-only · clone to edit"
+	description := "Built-in · read-only · clone to edit or share"
 	if editable {
 		title += "  ✎"
 		description = "Custom theme · click name or a color to edit"
