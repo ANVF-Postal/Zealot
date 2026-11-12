@@ -185,3 +185,46 @@ func TestHandbookTabNavigationDisappearsWhenThereIsRoom(t *testing.T) {
 		t.Fatalf("LAUNCH tab not kept visible after resizing: %q", face)
 	}
 }
+
+
+func TestHandbookRowsCachedAcrossScrollAndInvalidatedOnChanges(t *testing.T) {
+	m := newMessageInteractionTestModel(45)
+	m.openCommandsBrowser()
+	if len(m.commandsRowsCache) == 0 { t.Fatal("handbook did not prebuild its formatted rows") }
+	first := &m.commandsRowsCache[0]
+	if got := &m.commandsTextRows()[0]; got != first {
+		t.Fatal("handbook regenerated rows instead of using the cached layout")
+	}
+	for i := 0; i < 80; i++ {
+		updated, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+		m = updated.(model)
+		if got := &m.commandsTextRows()[0]; got != first {
+			t.Fatalf("scroll event %d rebuilt unchanged handbook text", i)
+		}
+	}
+	m.selectCommandsTab(1)
+	if got := &m.commandsTextRows()[0]; got == first {
+		t.Fatal("switching tabs did not invalidate the cache")
+	}
+	if m.commandsRowsCacheTab != 1 { t.Fatal("cached tab was not updated") }
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 34, Height: m.height})
+	m = updated.(model)
+	if m.commandsRowsCacheWidth != 34 { t.Fatal("resizing did not regenerate wrapped rows") }
+	m.cfg.Theme.AccentColor = "#334455"
+	if m.commandsRowsCacheTheme == m.cfg.Theme { t.Fatal("test did not change the theme") }
+	if got := m.commandsTextRows(); len(got) == 0 {
+		t.Fatal("theme change resulted in empty handbook")
+	}
+	m.closeCommandsBrowser()
+	if m.commandsOpen { t.Fatal("handbook failed to close after scrolling") }
+}
+
+func BenchmarkHandbookScrollAndRender(b *testing.B) {
+	m := newMessageInteractionTestModel(60)
+	m.openCommandsBrowser()
+	b.ResetTimer()
+	for i:=0; i<b.N; i++ {
+		m.commandsScroll = i % (m.maxCommandsScroll()+1)
+		_ = m.renderCommandsBrowser()
+	}
+}
