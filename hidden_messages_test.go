@@ -132,12 +132,16 @@ func TestSpoilerMaskPreservesSpacesAndMutedThemeStyling(t *testing.T) {
 	}
 	row := m.renderPacketLines(packet, m.width)[0]
 	muted := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).Background(m.messageBackground(packet))
-	if !strings.Contains(row, muted.Render("### #####")) {
-		t.Errorf("hidden spoiler lacks muted colour: %q", row)
+	if !strings.Contains(row, muted.Render("### ##### ")) ||
+		!strings.Contains(row, muted.Render("(spoiler)")) {
+		t.Errorf("hidden spoiler body or tag lacks muted colour: %q", row)
 	}
 	m.revealedSpoilers = map[string]bool{packet.ID: true}
-	if got := m.displayedMessage(packet).Text; got != packet.Text {
-		t.Fatalf("revealed text %q differs from original", got)
+	if got := m.displayedMessage(packet).Text; got != packet.Text+" (spoiler)" {
+		t.Fatalf("revealed text %q differs from tagged original", got)
+	}
+	if packet.Text != "two words" {
+		t.Fatalf("rendering modified the stored spoiler: %q", packet.Text)
 	}
 }
 
