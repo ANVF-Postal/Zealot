@@ -67,6 +67,7 @@ func (m model) displayedMessage(packet Packet) Packet {
 		} else {
 			packet.Text = terminalSafeText(packet.Text)
 		}
+		packet.Text += " (spoiler)"
 		packet.Rainbow = false
 	}
 	return packet
