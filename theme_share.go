@@ -112,7 +112,15 @@ func (m model) renderThemeShareLines(packet Packet, width int) []string {
 	bg := m.messageBackground(packet)
 	normal := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.TextColor)).Background(bg)
 	muted := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).Background(bg)
+	// The clickable label previews the shared palette in miniature. The
+	// surrounding message still uses the receiver's own chat colors.
 	accent := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).Background(bg).Bold(true)
+	if packet.Theme != nil && validateSharedTheme(packet.Theme) == nil {
+		accent = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(packet.Theme.Colors.AccentColor)).
+			Background(lipgloss.Color(packet.Theme.Colors.Background)).
+			Bold(true)
+	}
 	nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(packet.User.Color)).Background(bg).Bold(true)
 	prefix := muted.Render("["+packet.Time.Local().Format("15:04")+"] ") +
 		nameStyle.Render(terminalSafeText(packet.User.Name)) + normal.Render(" sent a ")
