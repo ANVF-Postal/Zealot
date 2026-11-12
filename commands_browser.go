@@ -189,7 +189,22 @@ func (m model) commandsTabsLine() (top, face string, ranges []messageBodyRange) 
 	return
 }
 
+func (m *model) cacheCommandsTextRows() {
+	m.commandsRowsCache = m.buildCommandsTextRows()
+	m.commandsRowsCacheWidth = m.width
+	m.commandsRowsCacheTab = m.commandsTab
+	m.commandsRowsCacheTheme = m.cfg.Theme
+}
+
 func (m model) commandsTextRows() []string {
+	if m.commandsRowsCache != nil && m.commandsRowsCacheWidth == m.width &&
+		m.commandsRowsCacheTab == m.commandsTab && m.commandsRowsCacheTheme == m.cfg.Theme {
+		return m.commandsRowsCache
+	}
+	return m.buildCommandsTextRows()
+}
+
+func (m model) buildCommandsTextRows() []string {
 	width := max(1, chatContentWidth(m.width)-3)
 	bg := lipgloss.Color(m.cfg.Theme.Background)
 	nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.TextColor)).Background(bg).Bold(true)
