@@ -102,11 +102,20 @@ func (m model) renderThemeShareLines(packet Packet, width int) []string {
 	muted := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).Background(bg)
 	accent := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).Background(bg).Bold(true)
 	nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(packet.User.Color)).Background(bg).Bold(true)
-	styled := muted.Render("["+packet.Time.Local().Format("15:04")+"] ") +
-		nameStyle.Render(terminalSafeText(packet.User.Name)) + normal.Render(" sent a ") + accent.Render("[Theme]") + normal.Render("!")
+	prefix := muted.Render("["+packet.Time.Local().Format("15:04")+"] ") +
+		nameStyle.Render(terminalSafeText(packet.User.Name)) + normal.Render(" sent a ")
+	link := accent.Render("[Theme]") + normal.Render("!")
 	var result []string
 	rowFill := lipgloss.NewStyle().Width(w).Background(bg)
-	for _, line := range wrapANSIHardLine(styled, w) {
+	var wrapped []string
+	if lipgloss.Width(prefix)+lipgloss.Width(link) <= w {
+		wrapped = wrapANSIHardLine(prefix+link,w)
+	} else {
+		// Never split the clickable token across two terminal rows.
+		wrapped = append(wrapped, wrapANSIHardLine(prefix,w)...)
+		wrapped = append(wrapped, wrapANSIHardLine(link,w)...)
+	}
+	for _, line := range wrapped {
 		result = append(result, renderChatRow(rowFill, line, w))
 	}
 	return result
@@ -124,20 +133,18 @@ func (m model) sharedThemeLinkAt(x, y int) (Packet, bool) {
 	pkt, span, ok := m.messageAtRow(row)
 	if !ok || pkt.Type != "theme_result" || pkt.Theme == nil { return Packet{}, false }
 	if validateSharedTheme(pkt.Theme) != nil { return Packet{}, false }
-	// Compute the same wrapped label position used by renderThemeShareLines.
-	prefix := "["+pkt.Time.Local().Format("15:04")+"] "+terminalSafeText(pkt.User.Name)+" sent a "
-	contentWidth := max(1, chatContentWidth(m.width))
-	start := lipgloss.Width(prefix)
-	// wrapANSIHardLine uses terminal cells; calculate the visible label
-	// position by scanning the already rendered row rather than guessing.
+	// Use the rendered row to locate the link, even after a wrap or
+	// with multicolumn Unicode characters in the sender's display name.
 	rel := row-span.Start
 	rendered := m.renderThemeShareLines(pkt, m.width)
 	if rel < 0 || rel >= len(rendered) { return Packet{}, false }
 	plain := stripANSISequences(rendered[rel])
 	startPos := strings.Index(plain, "[Theme]")
-	if startPos < 0 && start >= contentWidth { return Packet{}, false }
-	if startPos >= 0 && x-left >= startPos && x-left < startPos+len("[Theme]") {
-		return pkt, true
+	if startPos >= 0 {
+		startCell := lipgloss.Width(plain[:startPos])
+		if x-left >= startCell && x-left < startCell+lipgloss.Width("[Theme]") {
+			return pkt, true
+		}
 	}
 	return Packet{}, false
 }
