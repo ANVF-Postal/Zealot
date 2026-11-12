@@ -629,6 +629,11 @@ func themeActionButtonLayoutForMode(width int, dirty bool, custom bool, mode str
 		total -= len(labels) - 1
 	}
 	if total > width {
+		// Do not let the optional Share action hide the established Clone
+		// and Apply controls on narrow terminals.
+		if mode == "" && custom && connected && !dirty {
+			return themeActionButtonLayoutForMode(width,dirty,false,mode,connected)
+		}
 		return nil
 	}
 
