@@ -56,6 +56,11 @@ func (m model) pollLayout(packet Packet, width int) ([]string, []int) {
 			add(lead+truncateANSI(label, available)+suffix, choice)
 			continue
 		}
+		if expanded {
+			voteWord := "votes"
+			if count == 1 { voteWord = "vote" }
+			label += fmt.Sprintf(" (%d %s)", count, voteWord)
+		}
 		labelWidth := max(1, w-lipgloss.Width(lead))
 		wrapped := wrapANSIHardLine(label, labelWidth)
 		for j, line := range wrapped {
@@ -68,7 +73,7 @@ func (m model) pollLayout(packet Packet, width int) ([]string, []int) {
 			// so every bar has the same length, even for 0% and 100%.
 			pct := fmt.Sprintf(" %3d%%", percent)
 			indent := "     "
-			barWidth := max(0, w-lipgloss.Width(indent)-lipgloss.Width(pct))
+			barWidth := min(48, max(0, w-lipgloss.Width(indent)-lipgloss.Width(pct)))
 			filled := 0
 			if p.Total > 0 { filled = (count*barWidth+p.Total/2)/p.Total }
 			add(indent+strings.Repeat("█", filled)+strings.Repeat("░", barWidth-filled)+pct, choice)
