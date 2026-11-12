@@ -279,11 +279,12 @@ func (m model) renderCommandsBrowser() string {
 	height := max(1, m.messageHeight())
 	tabRim, tabFace, _ := m.commandsTabsLine()
 	content := m.commandsTextRows()
-	thumbTop, thumbHeight, trackHeight := m.commandsScrollbarThumb()
+	thumbTop, thumbHeight, trackHeight := scrollbarGeometry(len(content), m.commandsVisibleHeight(), m.messageHeight()-2, m.commandsScroll)
+	hasOverflow := len(content) > m.commandsVisibleHeight()
 	railAt := func(trackPosition int, bottom bool) string {
 		if bottom { return "v" }
 		switch {
-		case m.maxCommandsScroll()>0 && trackPosition >= thumbTop && trackPosition < thumbTop+thumbHeight: return "█"
+		case hasOverflow && trackPosition >= thumbTop && trackPosition < thumbTop+thumbHeight: return "█"
 		case trackPosition >= trackHeight: return " "
 		default: return "│"
 		}
