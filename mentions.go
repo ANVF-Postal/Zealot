@@ -383,12 +383,22 @@ func (m *model) completeMentionTab() bool {
 	}
 	matches := make([]string, 0)
 	seen := make(map[string]bool)
+	self := ""
 	for _, username := range m.mentionCandidates() {
 		key := strings.ToLower(username)
-		if strings.HasPrefix(key, strings.ToLower(fragment)) && !seen[key] {
-			seen[key] = true
+		if !strings.HasPrefix(key, strings.ToLower(fragment)) || seen[key] {
+			continue
+		}
+		seen[key] = true
+		if m.user.Name != "" && strings.EqualFold(username, m.user.Name) {
+			self = username
+		} else {
 			matches = append(matches, username)
 		}
+	}
+	// Self-mentions are allowed, but only after every other match.
+	if self != "" {
+		matches = append(matches, self)
 	}
 	if len(matches) == 0 { return false }
 	m.mentionTabMatches = matches
