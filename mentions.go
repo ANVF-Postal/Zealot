@@ -357,7 +357,12 @@ func (m *model) resetMentionTabCompletion() {
 // than narrowing matches to the first completed username.
 func (m *model) completeMentionTab() bool {
 	current := m.input.Value()
-	if len(m.mentionTabMatches) > 0 && current == m.mentionTabValue {
+	lines := strings.Split(current, "\n")
+	last := lines[len(lines)-1]
+	atEnd := !m.input.HasSelection() &&
+		m.input.Line() == len(lines)-1 &&
+		m.input.Column() == utf8.RuneCountInString(last)
+	if len(m.mentionTabMatches) > 0 && current == m.mentionTabValue && atEnd {
 		m.mentionTabIndex = (m.mentionTabIndex + 1) % len(m.mentionTabMatches)
 		m.mentionTabValue = m.mentionTabPrefix + "@" + m.mentionTabMatches[m.mentionTabIndex]
 		m.input.SetValue(m.mentionTabValue)
@@ -365,12 +370,7 @@ func (m *model) completeMentionTab() bool {
 		return true
 	}
 	m.resetMentionTabCompletion()
-	if m.input.HasSelection() { return false }
-	lines := strings.Split(current, "\n")
-	last := lines[len(lines)-1]
-	if m.input.Line() != len(lines)-1 || m.input.Column() != utf8.RuneCountInString(last) {
-		return false
-	}
+	if !atEnd { return false }
 	at := strings.LastIndexByte(last, '@')
 	if at < 0 || at == len(last)-1 { return false }
 	if at > 0 {
