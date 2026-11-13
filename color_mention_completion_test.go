@@ -142,3 +142,31 @@ func TestColorChangeSwatchesKeepColorsAfterWrapping(t *testing.T) {
 		}
 	}
 }
+
+
+func TestMentionTabCompletesOwnUsernameLast(t *testing.T) {
+	m := newMessageInteractionTestModel(100)
+	m.user.Name = "Dylan"
+	// The roster includes the current user too. Deduplicate and keep self last.
+	m.mentionUsernames = []string{"Dylan", "Daria", "David", "dylan", "Dom"}
+	m.input.SetValue("hello @d")
+	m.input.MoveToEnd()
+	for i, want := range []string{
+		"hello @Daria", "hello @David", "hello @Dom",
+		"hello @Dylan", "hello @Daria",
+	} {
+		if !m.completeMentionTab() {
+			t.Fatalf("Tab %d did not complete", i+1)
+		}
+		if got := m.input.Value(); got != want {
+			t.Fatalf("Tab %d = %q, want %q", i+1, got, want)
+		}
+	}
+
+	m.resetMentionTabCompletion()
+	m.input.SetValue("@dyl")
+	m.input.MoveToEnd()
+	if !m.completeMentionTab() || m.input.Value() != "@Dylan" {
+		t.Fatalf("self should remain completable when alone: %q", m.input.Value())
+	}
+}
