@@ -270,14 +270,19 @@ func (m *model) sendMessage(text string, replyTo string) bool {
 		_ = m.client.send(Packet{Type: "rename", Room: m.room, User: User{Name: fields[1], Color: m.user.Color}})
 		return false
 	case "/color":
-		if len(fields) != 2 || !validUserColor(fields[1]) {
-			m.appendMessage(Packet{Type: "system", Text: "Usage: /color #RRGGBB (or an ANSI color number 0–255)", Time: time.Now()})
+		color := ""
+		valid := false
+		if len(fields) == 2 {
+			color, valid = normalizeUserColor(fields[1])
+		}
+		if !valid {
+			m.appendMessage(Packet{Type: "system", Text: "Usage: /color [#]RRGGBB (or an ANSI color number 0–255)", Time: time.Now()})
 			return false
 		}
 		old := m.cfg.UserColor
-		m.cfg.UserColor = fields[1]
-		m.user.Color = fields[1]
-		if err := saveConfigUserColor(fields[1]); err != nil {
+		m.cfg.UserColor = color
+		m.user.Color = color
+		if err := saveConfigUserColor(color); err != nil {
 			m.cfg.UserColor = old
 			m.user.Color = old
 			m.appendMessage(Packet{Type: "system", Text: "Could not save config: " + err.Error(), Time: time.Now()})
