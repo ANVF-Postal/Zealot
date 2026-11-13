@@ -507,17 +507,18 @@ func (s *server) handle(conn net.Conn) {
 			}
 
 		case "color":
-			color := strings.TrimSpace(packet.User.Color)
-			if !validUserColor(color) {
-				client.send(Packet{Type: "system", Room: roomName, Text: "Usage: /color #RRGGBB (or an ANSI color number 0–255).", Time: time.Now().UTC()})
+			color, valid := normalizeUserColor(packet.User.Color)
+			if !valid {
+				client.send(Packet{Type: "system", Room: roomName, Text: "Usage: /color [#]RRGGBB (or an ANSI color number 0–255).", Time: time.Now().UTC()})
 				continue
 			}
 			s.mu.Lock()
+			oldColor := client.user.Color
 			client.user.Color = color
 			user = client.user
 			s.mu.Unlock()
 			client.send(Packet{Type: "identity", Room: roomName, User: client.user})
-			s.systemMessage(roomName, fmt.Sprintf("%s changed their color.", user.Name))
+			s.colorChangeMessage(roomName, user.Name, oldColor, color)
 			s.broadcastRoster(roomName)
 
 		case "me":
