@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -97,5 +100,45 @@ func TestMentionTabIgnoresUnmatchedAndNonMentionText(t *testing.T) {
 	m.input.MoveToEnd()
 	if !m.completeMentionTab() || m.input.Value() != "@Daria" {
 		t.Fatalf("single matching username not completed: %q", m.input.Value())
+	}
+}
+
+func TestColorCommandSavesAndSendsCanonicalHex(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	m := newMessageInteractionTestModel(95)
+	m.cfg.UserColor = "#112233"
+	m.user = User{Name: "Tester", Color: "#112233"}
+	m.room = "lobby"
+	var outgoing bytes.Buffer
+	m.client = &wireClient{enc: json.NewEncoder(&outgoing)}
+	m.sendMessage("/color dEaDbE", "")
+	if m.cfg.UserColor != "#DEADBE" || m.user.Color != "#DEADBE" {
+		t.Fatalf("color command did not normalize user color: %+v", m.user)
+	}
+	var packet Packet
+	if err := json.NewDecoder(&outgoing).Decode(&packet); err != nil { t.Fatal(err) }
+	if packet.Type != "color" || packet.User.Color != "#DEADBE" {
+		t.Fatalf("wrong color update packet: %+v", packet)
+	}
+	stored, err := os.ReadFile(configPath())
+	if err != nil { t.Fatal(err) }
+	if !strings.Contains(string(stored), "user_color = \"#DEADBE\"") {
+		t.Fatalf("canonical color was not saved: %s", stored)
+	}
+}
+
+func TestColorChangeSwatchesKeepColorsAfterWrapping(t *testing.T) {
+	m := newMessageInteractionTestModel(26)
+	packet := Packet{Type: "system", Time: time.Now(),
+		Text: "Alice changed their color.",
+		ColorBefore: "#123456", ColorAfter: "#FEDCBA",
+	}
+	rows := strings.Join(m.renderPacketLines(packet, m.width), "\n")
+	for _, color := range []string{packet.ColorBefore, packet.ColorAfter} {
+		styled := lipgloss.NewStyle().Foreground(lipgloss.Color(color)).
+			Background(lipgloss.Color(m.cfg.Theme.Background)).Render("█")
+		if !strings.Contains(rows, styled) {
+			t.Fatalf("color %s missing after wrap: %q", color, rows)
+		}
 	}
 }
