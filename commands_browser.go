@@ -39,7 +39,7 @@ var handbookPages = []struct {
 	}},
 	{"USER", []handbookEntry{
 		{"/rename", "Renames you from the chat window. Usage: /rename name"},
-		{"/color", "Changes your user color from the chat window. Use #RRGGBB hexadecimal or an ANSI color number (0–255)."},
+		{"/color", "Changes your user color from the chat window. Use #RRGGBB or RRGGBB (case-insensitive), or an ANSI color number (0–255)."},
 		{"/who", "Prints the users connected to the current room. Only you see this list."},
 		{"/history", "Shows whether chat history is enabled for the current room."},
 	}},
