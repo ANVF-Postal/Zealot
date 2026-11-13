@@ -21,6 +21,10 @@ type model struct {
 	onlineCount    int
 	onlineUsers  []User
 	mentionUsernames []string
+	mentionTabMatches []string
+	mentionTabPrefix string
+	mentionTabValue string
+	mentionTabIndex int
 	usersOpen    bool
 	usersScroll  int
 	usersFrame   int
