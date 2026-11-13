@@ -136,6 +136,23 @@ func (s *server) systemMessage(
 	s.broadcast(roomName, packet)
 }
 
+
+ // colorChangeMessage stores the swatch values as data, not inline terminal
+ // escape codes, so a client can render them safely and history can replay them.
+func (s *server) colorChangeMessage(roomName, name, before, after string) {
+	packet := Packet{
+		ID: nextMessageID(), Type: "system", Room: roomName,
+		Text: fmt.Sprintf("%s changed their color.", name),
+		ColorBefore: before, ColorAfter: after, Time: time.Now().UTC(),
+	}
+	s.mu.Lock()
+	if room := s.rooms[roomName]; room != nil && room.historyEnabled {
+		room.messages = append(room.messages, packet)
+	}
+	s.mu.Unlock()
+	s.broadcast(roomName, packet)
+}
+
 func (s *server) handle(conn net.Conn) {
 	defer conn.Close()
 
