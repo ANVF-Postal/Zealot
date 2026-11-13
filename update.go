@@ -1203,8 +1203,11 @@ func (m model) Update(
 		if keyMsg.Keystroke() == "tab" && m.themeEditField == "" && !m.themePackNaming &&
 			!m.themeShareConfirm && m.themeIncoming == nil && m.longReader == nil {
 			if m.completeMentionTab() {
-				m.syncTypingState()
-				return m, tea.Batch(m.startCursorBlink(), m.scheduleTypingClear())
+				if m.connected {
+					m.syncTypingState()
+					return m, tea.Batch(m.startCursorBlink(), m.scheduleTypingClear())
+				}
+				return m, m.startCursorBlink()
 			}
 		}
 		switch keyMsg.String() {
