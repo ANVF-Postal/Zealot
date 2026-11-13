@@ -658,12 +658,32 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 		)
 		wrapped := wrapText(systemText, contentWidth-2)
 		lines := make([]string, 0, len(wrapped))
+		colored := colorChangeTextSuffix(msg) != ""
+		blocks := 0
+		if colored { blocks = strings.Count(systemText, "█") }
+		seen := 0
 		for _, line := range wrapped {
 			styled := m.styles.system.Render("  " + line)
-			if colorChangeTextSuffix(msg) != "" {
-				before := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.ColorBefore)).Background(lipgloss.Color(m.cfg.Theme.Background)).Render("█")
-				after := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.ColorAfter)).Background(lipgloss.Color(m.cfg.Theme.Background)).Render("█")
-				styled = strings.Replace(styled, "█ → █", before + m.styles.system.Render(" → ") + after, 1)
+			if colored {
+				// Apply colors to the final two block runes, even when word
+				// wrapping puts the arrow and blocks on different rows.
+				var styledParts strings.Builder
+				parts := strings.Split("  "+line, "█")
+				for index, part := range parts {
+					styledParts.WriteString(m.styles.system.Render(part))
+					if index == len(parts)-1 { continue }
+					seen++
+					block := m.styles.system.Render("█")
+					if seen == blocks-1 {
+						block = lipgloss.NewStyle().Foreground(lipgloss.Color(msg.ColorBefore)).
+							Background(lipgloss.Color(m.cfg.Theme.Background)).Render("█")
+					} else if seen == blocks {
+						block = lipgloss.NewStyle().Foreground(lipgloss.Color(msg.ColorAfter)).
+							Background(lipgloss.Color(m.cfg.Theme.Background)).Render("█")
+					}
+					styledParts.WriteString(block)
+				}
+				styled = styledParts.String()
 			}
 			lines = append(lines, renderChatRow(rowFill, styled, contentWidth))
 		}
