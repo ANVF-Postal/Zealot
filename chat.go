@@ -48,7 +48,7 @@ func (m model) renderPacketLineCount(msg Packet, width int) int {
 		}
 		return count
 	case "system":
-		text := fmt.Sprintf("[%s] %s", msg.Time.Local().Format("15:04"), msg.Text)
+		text := fmt.Sprintf("[%s] %s%s", msg.Time.Local().Format("15:04"), msg.Text, colorChangeTextSuffix(msg))
 		return max(1, wrapTextLineCount(text, contentWidth-2))
 	case "me":
 		text := fmt.Sprintf("[%s] * %s %s", msg.Time.Local().Format("15:04"), msg.User.Name, msg.Text)
@@ -651,14 +651,20 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 
 	if msg.Type == "system" {
 		systemText := fmt.Sprintf(
-			"[%s] %s",
+			"[%s] %s%s",
 			msg.Time.Local().Format("15:04"),
 			msg.Text,
+			colorChangeTextSuffix(msg),
 		)
 		wrapped := wrapText(systemText, contentWidth-2)
 		lines := make([]string, 0, len(wrapped))
 		for _, line := range wrapped {
 			styled := m.styles.system.Render("  " + line)
+			if colorChangeTextSuffix(msg) != "" {
+				before := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.ColorBefore)).Background(lipgloss.Color(m.cfg.Theme.Background)).Render("█")
+				after := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.ColorAfter)).Background(lipgloss.Color(m.cfg.Theme.Background)).Render("█")
+				styled = strings.Replace(styled, "█ → █", before + m.styles.system.Render(" → ") + after, 1)
+			}
 			lines = append(lines, renderChatRow(rowFill, styled, contentWidth))
 		}
 		return lines
@@ -942,4 +948,14 @@ func renderCompactMessage(
 		lines = append(lines, renderChatRow(rowFill, renderBody(part), contentWidth))
 	}
 	return lines
+}
+
+ // colorChangeTextSuffix is shared by the sizing and rendering paths.
+ // Never inject arbitrary colors or raw ANSI from a wire packet.
+func colorChangeTextSuffix(msg Packet) string {
+	if msg.ColorBefore == "" || msg.ColorAfter == "" ||
+		!validUserColor(msg.ColorBefore) || !validUserColor(msg.ColorAfter) {
+		return ""
+	}
+	return " █ → █"
 }
