@@ -976,6 +976,9 @@ func (m model) Update(
 	handledNewline := false
 
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
+		if keyMsg.Keystroke() != "tab" {
+			m.resetMentionTabCompletion()
+		}
 		if m.commandsOpen {
 			switch keyMsg.Keystroke() {
 			case "esc","escape": m.closeCommandsBrowser(); return m,nil
@@ -1195,6 +1198,13 @@ func (m model) Update(
 					// Ordinary text and composer editing keys continue to the
 					// textarea. Enter confirms a field edit and otherwise sends.
 				}
+			}
+		}
+		if keyMsg.Keystroke() == "tab" && m.themeEditField == "" && !m.themePackNaming &&
+			!m.themeShareConfirm && m.themeIncoming == nil && m.longReader == nil {
+			if m.completeMentionTab() {
+				m.syncTypingState()
+				return m, tea.Batch(m.startCursorBlink(), m.scheduleTypingClear())
 			}
 		}
 		switch keyMsg.String() {
