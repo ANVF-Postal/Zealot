@@ -137,6 +137,7 @@ func (m *model) refreshMentionUsernames() {
 		names = append(names, user.Name)
 	}
 	m.mentionUsernames = names
+	m.resetMentionTabCompletion()
 }
 
 func (m model) mentionStyle(background color.Color, hovered bool) lipgloss.Style {
