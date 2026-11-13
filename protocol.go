@@ -42,6 +42,8 @@ type Packet struct {
 	Room       string    `json:"room,omitempty"`
 	User       User      `json:"user,omitempty"`
 	Text       string    `json:"text,omitempty"`
+	ColorBefore string `json:"color_before,omitempty"`
+	ColorAfter  string `json:"color_after,omitempty"`
 	FortuneTo  string    `json:"fortune_to,omitempty"`
 	WhisperTo  string    `json:"whisper_to,omitempty"`
 	Poll       *PollData `json:"poll,omitempty"`
