@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"math/rand"
 	"strconv"
 	"strings"
 	"time"
@@ -41,7 +40,6 @@ func (m *model) chatFXCommand(command string, fields []string) {
 			m.chatFXNotice("ChatFX disabled locally. Use /disablefx again to enable.")
 		} else {
 			m.chatFXNotice("ChatFX enabled locally.")
-			m.ensureChatFXTick()
 		}
 	case "/rain":
 		args := fields[1:]
@@ -55,7 +53,6 @@ func (m *model) chatFXCommand(command string, fields []string) {
 			m.fxLocal = chatFXState{name:"rain", until:until}
 			m.fxLocalOverride = true
 			m.chatFXNotice("Local rain started. Use /stopfx self to stop.")
-			m.ensureChatFXTick()
 		} else if m.client != nil && m.connected {
 			_ = m.client.send(Packet{Type:"fx_start", Room:m.room, FX:"rain", FXSeconds:seconds})
 		}
@@ -64,8 +61,7 @@ func (m *model) chatFXCommand(command string, fields []string) {
 			m.fxLocal = chatFXState{}
 			m.fxLocalOverride = false
 			m.chatFXNotice("Local ChatFX stopped.")
-			m.ensureChatFXTick()
-		} else if len(fields)==1 {
+			} else if len(fields)==1 {
 			if m.client != nil && m.connected {
 				_ = m.client.send(Packet{Type:"fx_stop", Room:m.room})
 			}
@@ -87,7 +83,6 @@ func (m *model) receiveChatFX(packet Packet) {
 		} else {
 			m.fxRoom = chatFXState{}
 		}
-		m.ensureChatFXTick()
 	}
 }
 
@@ -159,7 +154,7 @@ func (m model) renderChatFXBackground(rows []string, width int) {
 				if x==col && y==row { drop=true; break }
 			}
 			if drop {
-				if rand.Intn(5)==0 { tail.WriteString(color.Render("│")) } else { tail.WriteString(color.Render("·")) }
+				if particleGlyph(row,col,frame,salt) { tail.WriteString(color.Render("│")) } else { tail.WriteString(color.Render("·")) }
 			} else {
 				tail.WriteString(base.Render(" "))
 			}
@@ -170,6 +165,10 @@ func (m model) renderChatFXBackground(rows []string, width int) {
 		if prefix > 0 { head=truncateANSI(original, prefix) }
 		rows[row] = head+tail.String()
 	}
+}
+
+func particleGlyph(row, col, frame, salt int) bool {
+	return (row*13+col*7+frame+salt)%4 == 0
 }
 
 func formatChatFXStart(name string, seconds int) string {
