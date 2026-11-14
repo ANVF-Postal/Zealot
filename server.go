@@ -44,6 +44,7 @@ type roomState struct {
 	historyEnabled bool
 	polls map[string]*pollState
 	pollSequence int
+	fx chatFXState
 }
 
 type server struct {
