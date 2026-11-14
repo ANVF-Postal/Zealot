@@ -257,6 +257,16 @@ func (s *server) handle(conn net.Conn) {
 		})
 	}
 	if writeErr == nil {
+		// A joining user receives the current room-wide effect without
+		// replaying old effect commands or animation frames.
+		s.mu.Lock()
+		fx := room.fx
+		s.mu.Unlock()
+		if fx.name != "" && (fx.until.IsZero() || fx.until.After(time.Now())) {
+			writeErr = client.enc.Encode(Packet{Type:"fx_state", Room:roomName, FX:fx.name, FXUntil:fx.until})
+		}
+	}
+	if writeErr == nil {
 		// Mark the end of replay so history does not trigger notifications.
 		writeErr = client.enc.Encode(Packet{Type: "history_end"})
 	}
@@ -316,6 +326,28 @@ func (s *server) handle(conn net.Conn) {
 		}
 
 		switch packet.Type {
+		case "fx_start":
+			if packet.FX != "rain" || packet.FXSeconds < 0 || packet.FXSeconds > chatFXMaxSeconds {
+				client.send(Packet{Type:"system", Room:roomName, Text:"Invalid ChatFX request.", Time:time.Now().UTC()})
+				continue
+			}
+			until := time.Time{}
+			if packet.FXSeconds > 0 { until = time.Now().Add(time.Duration(packet.FXSeconds)*time.Second) }
+			s.mu.Lock()
+			if current := s.rooms[roomName]; current != nil {
+				current.fx = chatFXState{name:"rain", until:until}
+			}
+			s.mu.Unlock()
+			s.broadcast(roomName, Packet{Type:"fx_state", Room:roomName, FX:"rain", FXUntil:until})
+			s.systemMessage(roomName, client.user.Name+" invoked rain. "+formatChatFXStart("Rain",packet.FXSeconds))
+		case "fx_stop":
+			s.mu.Lock()
+			if current := s.rooms[roomName]; current != nil {
+				current.fx = chatFXState{}
+			}
+			s.mu.Unlock()
+			s.broadcast(roomName, Packet{Type:"fx_state", Room:roomName})
+			s.systemMessage(roomName, client.user.Name+" stopped the room effects.")
 		case "theme_share":
 			s.shareTheme(roomName, client, packet.Theme)
 		case "poll_create":
