@@ -57,6 +57,9 @@ func (m *model) openThemeBrowser() {
 	m.themePacking = false
 	m.themePackNaming = false
 	m.themePackSelected = nil
+	m.themeShareConfirm = false
+	m.themeIncoming = nil
+	m.themeIncomingSender = ""
 	if err != nil {
 		m.themeError = err.Error()
 		return
@@ -434,7 +437,7 @@ func (m model) renderThemeBrowser() string {
 		}
 		entry := m.themeEntries[index]
 		label := entry.Preset.Name
-		if entry.Preset.Colors == m.cfg.Theme {
+		if entry.Preset.Colors == m.cfg.Theme && m.themeIncoming == nil {
 			label += "  *"
 		}
 		marker := " "
@@ -528,6 +531,11 @@ const (
 	themeCloneButtonLabel  = "[CLONE]"
 	themeSaveButtonLabel   = "[SAVE]"
 	themeApplyButtonLabel  = "[APPLY]"
+	themeShareButtonLabel = "[SHARE]"
+	themeShareConfirmButtonLabel = "[CONFIRM]"
+	themeShareCancelButtonLabel = "[CANCEL]"
+	themeInstallButtonLabel = "[INSTALL]"
+	themeCloseButtonLabel = "[CLOSE]"
 	themePaletteFirstRow   = 5
 	themePaletteColorCount = 8
 )
@@ -550,6 +558,7 @@ func wrapThemeDescription(description string, width int) []string {
 }
 
 func (m model) themeDescriptionLines(width int) []string {
+	if m.themeIncoming != nil { return wrapThemeDescription(m.themeIncoming.Description,width) }
 	entry, ok := m.selectedThemeEntry()
 	if !ok {
 		return []string{"No description yet · click to add"}
@@ -585,11 +594,25 @@ type themeActionBounds struct {
 }
 
 func themeActionButtonLayout(width int, dirty bool) []themeActionBounds {
+	return themeActionButtonLayoutForMode(width,dirty, false, "", false)
+}
+
+// mode: "incoming" presents a received theme, "confirm" prompts the sender;
+// normal custom themes offer Share alongside Clone and Apply.
+func themeActionButtonLayoutForMode(width int, dirty bool, custom bool, mode string, connected bool) []themeActionBounds {
 	labels := []string{themeCloneButtonLabel}
+	if mode == "incoming" {
+		labels = []string{themeInstallButtonLabel, themeCloseButtonLabel}
+	} else if mode == "confirm" {
+		labels = []string{themeShareConfirmButtonLabel, themeShareCancelButtonLabel}
+	} else {
+		if custom && connected && !dirty { labels = append(labels, themeShareButtonLabel) }
+
 	if dirty {
 		labels = append(labels, themeSaveButtonLabel)
 	}
 	labels = append(labels, themeApplyButtonLabel)
+	}
 
 	gap := 2
 	total := 0
@@ -606,6 +629,11 @@ func themeActionButtonLayout(width int, dirty bool) []themeActionBounds {
 		total -= len(labels) - 1
 	}
 	if total > width {
+		// Do not let the optional Share action hide the established Clone
+		// and Apply controls on narrow terminals.
+		if mode == "" && custom && connected && !dirty {
+			return themeActionButtonLayoutForMode(width,dirty,false,mode,connected)
+		}
 		return nil
 	}
 
@@ -632,13 +660,17 @@ func themeActionButtonBounds(width int, label string, dirty bool) (int, int, boo
 }
 
 func themeActionButtonsRow(width int, dirty bool, background, accent string) string {
+	return themeActionButtonsRowForMode(width,dirty,background,accent,false,"",false)
+}
+
+func themeActionButtonsRowForMode(width int, dirty bool, background, accent string, custom bool, mode string, connected bool) string {
 	bg := lipgloss.Color(background)
 	fill := lipgloss.NewStyle().Background(bg)
 	text := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(accent)).
 		Background(bg)
 
-	buttons := themeActionButtonLayout(width, dirty)
+	buttons := themeActionButtonLayoutForMode(width,dirty,custom,mode,connected)
 	var row strings.Builder
 	cursor := 0
 	for _, button := range buttons {
@@ -655,7 +687,7 @@ func themeActionButtonsRow(width int, dirty bool, background, accent string) str
 }
 
 func (m model) themeActionButtonContains(label string, x, y int) bool {
-	if !m.themesOpen || m.themePacking || m.themeError != "" || len(m.themeEntries) == 0 {
+	if !m.themesOpen || m.themePacking || m.themeError != "" || (len(m.themeEntries) == 0 && m.themeIncoming == nil) {
 		return false
 	}
 	leftWidth, rightWidth := m.themeBrowserColumnWidths()
@@ -665,12 +697,23 @@ func (m model) themeActionButtonContains(label string, x, y int) bool {
 		return false
 	}
 	rightStartX := m.themeBrowserContentStartX() + leftWidth + 1
-	start, end, ok := themeActionButtonBounds(rightWidth, label, m.themeDirty)
+	mode := ""
+	if m.themeIncoming != nil { mode = "incoming" } else if m.themeShareConfirm { mode = "confirm" }
+	entry, _ := m.selectedThemeEntry()
+	buttons := themeActionButtonLayoutForMode(rightWidth,m.themeDirty,themeEntryEditable(entry),mode,m.connected)
+	start,end,ok := 0,0,false
+	for _, button := range buttons { if button.Label == label {start,end,ok=button.Start,button.End,true;break} }
 	if !ok {
 		return false
 	}
 	return x >= rightStartX+start && x < rightStartX+end
 }
+
+func (m model) themeShareButtonContains(x,y int) bool {return m.themeActionButtonContains(themeShareButtonLabel,x,y)}
+func (m model) themeShareConfirmButtonContains(x,y int) bool {return m.themeActionButtonContains(themeShareConfirmButtonLabel,x,y)}
+func (m model) themeShareCancelButtonContains(x,y int) bool {return m.themeActionButtonContains(themeShareCancelButtonLabel,x,y)}
+func (m model) themeInstallButtonContains(x,y int) bool {return m.themeActionButtonContains(themeInstallButtonLabel,x,y)}
+func (m model) themeCloseButtonContains(x,y int) bool {return m.themeActionButtonContains(themeCloseButtonLabel,x,y)}
 
 func (m model) themeApplyButtonContains(x, y int) bool {
 	return m.themeActionButtonContains(themeApplyButtonLabel, x, y)
@@ -830,20 +873,24 @@ func (m model) themeDetailsRows(width int) []string {
 	if m.themeError != "" {
 		return []string{m.styles.accent.Render("THEME LIBRARY"), "", m.styles.system.Render(truncateANSI(m.themeError, width))}
 	}
-	if len(m.themeEntries) == 0 {
+	if len(m.themeEntries) == 0 && m.themeIncoming == nil {
 		return []string{m.styles.accent.Render("THEME DETAILS"), "", "No themes were found."}
 	}
-	entry := m.themeEntries[min(max(0, m.themeSelected), len(m.themeEntries)-1)]
+	entry := themeListEntry{}
+	if len(m.themeEntries) > 0 {entry = m.themeEntries[min(max(0, m.themeSelected), len(m.themeEntries)-1)]}
+	if m.themeIncoming != nil {entry = themeListEntry{Preset:*m.themeIncoming,PackName:"Received from "+m.themeIncomingSender}}
 	preset := entry.Preset
-	editable := themeEntryEditable(entry)
+	editable := themeEntryEditable(entry) && m.themeIncoming == nil && !m.themeShareConfirm
 	title := preset.Name
-	description := "Built-in · read-only · clone to edit"
+	description := "Built-in · read-only · clone to edit or share"
 	if editable {
 		title += "  ✎"
 		description = "Custom theme · click name or a color to edit"
 	}
 	state := "Preview only · " + description
-	if preset.Colors == m.cfg.Theme {
+	if m.themeIncoming != nil {state="Received from "+terminalSafeText(m.themeIncomingSender)+" · Preview only · install to keep"}
+	if m.themeShareConfirm {state="Share this custom theme with everyone in the room?"}
+	if preset.Colors == m.cfg.Theme && m.themeIncoming == nil && !m.themeShareConfirm {
 		if editable {
 			state = "✓ Active custom theme"
 		} else {
@@ -907,13 +954,16 @@ func (m model) themeDetailsRows(width int) []string {
 		rows = append(rows, m.styles.system.Render(line))
 	}
 	rows = append(rows, "")
-	rows = append(rows, themeActionButtonsRow(width, m.themeDirty, m.cfg.Theme.Background, m.cfg.Theme.AccentColor))
+	mode := ""
+	if m.themeIncoming != nil {mode="incoming"} else if m.themeShareConfirm {mode="confirm"}
+	rows = append(rows, themeActionButtonsRowForMode(width,m.themeDirty,m.cfg.Theme.Background,m.cfg.Theme.AccentColor,themeEntryEditable(entry),mode,m.connected))
 	return rows
 }
 
 // applySelectedTheme commits the selected preset, then refreshes all live UI
 // styles without rebuilding the model or disturbing the current composer.
 func (m *model) applySelectedTheme() {
+	if m.themeIncoming != nil || m.themeShareConfirm { return }
 	if len(m.themeEntries) == 0 {
 		return
 	}

@@ -21,6 +21,10 @@ type model struct {
 	onlineCount    int
 	onlineUsers  []User
 	mentionUsernames []string
+	mentionTabMatches []string
+	mentionTabPrefix string
+	mentionTabValue string
+	mentionTabIndex int
 	usersOpen    bool
 	usersScroll  int
 	usersFrame   int
@@ -28,6 +32,17 @@ type model struct {
 
 	splashOpen                       bool
 	splashLogoIndex                  int
+	commandsOpen bool
+	commandsTab int
+	commandsScroll int
+	commandsDragging bool
+	commandsDragOffset int
+	commandsHoldDirection int
+	commandsHoldGeneration int
+	commandsRowsCache []string
+	commandsRowsCacheWidth int
+	commandsRowsCacheTab int
+	commandsRowsCacheTheme Theme
 	themesOpen                       bool
 	themeEntries                     []themeListEntry
 	themeSelected                    int
@@ -50,6 +65,9 @@ type model struct {
 	themePacking                     bool
 	themePackNaming                  bool
 	themePackSelected                map[string]bool
+	themeShareConfirm bool
+	themeIncoming *ThemePreset
+	themeIncomingSender string
 	themeLeftWidth                   int
 	themeDividerDragging             bool
 	splashScroll                     int
@@ -66,7 +84,17 @@ type model struct {
 	client *wireClient
 
 	messages []Packet
+	revealedSpoilers map[string]bool
+	longReader *Packet
+	longReaderScroll int
+	longReaderLines []string
+	longReaderWidth int
+	longReaderDragging bool
+	longReaderDragOffset int
+	longReaderScrollbarHoldDirection int
+	longReaderScrollbarHoldGeneration int
 	messageByID map[string]Packet
+	pollIndexByID map[string]int
 	replyIDsByMessageID map[string][]string
 	messageRowsByID map[string]messageRowRange
 	// messageRowRanges stores the absolute row range of each message in history
@@ -81,6 +109,8 @@ type model struct {
 	messageBodyRangesByID map[string][]messageBodyRange
 	messageLinkRangesByID map[string][][]messageLinkRange
 	hoveredMessageID string
+	pollHoveredID string
+	pollHoveredOption int
 	mouseMotion *mouseMotionState
 	mouseMotionFrameGeneration int
 	replyTargetID string
@@ -98,6 +128,8 @@ type model struct {
 
 	typing      map[string]User
 	typingOrder []string
+	privateTyping map[string]User
+	privateTypingOrder []string
 
 	input          textarea.Model
 	inputSelecting bool
@@ -126,6 +158,7 @@ type model struct {
 	typingTimerPending bool
 	lastTypingAt       time.Time
 	isTyping           bool
+	typingWhisperTarget string
 
 	styles uiStyles
 }
@@ -206,6 +239,7 @@ func newModel(
 		client:       client,
 		mouseMotion:  &mouseMotionState{},
 		typing:       make(map[string]User),
+		privateTyping: make(map[string]User),
 		userActivity: make(map[string]int),
 		input:        input,
 		connected:    true,

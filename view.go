@@ -103,6 +103,10 @@ func (m model) View() tea.View {
 	// Alternate panels
 	// -------------------------------------------------------------------------
 
+	if m.longReader != nil {
+		return m.renderViewWithChat(header, m.renderLongReaderPanel(), false, false)
+	}
+
 	if m.usersOpen {
 		// The existing chat pane becomes the roster. The heading uses a clean
 		// full-width background row; the scrollbar occupies the far-right
@@ -157,6 +161,11 @@ func (m model) View() tea.View {
 			Height(m.messageHeight()).
 			Render(chat)
 		return m.renderViewWithChat(header, chatBox, true, false)
+	}
+
+	if m.commandsOpen {
+		chatBox := m.renderCommandsBrowser()
+		return m.renderViewWithChat(header, chatBox, false, false)
 	}
 
 	if m.themesOpen {
@@ -243,6 +252,18 @@ func (m model) View() tea.View {
 	typingLine := chatBlank
 	if typing != "" {
 		typingLine = m.styles.accent.Width(chatContentWidth(m.width)).Render("  " + typing)
+	}
+	// A private notification shares the permanent typing row, but only the
+	// addressed client receives the event. Give it priority if both exist.
+	for _, name := range m.privateTypingOrder {
+		if user, ok := m.privateTyping[name]; ok {
+			typingLine = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(user.Color)).
+				Background(lipgloss.Color(m.cfg.Theme.Background)).
+				Width(chatContentWidth(m.width)).
+				Render("  " + terminalSafeText(user.Name) + " is whispering to you…")
+			break
+		}
 	}
 	typingLine = truncateANSI(typingLine, chatContentWidth(m.width)) + scrollbarRows[chatHeight]
 	chat += "\n" + typingLine
@@ -501,20 +522,24 @@ func (m model) renderThemeShortcutFooter() (string, footerTargets) {
 // immediately after the Ctrl+C hint, and the composer Send action anchored
 // to the right edge. The measured layout supplies matching mouse hitboxes.
 func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTargets) {
-	if m.themesOpen && m.themeError == "" && m.themeEditField == "" && !m.themeDirty && !m.themePacking && m.width >= 12 {
+	if m.themesOpen && m.themeIncoming == nil && !m.themeShareConfirm && m.themeError == "" && m.themeEditField == "" && !m.themeDirty && !m.themePacking && m.width >= 12 {
 		return m.renderThemeShortcutFooter()
 	}
 	availableWidth := max(1, m.width-1) // reserve one final cell as a styled blank
 	lead := " " + m.status + " • "
 	scrollLabel := "PgUp/PgDn"
 	scrollTail := ": Scroll • Ctrl+C: "
-	if usersOpen || splashOpen {
+	if usersOpen || splashOpen || m.longReader != nil || m.commandsOpen {
 		// Keep the secondary views' keyboard shortcut wording consistent.
 		scrollTail = ": Scroll • Esc: close • Ctrl+C: "
 	}
-	includeApply := m.themesOpen && m.themeError == "" && m.themeEditField == "" && !m.themeDirty && !m.themePacking
+	includeApply := m.themesOpen && m.themeIncoming == nil && !m.themeShareConfirm && m.themeError == "" && m.themeEditField == "" && !m.themeDirty && !m.themePacking
 	if m.themesOpen {
 		switch {
+		case m.themeIncoming != nil:
+			scrollTail = ": Esc: close preview • Ctrl+C: "
+		case m.themeShareConfirm:
+			scrollTail = ": Enter: share • Esc: cancel • Ctrl+C: "
 		case m.themePackNaming:
 			scrollLabel = "Pack"
 			scrollTail = ": Enter: save pack • Esc: cancel • Ctrl+C: "
@@ -536,7 +561,7 @@ func (m model) renderStatusBar(usersOpen, splashOpen bool) (string, footerTarget
 	}
 
 	targets := footerTargets{}
-	includeSend := !m.themePacking && !usersOpen && (!splashOpen || m.themesOpen)
+	includeSend := !m.themePacking && m.themeIncoming == nil && !m.themeShareConfirm && !usersOpen && (!splashOpen || m.themesOpen)
 	sendPrefix := "Enter: "
 	sendText := "[Send]"
 	quitWidth := lipgloss.Width(quitText)

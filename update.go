@@ -55,6 +55,7 @@ func (m model) Update(
 		m.themeDividerDragging = false
 		m.stopThemeScrollbarInteractions()
 		m.resizeInput()
+		if m.longReader != nil { m.prepareLongReader() }
 		if oldWidth != m.width || !m.renderCacheValid {
 			m.rebuildMessageCache()
 		}
@@ -65,6 +66,11 @@ func (m model) Update(
 		// when the window is expanded again.
 		m.clampUsersScroll()
 		m.clampSplashScroll()
+		if m.commandsOpen && oldWidth != m.width { m.cacheCommandsTextRows() }
+		m.clampCommandsScroll()
+		m.commandsDragging = false
+		m.commandsHoldDirection = 0
+		m.commandsHoldGeneration++
 		m.clampThemeSelection()
 		m.clampThemeDetailsScroll()
 		m.splashScrollDragging = false
@@ -113,9 +119,12 @@ func (m model) Update(
 			m.clampUsersScroll()
 			m.refreshMentionUsernames()
 
-		case "message", "system", "me", "letter":
+		case "poll_result":
+			m.applyPollSnapshot(packet)
+
+		case "message", "system", "me", "letter", "coinflip_result", "random_result", "roll_result", "fortune_result", "whisper_result", "theme_result":
 			m.appendMessage(packet)
-			if packet.Type == "message" && packet.User.Name != m.user.Name {
+			if (packet.Type == "message" || packet.Type == "whisper_result") && packet.User.Name != m.user.Name {
 				m.userActivity[packet.User.Name] = 6
 			}
 
@@ -152,6 +161,26 @@ func (m model) Update(
 
 		case "history_state":
 			m.historyEnabled = packet.AddHistory
+
+		case "whisper_typing":
+			key := packet.User.Name
+			if packet.Typing {
+				if m.privateTyping == nil {
+					m.privateTyping = make(map[string]User)
+				}
+				if _, exists := m.privateTyping[key]; !exists {
+					m.privateTypingOrder = append(m.privateTypingOrder, key)
+				}
+				m.privateTyping[key] = packet.User
+			} else {
+				delete(m.privateTyping, key)
+				for i, name := range m.privateTypingOrder {
+					if name == key {
+						m.privateTypingOrder = append(m.privateTypingOrder[:i], m.privateTypingOrder[i+1:]...)
+						break
+					}
+				}
+			}
 
 		case "typing":
 			key := packet.User.Name
@@ -276,8 +305,9 @@ func (m model) Update(
 		}
 		m.typingTimerPending = false
 		if m.isTyping {
-			m.isTyping = false
 			m.sendTyping(false)
+			m.isTyping = false
+			m.typingWhisperTarget = ""
 		}
 		return m, nil
 	}
@@ -322,7 +352,7 @@ func (m model) Update(
 		if mouse.Button == tea.MouseLeft && m.themeDetailsScrollbarContains(mouse.X, mouse.Y) {
 			return m,m.handleThemeScrollbarClick(themeDetailsPane,mouse.Y)
 		}
-		if mouse.Button == tea.MouseLeft && m.themeEditField == "" && m.themeApplyButtonContains(mouse.X, mouse.Y) {
+		if mouse.Button == tea.MouseLeft && m.themeEditField == "" && m.themeIncoming == nil && !m.themeShareConfirm && m.themeApplyButtonContains(mouse.X, mouse.Y) {
 			m.applySelectedTheme()
 			return m, nil
 		}
@@ -339,7 +369,7 @@ func (m model) Update(
 		// Footer actions occupy the final terminal row. Their hitboxes are
 		// calculated by the same layout helper used to render the row.
 		if m.statusBarVisible() && mouse.Button == tea.MouseLeft && mouse.Y == m.height-1 {
-			_, targets := m.renderStatusBar(m.usersOpen, m.splashOpen && !m.themesOpen)
+			_, targets := m.renderStatusBar(m.usersOpen, m.splashOpen && !m.themesOpen && !m.commandsOpen)
 			if targets.hasApply && mouse.X >= targets.applyStart && mouse.X < targets.applyEnd {
 				m.applySelectedTheme()
 				return m, nil
@@ -379,7 +409,18 @@ func (m model) Update(
 				})
 			}
 		}
+		// Reader close control is inside the pane, not in the global
+		// header. Let ZEALOT and Online clicks below navigate normally.
+		if m.longReader != nil && mouse.Button == tea.MouseLeft &&
+			mouse.Y == 2 && mouse.X >= m.longReaderCloseX() &&
+			mouse.X < m.longReaderCloseX()+lipgloss.Width("[X]") {
+			m.closeLongReader()
+			return m, nil
+		}
 		if (m.usersOpen || m.splashOpen) && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width("[X]") && mouse.X < m.width {
+			if m.themeIncoming != nil { m.closeReceivedTheme(); return m,nil }
+			if m.themeShareConfirm { m.themeShareConfirm = false; m.themeEditError = "" }
+			if m.commandsOpen { m.closeCommandsBrowser(); return m,nil }
 			m.usersOpen = false
 			m.splashOpen = false
 			m.themesOpen = false
@@ -392,6 +433,10 @@ func (m model) Update(
 			return m, nil
 		}
 		if mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= 0 && mouse.X < lipgloss.Width("ZEALOT") {
+			if m.commandsOpen { m.closeCommandsBrowser(); return m,nil }
+			if m.longReader != nil {
+				m.closeLongReader()
+			}
 			if m.themesOpen {
 				m.themesOpen = false
 				m.splashOpen = true
@@ -419,6 +464,9 @@ func (m model) Update(
 			return m, nil
 		}
 		if !m.usersOpen && !m.splashOpen && mouse.Button == tea.MouseLeft && mouse.Y == 0 && mouse.X >= m.width-lipgloss.Width(fmt.Sprintf("Online: %d", m.onlineCount)) && mouse.X < m.width {
+			if m.longReader != nil {
+				m.closeLongReader()
+			}
 			m.usersOpen = true
 			m.usersScroll = 0
 			m.usersScrollDragging = false
@@ -439,15 +487,41 @@ func (m model) Update(
 			}
 			return m, sendWhoCmd
 		}
-		if m.splashOpen && !m.themesOpen && mouse.Button == tea.MouseLeft && m.splashLogoContains(mouse.X, mouse.Y) {
+		if m.commandsOpen && mouse.Button == tea.MouseLeft {
+			// Compact tab navigation is drawn over the folder strip; its
+			// hitboxes must take priority over underlying tab artwork.
+			if direction := m.commandsNavigationAt(mouse.X, mouse.Y); direction != 0 {
+				m.selectCommandsTab(m.commandsTab + direction)
+				return m, nil
+			}
+			if index := m.commandsTabAt(mouse.X,mouse.Y); index>=0 {
+				m.selectCommandsTab(index)
+				return m,nil
+			}
+		}
+		if m.splashOpen && !m.themesOpen && !m.commandsOpen && mouse.Button == tea.MouseLeft && m.splashLogoContains(mouse.X, mouse.Y) {
 			m.cycleSplashLogo()
 			return m, nil
 		}
-		if m.splashOpen && !m.themesOpen && mouse.Button == tea.MouseLeft && m.splashThemesButtonContains(mouse.X, mouse.Y) {
+		if m.splashOpen && !m.themesOpen && !m.commandsOpen && mouse.Button == tea.MouseLeft && m.splashCommandsButtonContains(mouse.X,mouse.Y) {
+			m.openCommandsBrowser()
+			return m,nil
+		}
+		if m.splashOpen && !m.themesOpen && !m.commandsOpen && mouse.Button == tea.MouseLeft && m.splashThemesButtonContains(mouse.X, mouse.Y) {
 			m.openThemeBrowser()
 			return m, nil
 		}
 		if m.themesOpen && mouse.Button == tea.MouseLeft {
+			if m.themeIncoming != nil {
+				if m.themeInstallButtonContains(mouse.X,mouse.Y) {m.installReceivedTheme()}
+				if m.themeCloseButtonContains(mouse.X,mouse.Y) {m.closeReceivedTheme()}
+				return m,nil
+			}
+			if m.themeShareConfirm {
+				if m.themeShareConfirmButtonContains(mouse.X,mouse.Y) {m.confirmThemeShare()}
+				if m.themeShareCancelButtonContains(mouse.X,mouse.Y) {m.themeShareConfirm=false;m.themeEditError=""}
+				return m,nil
+			}
 			if m.themePacking {
 				if m.themePackButtonContains(mouse.X, mouse.Y) {
 					m.beginThemePackNaming()
@@ -472,6 +546,7 @@ func (m model) Update(
 				m.createFreshTheme()
 				return m, nil
 			}
+			if m.themeShareButtonContains(mouse.X,mouse.Y) {m.beginThemeShare();return m,nil}
 			if m.themeCloneButtonContains(mouse.X, mouse.Y) {
 				m.cloneSelectedTheme()
 				return m, nil
@@ -503,7 +578,14 @@ func (m model) Update(
 				return m, nil
 			}
 			if index, ok := m.themeBrowserListIndexAt(mouse.X, mouse.Y); ok {
-				m.selectThemeEntry(index)
+				// First click previews a theme; clicking the already-selected
+				// entry applies it. Keep pack selection and incoming previews
+				// on their dedicated paths above.
+				if index == m.themeSelected {
+					m.applySelectedTheme()
+				} else {
+					m.selectThemeEntry(index)
+				}
 				return m, nil
 			}
 		}
@@ -537,6 +619,23 @@ func (m model) Update(
 				return m, nil
 			}
 		}
+		if m.commandsOpen && mouse.Button == tea.MouseLeft && mouse.X == m.chatScrollbarX() && mouse.Y >= 2 && mouse.Y <= 1+m.messageHeight() {
+			if m.maxCommandsScroll()==0 { return m,nil }
+			top,thumb,track:=m.commandsScrollbarThumb()
+			trackY:=min(max(0,mouse.Y-3),track-1)
+			switch {
+			case mouse.Y==2:
+				m.commandsHoldDirection=-1; m.commandsHoldGeneration++; m.commandsScroll-=3
+				m.clampCommandsScroll(); return m,m.commandsHoldCmd(m.commandsHoldGeneration)
+			case mouse.Y==1+m.messageHeight():
+				m.commandsHoldDirection=1; m.commandsHoldGeneration++; m.commandsScroll+=3
+				m.clampCommandsScroll(); return m,m.commandsHoldCmd(m.commandsHoldGeneration)
+			case mouse.Y>=3 && mouse.Y<1+m.messageHeight() && trackY>=top && trackY<top+thumb:
+				m.commandsDragging=true; m.commandsDragOffset=trackY-top; return m,nil
+			case mouse.Y>=3 && mouse.Y<1+m.messageHeight():
+				m.setCommandsScrollFromTrack(trackY); return m,nil
+			}
+		}
 		if m.splashOpen && mouse.Button == tea.MouseLeft && mouse.X == m.chatScrollbarX() && m.maxSplashScroll() > 0 {
 			visible := m.splashPanelHeight()
 			firstTrackY := 3
@@ -566,6 +665,42 @@ func (m model) Update(
 				m.setSplashScrollFromTrack(trackPosition)
 				return m, nil
 			}
+		}
+		if mouse.Button == tea.MouseLeft && m.longReaderScrollbarContains(mouse.X, mouse.Y) {
+			// Match main chat: click arrows to step and hold them to repeat;
+			// drag the thumb or jump by clicking anywhere on its track.
+			if m.maxLongReaderScroll() == 0 {
+				return m, nil
+			}
+			top, thumbHeight, trackHeight := m.longReaderScrollbarThumb()
+			trackY := min(max(0, mouse.Y-3), trackHeight-1)
+			switch {
+			case mouse.Y == 2:
+				m.longReaderScrollbarHoldDirection = -1
+				m.longReaderScrollbarHoldGeneration++
+				m.longReaderScroll -= 3
+				m.clampLongReaderScroll()
+				return m, m.longReaderScrollbarHoldCmd(m.longReaderScrollbarHoldGeneration)
+			case mouse.Y == 1+m.messageHeight():
+				m.longReaderScrollbarHoldDirection = 1
+				m.longReaderScrollbarHoldGeneration++
+				m.longReaderScroll += 3
+				m.clampLongReaderScroll()
+				return m, m.longReaderScrollbarHoldCmd(m.longReaderScrollbarHoldGeneration)
+			case trackY >= top && trackY < top+thumbHeight:
+				m.longReaderDragging = true
+				m.longReaderDragOffset = trackY-top
+				return m, nil
+			default:
+				m.setLongReaderScrollFromTrack(trackY)
+				return m, nil
+			}
+		}
+		// Reader scrollbar actions take priority over the chat beneath it.
+		// Only ignore unrelated pane clicks after its track and arrows
+		// have had a chance to handle the event.
+		if m.longReader != nil {
+			return m, nil
 		}
 		if !m.usersOpen && !m.splashOpen && mouse.Button == tea.MouseLeft && m.scrollbarContains(mouse.X, mouse.Y) && m.maxScroll() > 0 {
 			top, thumbHeight, trackHeight := m.scrollbarThumb()
@@ -602,6 +737,13 @@ func (m model) Update(
 				}
 			}
 			if !m.usersOpen && !m.splashOpen {
+				if shared, ok := m.sharedThemeLinkAt(mouse.X,mouse.Y); ok {m.openReceivedTheme(shared);return m,nil}
+				if pollMessageID, option := m.pollOptionAt(mouse.X, mouse.Y); option > 0 {
+					if poll, ok := m.messageByID[pollMessageID]; ok && poll.Poll != nil {
+						_ = m.client.send(Packet{Type:"poll_vote",Room:m.room,Poll:&PollData{ID:poll.Poll.ID,Choice:option}})
+						return m,nil
+					}
+				}
 				if username := m.messageUsernameAt(mouse.X, mouse.Y); username != "" {
 					return m, m.insertMention(username)
 				}
@@ -609,6 +751,16 @@ func (m model) Update(
 					return m, m.navigateToMessage(targetID)
 				}
 				if id := m.messageIDAt(mouse.X, mouse.Y); id != "" {
+					if packet, ok := m.messageByID[id]; ok {
+						if packet.Long {
+							m.openLongReader(packet)
+							return m, nil
+						}
+						if packet.Spoiler && !m.revealedSpoilers[id] {
+							m.revealSpoiler(id)
+							return m, nil
+						}
+					}
 					m.beginReply(id)
 					return m, nil
 				}
@@ -648,6 +800,12 @@ func (m model) Update(
 		m.splashScrollDragging = false
 		m.splashScrollbarHoldDirection = 0
 		m.splashScrollbarHoldGeneration++
+		m.longReaderDragging = false
+		m.longReaderScrollbarHoldDirection = 0
+		m.longReaderScrollbarHoldGeneration++
+		m.commandsDragging=false
+		m.commandsHoldDirection=0
+		m.commandsHoldGeneration++
 		m.scrollDragging = false
 		m.scrollbarHoldDirection = 0
 		m.scrollbarHoldGeneration++
@@ -696,6 +854,15 @@ func (m model) Update(
 			return m, m.usersScrollbarHoldCmd(mouse.generation)
 		}
 		return m, nil
+	case commandsScrollbarHoldMsg:
+		if m.commandsOpen && mouse.generation==m.commandsHoldGeneration && m.commandsHoldDirection!=0 {
+			before:=m.commandsScroll
+			m.commandsScroll+=m.commandsHoldDirection*3
+			m.clampCommandsScroll()
+			if before==m.commandsScroll { m.commandsHoldDirection=0; return m,nil }
+			return m,m.commandsHoldCmd(mouse.generation)
+		}
+		return m,nil
 	case splashScrollbarHoldMsg:
 		if m.splashOpen && mouse.generation == m.splashScrollbarHoldGeneration && m.splashScrollbarHoldDirection != 0 {
 			m.splashScroll += m.splashScrollbarHoldDirection * 3
@@ -705,6 +872,20 @@ func (m model) Update(
 				return m, nil
 			}
 			return m, m.splashScrollbarHoldCmd(mouse.generation)
+		}
+		return m, nil
+	case longReaderScrollbarHoldMsg:
+		if m.longReader != nil &&
+			mouse.generation == m.longReaderScrollbarHoldGeneration &&
+			m.longReaderScrollbarHoldDirection != 0 {
+			before := m.longReaderScroll
+			m.longReaderScroll += m.longReaderScrollbarHoldDirection * 3
+			m.clampLongReaderScroll()
+			if m.longReaderScroll == before {
+				m.longReaderScrollbarHoldDirection = 0
+				return m, nil
+			}
+			return m, m.longReaderScrollbarHoldCmd(mouse.generation)
 		}
 		return m, nil
 	case scrollbarHoldMsg:
@@ -725,6 +906,22 @@ func (m model) Update(
 	// -------------------------------------------------------------------------
 
 	if mouseMsg, ok := msg.(tea.MouseWheelMsg); ok {
+		if m.commandsOpen {
+			switch mouseMsg.Button {
+			case tea.MouseWheelUp: m.commandsScroll-=3
+			case tea.MouseWheelDown: m.commandsScroll+=3
+			}
+			m.clampCommandsScroll()
+			return m,nil
+		}
+		if m.longReader != nil {
+			switch mouseMsg.Button {
+			case tea.MouseWheelUp: m.longReaderScroll -= 3
+			case tea.MouseWheelDown: m.longReaderScroll += 3
+			}
+			m.clampLongReaderScroll()
+			return m, nil
+		}
 		if m.themesOpen {
 			delta := 0
 			switch mouseMsg.Button {
@@ -779,7 +976,93 @@ func (m model) Update(
 	handledNewline := false
 
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
+		if keyMsg.Keystroke() != "tab" {
+			m.resetMentionTabCompletion()
+		}
+		if m.commandsOpen {
+			switch keyMsg.Keystroke() {
+			case "esc","escape": m.closeCommandsBrowser(); return m,nil
+			case "pgup": m.commandsScroll-=m.commandsVisibleHeight()
+			case "pgdown": m.commandsScroll+=m.commandsVisibleHeight()
+			case "ctrl+home": m.commandsScroll=0
+			case "ctrl+end": m.commandsScroll=m.maxCommandsScroll()
+			case "left":
+				if m.input.Value()=="" { m.selectCommandsTab(m.commandsTab-1); return m,nil }
+			case "right":
+				if m.input.Value()=="" { m.selectCommandsTab(m.commandsTab+1); return m,nil }
+			}
+			switch keyMsg.Keystroke() {
+			case "pgup","pgdown","ctrl+home","ctrl+end":
+				m.clampCommandsScroll(); return m,nil
+			}
+		}
+		if m.longReader != nil {
+			// Reader navigation takes only dedicated keys. Normal typing,
+			// editing, Enter and quit shortcuts go through the shared
+			// composer logic, just as in the other panels.
+			switch keyMsg.Keystroke() {
+			case "esc", "escape":
+				m.closeLongReader()
+				return m, nil
+			case "pgup":
+				m.longReaderScroll -= m.longReaderVisibleHeight()
+			case "pgdown":
+				m.longReaderScroll += m.longReaderVisibleHeight()
+			case "ctrl+home":
+				m.longReaderScroll = 0
+			case "ctrl+end":
+				m.longReaderScroll = m.maxLongReaderScroll()
+			default:
+				// Arrow keys still edit or navigate the composer normally.
+				break
+			}
+			switch keyMsg.Keystroke() {
+			case "pgup", "pgdown", "ctrl+home", "ctrl+end":
+				m.clampLongReaderScroll()
+				return m, nil
+			}
+		}
 		if m.themesOpen {
+			if m.themeIncoming != nil {
+				switch keyMsg.Keystroke() {
+				case "esc", "escape":
+					m.closeReceivedTheme()
+					return m,nil
+				case "up", "pgup":
+					m.scrollThemeDetails(-3)
+					return m,nil
+				case "down", "pgdown":
+					m.scrollThemeDetails(3)
+					return m,nil
+				case "ctrl+home":
+					m.themeDetailsScroll = 0
+					return m,nil
+				case "ctrl+end":
+					m.themeDetailsScroll = m.maxThemeDetailsScroll()
+					return m,nil
+				case "ctrl+c", "ctrl+q":
+					m.sendTyping(false)
+					m.quitting = true
+					return m,tea.Quit
+				}
+				return m,nil
+			}
+			if m.themeShareConfirm {
+				switch keyMsg.Keystroke() {
+				case "esc", "escape":
+					m.themeShareConfirm = false
+					m.themeEditError = ""
+					return m,nil
+				case "enter":
+					m.confirmThemeShare()
+					return m,nil
+				case "ctrl+c", "ctrl+q":
+					m.sendTyping(false)
+					m.quitting = true
+					return m,tea.Quit
+				}
+				return m,nil
+			}
 			if m.themePacking {
 				if m.themePackNaming {
 					switch keyMsg.Keystroke() {
@@ -917,6 +1200,16 @@ func (m model) Update(
 				}
 			}
 		}
+		if keyMsg.Keystroke() == "tab" && m.themeEditField == "" && !m.themePackNaming &&
+			!m.themeShareConfirm && m.themeIncoming == nil && m.longReader == nil {
+			if m.completeMentionTab() {
+				if m.connected {
+					m.syncTypingState()
+					return m, tea.Batch(m.startCursorBlink(), m.scheduleTypingClear())
+				}
+				return m, m.startCursorBlink()
+			}
+		}
 		switch keyMsg.String() {
 
 		case "esc", "escape":
@@ -1010,6 +1303,12 @@ func (m model) Update(
 	if !handledNewline {
 		m.input, inputCmd = m.input.Update(msg)
 	}
+	// Raise the composer cap only while writing a /long message.
+	if strings.HasPrefix(strings.ToLower(m.input.Value()), "/long ") {
+		m.input.CharLimit = maxLongMessage + len("/long ")
+	} else {
+		m.input.CharLimit = maxMessage
+	}
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok && m.replyTargetID != "" && m.input.Value() == "" {
 		if keyMsg.String() == "backspace" || keyMsg.String() == "delete" {
 			m.cancelReply()
@@ -1033,10 +1332,7 @@ func (m model) Update(
 			// Start blinking only when there is actual text.
 			blinkCmd := m.startCursorBlink()
 
-			if !m.isTyping {
-				m.isTyping = true
-				m.sendTyping(true)
-			}
+			m.syncTypingState()
 
 			// Consider the user to have stopped typing after
 			// 1.2 seconds without another editing key.
@@ -1090,6 +1386,11 @@ func (m *model) applyMouseMotion(x, y int) {
 		m.refreshMessageHover()
 		return
 	}
+	if m.commandsOpen && m.commandsDragging {
+		_,thumb,track:=m.commandsScrollbarThumb()
+		m.setCommandsScrollFromThumbTop(min(max(0,y-3-m.commandsDragOffset),max(0,track-thumb)))
+		return
+	}
 	if m.splashOpen && m.splashScrollDragging {
 		_, thumbHeight, trackHeight := m.splashScrollbarThumb()
 		target := y - 3 - m.splashScrollDragOffset
@@ -1104,6 +1405,12 @@ func (m *model) applyMouseMotion(x, y int) {
 		m.setUsersScrollFromThumbTop(target)
 		return
 	}
+	if m.longReader != nil && m.longReaderDragging {
+		_, thumbHeight, trackHeight := m.longReaderScrollbarThumb()
+		trackY := y-3-m.longReaderDragOffset
+		m.setLongReaderScrollFromThumbTop(min(max(0,trackY),max(0,trackHeight-thumbHeight)))
+		return
+	}
 	if m.scrollDragging && !m.usersOpen && !m.splashOpen {
 		target := y - 3 - m.scrollDragOffset
 		m.setScrollFromThumbTopForLineCount(target, len(m.renderMessageLines()))
@@ -1114,6 +1421,20 @@ func (m *model) applyMouseMotion(x, y int) {
 
 // scrollPage applies the same viewport movement for keyboard and footer clicks.
 func (m *model) scrollPage(up bool) {
+	if m.commandsOpen {
+		if up {m.commandsScroll-=m.commandsVisibleHeight()} else {m.commandsScroll+=m.commandsVisibleHeight()}
+		m.clampCommandsScroll(); return
+	}
+	if m.longReader != nil {
+		if up {
+			m.longReaderScroll -= m.longReaderVisibleHeight()
+		} else {
+			m.longReaderScroll += m.longReaderVisibleHeight()
+		}
+		m.clampLongReaderScroll()
+		return
+	}
+
 	if m.themesOpen {
 		step := m.themeVisibleRows()
 		if up { m.moveThemeSelection(-step) } else { m.moveThemeSelection(step) }
@@ -1186,13 +1507,61 @@ func (m *model) scheduleTypingClear() tea.Cmd {
 	})
 }
 
-func (m model) sendTyping(
-	typing bool,
-) {
-	_ = m.client.send(Packet{
-		Type:   "typing",
-		Room:   m.room,
-		User:   m.user,
-		Typing: typing,
-	})
+// draftWhisperTarget distinguishes a whisper draft from an ordinary chat
+// message. Resolve a full username only: a partial @d must never notify @don.
+// Existing whisper reply targets share the same private typing mechanism.
+func (m model) draftWhisperTarget() (private bool, target string) {
+	if m.replyTargetID != "" {
+		if parent, ok := m.messageByID[m.replyTargetID]; ok && parent.Type == "whisper_result" {
+			name := parent.User.Name
+			if strings.EqualFold(name, m.user.Name) {
+				name = parent.WhisperTo
+			}
+			if name != "" {
+				return true, "@" + name
+			}
+			return true, ""
+		}
+	}
+	fields := strings.Fields(m.input.Value())
+	if len(fields) == 0 || !strings.EqualFold(fields[0], "/whisper") {
+		return false, ""
+	}
+	if len(fields) < 2 || !strings.HasPrefix(fields[1], "@") {
+		return true, ""
+	}
+	for _, user := range m.onlineUsers {
+		if strings.EqualFold(user.Name, fields[1][1:]) {
+			return true, "@" + user.Name
+		}
+	}
+	return true, ""
+}
+
+func (m *model) syncTypingState() {
+	private, target := m.draftWhisperTarget()
+	if strings.TrimSpace(m.input.Value()) == "" {
+		target = ""
+		private = true
+	}
+	if m.isTyping && ((!private && m.typingWhisperTarget != "") ||
+		(private && (target == "" || m.typingWhisperTarget != target))) {
+		m.sendTyping(false)
+		m.isTyping = false
+		m.typingWhisperTarget = ""
+	}
+	if !m.isTyping && (!private || target != "") {
+		m.typingWhisperTarget = target
+		m.isTyping = true
+		m.sendTyping(true)
+	}
+}
+
+func (m model) sendTyping(typing bool) {
+	packet := Packet{Type: "typing", Room: m.room, Typing: typing}
+	if m.typingWhisperTarget != "" {
+		packet.Type = "whisper_typing"
+		packet.WhisperTo = m.typingWhisperTarget
+	}
+	_ = m.client.send(packet)
 }

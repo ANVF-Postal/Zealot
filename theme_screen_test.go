@@ -9,20 +9,28 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-func TestSplashIncludesCenteredThemesActionAfterStats(t *testing.T) {
+func TestSplashIncludesCenteredCommandsAndThemesActionsAfterStats(t *testing.T) {
 	m := newMessageInteractionTestModel(100)
 	m.splashOpen = true
 	rows := m.splashRows()
-	if len(rows) < 2 || rows[len(rows)-2] != "" {
-		t.Fatalf("splash theme action must be separated from stats by a blank line: %#v", rows)
+	if len(rows) < 3 || rows[len(rows)-3] != "" {
+		t.Fatalf("splash actions must be separated from stats by a blank line")
 	}
-	if !strings.Contains(stripANSISequences(rows[len(rows)-1]), "[THEMES]") {
-		t.Fatalf("splash does not contain the themes action: %q", rows[len(rows)-1])
-	}
-	button := "[THEMES]"
-	wantX := 1 + max(0, (chatContentWidth(m.width)-len(button))/2)
-	if !m.splashThemesButtonContains(wantX, 2+len(rows)-1) {
-		t.Fatalf("centered themes action did not register its screen coordinate")
+	for _, action := range []struct {
+		label string
+		row int
+		contains func(int, int) bool
+	}{
+		{"[COMMANDS]", len(rows)-2, m.splashCommandsButtonContains},
+		{"[THEMES]", len(rows)-1, m.splashThemesButtonContains},
+	} {
+		if !strings.Contains(stripANSISequences(rows[action.row]), action.label) {
+			t.Fatalf("splash does not contain %s action at row %d: %q", action.label, action.row, rows[action.row])
+		}
+		wantX := 1 + max(0, (chatContentWidth(m.width)-lipgloss.Width(action.label))/2)
+		if !action.contains(wantX, 2+action.row) {
+			t.Fatalf("centered %s action did not register its screen coordinate", action.label)
+		}
 	}
 }
 
@@ -901,5 +909,66 @@ func TestThemeFooterResponsiveActionsRemainOrdered(t *testing.T) {
 		if targets.hasSend && (targets.quitEnd > targets.sendStart || targets.sendEnd != width-1) {
 			t.Fatalf("width %d: Quit and Send overlap or Send lost its right anchor: %+v %q", width, targets, plain)
 		}
+	}
+}
+
+
+func TestThemeListClickSelectsThenApplies(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg, err := loadConfig()
+	if err != nil { t.Fatal(err) }
+	m := newModel(cfg, "lobby", false, nil)
+	m.width, m.height = 100, 30
+	m.openThemeBrowser()
+	original := m.cfg.Theme
+
+	index := -1
+	for i, entry := range m.themeEntries {
+		if entry.Preset.Colors != original {
+			index = i
+			break
+		}
+	}
+	if index < 0 { t.Fatal("no alternate theme in library") }
+	want := m.themeEntries[index].Preset.Colors
+	m.themeScroll = 0
+	x := m.themeBrowserContentStartX() + 2
+	y := 4 + index
+	if y >= 4 + m.themeVisibleRows() {
+		m.themeScroll = index
+		y = 4
+	}
+	click := tea.MouseClickMsg{Button: tea.MouseLeft, X: x, Y: y}
+
+	updated, _ := m.Update(click)
+	m = updated.(model)
+	if m.themeSelected != index || m.cfg.Theme != original {
+		t.Fatalf("first click should only preview: index=%d, active=%+v", m.themeSelected, m.cfg.Theme)
+	}
+
+	updated, _ = m.Update(click)
+	m = updated.(model)
+	if m.cfg.Theme != want {
+		t.Fatalf("second click did not apply selected theme: got %+v, want %+v", m.cfg.Theme, want)
+	}
+	if !m.themesOpen {
+		t.Fatal("applying from list unexpectedly closed the theme browser")
+	}
+}
+
+func TestThemeListRepeatedClickRespectsUnsavedEdits(t *testing.T) {
+	m := newThemeEditorTestModel(t)
+	m.cloneSelectedTheme()
+	m.themeDirty = true
+	original := m.cfg.Theme
+	y := 4 + m.themeSelected - m.themeScroll
+	x := m.themeBrowserContentStartX() + 2
+	updated, _ := m.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: x, Y: y})
+	next := updated.(model)
+	if next.cfg.Theme != original {
+		t.Fatal("repeated list click applied an unsaved theme")
+	}
+	if next.themeEditError == "" {
+		t.Fatal("repeated list click should explain why unsaved edits cannot be applied")
 	}
 }

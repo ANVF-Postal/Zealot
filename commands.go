@@ -17,6 +17,7 @@ func (m *model) sendCurrentMessage() {
 
 	sent := m.sendMessage(text, m.replyTargetID)
 	m.input.Reset()
+	m.input.CharLimit = maxMessage
 	if sent && m.replyTargetID != "" {
 		m.cancelReply()
 	}
@@ -26,8 +27,9 @@ func (m *model) sendCurrentMessage() {
 	m.stopCursorBlink()
 
 	if m.isTyping {
-		m.isTyping = false
 		m.sendTyping(false)
+		m.isTyping = false
+		m.typingWhisperTarget = ""
 	}
 }
 
@@ -37,7 +39,128 @@ func (m *model) sendMessage(text string, replyTo string) bool {
 	if len(fields) == 0 {
 		return false
 	}
+	// Replying to a whisper always stays private, even when the draft
+	// resembles a slash command. Reuse the selected reply target rather
+	// than creating a separate composer or interaction state.
+	if replyTo != "" {
+		if original, ok := m.messageByID[replyTo]; ok && original.Type == "whisper_result" {
+			recipient := original.User.Name
+			if strings.EqualFold(recipient, m.user.Name) {
+				recipient = original.WhisperTo
+			}
+			if recipient == "" || len([]rune(trimmed)) > maxMessage {
+				m.appendMessage(Packet{Type: "system", Text: "Cannot send whisper reply: invalid recipient or message length.", Time: time.Now().UTC()})
+				return false
+			}
+			_ = m.client.send(Packet{
+				Type: "whisper", Room: m.room, WhisperTo: "@"+recipient,
+				Text: trimmed, ReplyTo: replyTo,
+			})
+			return true
+		}
+	}
 	switch strings.ToLower(fields[0]) {
+	case "/long", "/spoiler":
+		body := strings.TrimSpace(strings.TrimPrefix(trimmed, fields[0]))
+		if body == "" {
+			m.appendMessage(Packet{Type: "system", Text: "Usage: " + strings.ToLower(fields[0]) + " message", Time: time.Now().UTC()})
+			return false
+		}
+		longMessage := strings.EqualFold(fields[0], "/long")
+		limit := maxMessage
+		if longMessage {
+			limit = maxLongMessage
+		}
+		if len([]rune(body)) > limit {
+			m.appendMessage(Packet{Type: "system", Text: fmt.Sprintf("Message exceeds the %d-character limit.", limit), Time: time.Now().UTC()})
+			return false
+		}
+		_ = m.client.send(Packet{
+			Type: "message", ReplyTo: replyTo, Room: m.room, User: m.user,
+			Text: body, Long: longMessage, Spoiler: !longMessage,
+		})
+		return true
+	case "/whisper":
+		// Split the message only twice: the body may contain arbitrary spaces,
+		// punctuation and line breaks, but the recipient must be a single name.
+		parts := strings.Fields(trimmed)
+		if len(parts) < 3 || !strings.HasPrefix(parts[1], "@") || len(parts[1]) < 2 {
+			m.appendMessage(Packet{Type: "system", Text: "Usage: /whisper @user message", Time: time.Now().UTC()})
+			return false
+		}
+		body := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(strings.TrimPrefix(trimmed, fields[0])), parts[1]))
+		if body == "" || len([]rune(body)) > maxMessage {
+			m.appendMessage(Packet{Type: "system", Text: fmt.Sprintf("Whispers must contain 1–%d characters. Usage: /whisper @user message", maxMessage), Time: time.Now().UTC()})
+			return false
+		}
+		_ = m.client.send(Packet{Type: "whisper", Room: m.room, WhisperTo: parts[1], Text: body})
+		return true
+	case "/poll", "/multipoll":
+		body := strings.TrimSpace(strings.TrimPrefix(trimmed, fields[0]))
+		if strings.EqualFold(fields[0], "/poll") && len(fields) == 3 && strings.EqualFold(fields[1], "close") {
+			_ = m.client.send(Packet{Type:"poll_close",Room:m.room,Text:fields[2]})
+			return true
+		}
+		if _, _, err := parsePollDefinition(body); err != nil {
+			m.appendMessage(Packet{Type:"system",Text:err.Error(),Time:time.Now().UTC()})
+			return false
+		}
+		packetType:="poll_create"
+		if strings.EqualFold(fields[0],"/multipoll") {packetType="multipoll_create"}
+		_ = m.client.send(Packet{Type:packetType,Room:m.room,Text:body})
+		return true
+	case "/vote":
+		if len(fields) != 3 {
+			m.appendMessage(Packet{Type:"system",Text:"Usage: /vote POLL_ID OPTION_NUMBER",Time:time.Now().UTC()})
+			return false
+		}
+		option, err := strconv.Atoi(fields[2])
+		if err != nil || option < 1 || option > 6 {
+			m.appendMessage(Packet{Type:"system",Text:"Usage: /vote POLL_ID OPTION_NUMBER (1–6)",Time:time.Now().UTC()})
+			return false
+		}
+		_ = m.client.send(Packet{Type:"poll_vote",Room:m.room,Poll:&PollData{ID:fields[1],Choice:option}})
+		return true
+	case "/coinflip":
+		if len(fields) != 1 {
+			m.appendMessage(Packet{Type: "system", Text: "Usage: /coinflip", Time: time.Now().UTC()})
+			return false
+		}
+		_ = m.client.send(Packet{Type: "coinflip", Room: m.room})
+		return true
+	case "/random":
+		if len(fields) != 2 {
+			m.appendMessage(Packet{Type: "system", Text: "Usage: /random MIN-MAX", Time: time.Now().UTC()})
+			return false
+		}
+		if _, _, err := parseRandomRange(fields[1]); err != nil {
+			m.appendMessage(Packet{Type: "system", Text: err.Error(), Time: time.Now().UTC()})
+			return false
+		}
+		_ = m.client.send(Packet{Type: "random", Room: m.room, Text: fields[1]})
+		return true
+	case "/roll":
+		if len(fields) != 2 {
+			m.appendMessage(Packet{Type: "system", Text: "Usage: /roll NdM (e.g. /roll 2d6)", Time: time.Now().UTC()})
+			return false
+		}
+		if _, _, err := parseDiceNotation(fields[1]); err != nil {
+			m.appendMessage(Packet{Type: "system", Text: err.Error(), Time: time.Now().UTC()})
+			return false
+		}
+		_ = m.client.send(Packet{Type: "roll", Room: m.room, Text: fields[1]})
+		return true
+	case "/fortune":
+		if len(fields) > 2 || (len(fields) == 2 && (!strings.HasPrefix(fields[1], "@") || len(fields[1]) == 1)) {
+			m.appendMessage(Packet{Type: "system", Text: "Usage: /fortune [@user]", Time: time.Now().UTC()})
+			return false
+		}
+		target := ""
+		if len(fields) == 2 {
+			target = fields[1]
+		}
+		_ = m.client.send(Packet{Type: "fortune", Room: m.room, Text: target})
+		return true
 	case "/rb":
 		body := strings.TrimSpace(strings.TrimPrefix(trimmed, fields[0]))
 		if body == "" {
@@ -147,14 +270,19 @@ func (m *model) sendMessage(text string, replyTo string) bool {
 		_ = m.client.send(Packet{Type: "rename", Room: m.room, User: User{Name: fields[1], Color: m.user.Color}})
 		return false
 	case "/color":
-		if len(fields) != 2 || !validUserColor(fields[1]) {
-			m.appendMessage(Packet{Type: "system", Text: "Usage: /color #RRGGBB (or an ANSI color number 0–255)", Time: time.Now()})
+		color := ""
+		valid := false
+		if len(fields) == 2 {
+			color, valid = normalizeUserColor(fields[1])
+		}
+		if !valid {
+			m.appendMessage(Packet{Type: "system", Text: "Usage: /color [#]RRGGBB (or an ANSI color number 0–255)", Time: time.Now()})
 			return false
 		}
 		old := m.cfg.UserColor
-		m.cfg.UserColor = fields[1]
-		m.user.Color = fields[1]
-		if err := saveConfigUserColor(fields[1]); err != nil {
+		m.cfg.UserColor = color
+		m.user.Color = color
+		if err := saveConfigUserColor(color); err != nil {
 			m.cfg.UserColor = old
 			m.user.Color = old
 			m.appendMessage(Packet{Type: "system", Text: "Could not save config: " + err.Error(), Time: time.Now()})

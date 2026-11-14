@@ -45,6 +45,8 @@ type sendFeedbackTimeoutMsg struct {
 }
 
 type scrollbarHoldMsg struct{ generation int }
+type longReaderScrollbarHoldMsg struct{ generation int }
 type usersScrollbarHoldMsg struct{ generation int }
 type splashScrollbarHoldMsg struct{ generation int }
+type commandsScrollbarHoldMsg struct{ generation int }
 type usersAnimationMsg struct{}

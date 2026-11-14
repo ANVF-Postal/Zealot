@@ -108,7 +108,7 @@ func messageMentionsUser(msg Packet, username string) bool {
 }
 
 func (m model) messageBackground(msg Packet) color.Color {
-	if msg.Type == "message" && messageMentionsUser(msg, m.user.Name) {
+	if (msg.Type == "message" || msg.Type == "fortune_result") && messageMentionsUser(msg, m.user.Name) {
 		return lipgloss.Color(m.cfg.Theme.MentionBackgroundColor)
 	}
 	return lipgloss.Color(m.cfg.Theme.Background)
@@ -137,6 +137,7 @@ func (m *model) refreshMentionUsernames() {
 		names = append(names, user.Name)
 	}
 	m.mentionUsernames = names
+	m.resetMentionTabCompletion()
 }
 
 func (m model) mentionStyle(background color.Color, hovered bool) lipgloss.Style {
@@ -339,4 +340,72 @@ func (m *model) insertMention(username string) tea.Cmd {
 	}
 	typingCmd := m.scheduleTypingClear()
 	return tea.Batch(blinkCmd, typingCmd)
+}
+
+ 
+// resetMentionTabCompletion discards the original prefix when the draft is
+// edited or the cursor is moved by anything other than another Tab press.
+func (m *model) resetMentionTabCompletion() {
+	m.mentionTabMatches = nil
+	m.mentionTabPrefix = ""
+	m.mentionTabValue = ""
+	m.mentionTabIndex = 0
+}
+
+// completeMentionTab replaces a partial @username at the end of the current
+// draft. Subsequent Tab presses cycle the original prefix's matches, rather
+// than narrowing matches to the first completed username.
+func (m *model) completeMentionTab() bool {
+	current := m.input.Value()
+	lines := strings.Split(current, "\n")
+	last := lines[len(lines)-1]
+	atEnd := !m.input.HasSelection() &&
+		m.input.Line() == len(lines)-1 &&
+		m.input.Column() == utf8.RuneCountInString(last)
+	if len(m.mentionTabMatches) > 0 && current == m.mentionTabValue && atEnd {
+		m.mentionTabIndex = (m.mentionTabIndex + 1) % len(m.mentionTabMatches)
+		m.mentionTabValue = m.mentionTabPrefix + "@" + m.mentionTabMatches[m.mentionTabIndex]
+		m.input.SetValue(m.mentionTabValue)
+		m.input.MoveToEnd()
+		return true
+	}
+	m.resetMentionTabCompletion()
+	if !atEnd { return false }
+	at := strings.LastIndexByte(last, '@')
+	if at < 0 || at == len(last)-1 { return false }
+	if at > 0 {
+		previous, _ := utf8.DecodeLastRuneInString(last[:at])
+		if mentionWordRune(previous) { return false }
+	}
+	fragment := last[at+1:]
+	for _, r := range fragment {
+		if !mentionWordRune(r) { return false }
+	}
+	matches := make([]string, 0)
+	seen := make(map[string]bool)
+	self := ""
+	for _, username := range m.mentionCandidates() {
+		key := strings.ToLower(username)
+		if !strings.HasPrefix(key, strings.ToLower(fragment)) || seen[key] {
+			continue
+		}
+		seen[key] = true
+		if m.user.Name != "" && strings.EqualFold(username, m.user.Name) {
+			self = username
+		} else {
+			matches = append(matches, username)
+		}
+	}
+	// Self-mentions are allowed, but only after every other match.
+	if self != "" {
+		matches = append(matches, self)
+	}
+	if len(matches) == 0 { return false }
+	m.mentionTabMatches = matches
+	m.mentionTabPrefix = current[:len(current)-len(fragment)-1]
+	m.mentionTabIndex = 0
+	m.mentionTabValue = m.mentionTabPrefix + "@" + matches[0]
+	m.input.SetValue(m.mentionTabValue)
+	m.input.MoveToEnd()
+	return true
 }

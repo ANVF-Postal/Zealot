@@ -1,0 +1,212 @@
+package main
+
+import (
+	"fmt"
+	"strings"
+
+	"charm.land/lipgloss/v2"
+)
+
+// pollLayout is the single layout definition used by rendering and mouse
+// hit-testing. Each row in choiceRows stores its one-based option (or zero).
+// It computes only the visible poll, never the whole message history.
+func (m model) pollLayout(packet Packet, width int) ([]string, []int) {
+	if packet.Poll == nil {
+		return []string{"[POLL] Invalid poll"}, []int{0}
+	}
+	p := packet.Poll
+	w := max(1, chatContentWidth(width))
+	rows := make([]string, 0, len(p.Options)*3+8)
+	options := make([]int, 0, len(p.Options)*3+8)
+	add := func(text string, choice int) {
+		rows = append(rows, truncateANSI(text, w))
+		options = append(options, choice)
+	}
+	kind := "POLL"
+	if p.Multi { kind = "MULTIPOLL" }
+	header := fmt.Sprintf("[%s] [%s #%s] %s asks:", packet.Time.Local().Format("15:04"), kind, p.ID, terminalSafeText(packet.User.Name))
+	for _, line := range wrapANSIHardLine(header, w) { add(line, 0) }
+	for _, line := range wrapANSIHardLine(terminalSafeText(p.Question), w) { add(line, 0) }
+	add("", 0)
+
+	// Compact polls show choices only. Once results are visible, each choice
+	// receives a full-width, consistently aligned bar underneath its label.
+	// Very narrow terminals retain the percentage-only compact presentation.
+	expanded := p.ResultsVisible && width > 48 && w >= 40
+	for i, option := range p.Options {
+		choice := i+1
+		selected := p.Choice == choice
+		if p.Multi {
+			selected = false
+			for _, n := range p.Choices {
+				if n == choice { selected = true; break }
+			}
+		}
+		lead := fmt.Sprintf("  %d. ", choice)
+		if selected { lead = fmt.Sprintf("> %d. ", choice) }
+		label := terminalSafeText(option)
+		count, percent := 0, 0
+		if p.ResultsVisible {
+			if i < len(p.Counts) { count = p.Counts[i] }
+			if p.Total > 0 { percent = (count*100+p.Total/2)/p.Total }
+		}
+		if p.ResultsVisible && !expanded {
+			suffix := fmt.Sprintf(" %d%%", percent)
+			available := max(1, w-lipgloss.Width(lead)-lipgloss.Width(suffix))
+			add(lead+truncateANSI(label, available)+suffix, choice)
+			continue
+		}
+		if expanded {
+			voteWord := "votes"
+			if count == 1 { voteWord = "vote" }
+			label += fmt.Sprintf(" (%d %s)", count, voteWord)
+		}
+		labelWidth := max(1, w-lipgloss.Width(lead))
+		wrapped := wrapANSIHardLine(label, labelWidth)
+		for j, line := range wrapped {
+			prefix := strings.Repeat(" ", lipgloss.Width(lead))
+			if j == 0 { prefix = lead }
+			add(prefix+line, choice)
+		}
+		if expanded {
+			// Reserve a fixed five-column percentage field (" 100%")
+			// so every bar has the same length, even for 0% and 100%.
+			pct := fmt.Sprintf(" %3d%%", percent)
+			indent := "     "
+			barWidth := min(48, max(0, w-lipgloss.Width(indent)-lipgloss.Width(pct)))
+			filled := 0
+			if p.Total > 0 { filled = (count*barWidth+p.Total/2)/p.Total }
+			add(indent+strings.Repeat("█", filled)+strings.Repeat("░", barWidth-filled)+pct, choice)
+		}
+	}
+	add("", 0)
+	if p.Closed {
+		best, winners := -1, make([]string, 0, len(p.Options))
+		for i, count := range p.Counts {
+			if count > best {
+				best = count
+				winners = []string{p.Options[i]}
+			} else if count == best {
+				winners = append(winners, p.Options[i])
+			}
+		}
+		verdict := "No votes"
+		if best > 0 {
+			if len(winners) == 1 { verdict = "Winner: "+winners[0] } else { verdict = "Tie: "+strings.Join(winners, ", ") }
+		}
+		for _, line := range wrapANSIHardLine(fmt.Sprintf("%d votes • Closed • %s", p.Total, verdict), w) { add(line, 0) }
+	} else if p.ResultsVisible {
+		hint := fmt.Sprintf("%d votes • Open • /vote %s OPTION", p.Total, p.ID)
+		if !p.Multi { hint += " (again to retract)" }
+		for _, line := range wrapANSIHardLine(hint, w) { add(line, 0) }
+	} else {
+		hint := "Vote to reveal results"
+		if p.Multi { hint = "Select one or more options to reveal results" }
+		for _, line := range wrapANSIHardLine(fmt.Sprintf("%s • /vote %s OPTION", hint, p.ID), w) { add(line, 0) }
+	}
+	return rows, options
+}
+
+func (m model) renderPollLines(packet Packet, width int) []string {
+	rows,choices := m.pollLayout(packet,width)
+	bg := m.messageBackground(packet)
+	w := chatContentWidth(width)
+	rowFill := lipgloss.NewStyle().Width(w).Background(bg)
+	plain := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.TextColor)).Background(bg)
+	accent := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).Background(bg).Bold(true)
+	highlight := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.HoverTextColor)).Background(bg)
+	muted := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).Background(bg)
+	rendered := make([]string,len(rows))
+	headerRows := []string(nil)
+	if packet.Poll != nil {
+		nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(packet.User.Color)).Background(bg).Bold(true)
+		kind := "POLL"
+		if packet.Poll.Multi { kind="MULTIPOLL" }
+		styledHeader := muted.Render("["+packet.Time.Local().Format("15:04")+"] ") +
+			accent.Render("["+kind+" #"+packet.Poll.ID+"] ") +
+			nameStyle.Render(terminalSafeText(packet.User.Name)) +
+			plain.Render(" asks:")
+		headerRows = wrapANSIHardLine(styledHeader,max(1,w))
+	}
+	for i,line := range rows {
+		if i<len(headerRows) {
+			rendered[i]=renderChatRow(rowFill,headerRows[i],w)
+			continue
+		}
+		style := plain
+		switch {
+		case choices[i]>0 && m.pollHoveredID==packet.ID && m.pollHoveredOption==choices[i]:
+			style=highlight
+		case choices[i]>0 && packet.Poll != nil && strings.HasPrefix(line, "> "):
+			style=accent
+		case i==len(rows)-1:
+			style=muted
+		}
+		rendered[i]=renderChatRow(rowFill,style.Render(line),w)
+	}
+	return rendered
+}
+
+// applyPollSnapshot updates just the original poll in the message cache. The
+// server sends snapshots, not new chat lines, on every vote and close.
+func (m *model) applyPollSnapshot(packet Packet) {
+	if packet.Poll == nil || packet.ID == "" {return}
+	index, exists := m.pollIndexByID[packet.ID]
+	if !exists || index<0 || index>=len(m.messages) {
+		// Older models or direct tests may not have an index yet.
+		for i, previous := range m.messages {
+			if previous.ID == packet.ID && previous.Type == "poll_result" {
+				index, exists = i, true
+				break
+			}
+		}
+	}
+	if !exists || m.messages[index].Type != "poll_result" {
+		m.appendMessage(packet)
+		return
+	}
+	if old := m.messages[index].Poll; old != nil && old.Version >= packet.Poll.Version {
+		return
+	}
+	m.messages[index] = packet
+	if m.pollIndexByID == nil {m.pollIndexByID = make(map[string]int)}
+	m.pollIndexByID[packet.ID] = index
+	if m.messageByID != nil {m.messageByID[packet.ID] = packet}
+	if m.renderCacheValid && m.renderCacheWidth == m.width {
+		oldRows := m.messageRowsByID[packet.ID]
+		// Preserve the top visible history row only when the expanding poll
+		// is entirely above the viewport. Otherwise leave the scroll offset
+		// alone so an in-view poll can expand without jumping the reader.
+		oldTop := max(0, len(m.renderedLines)-max(1, m.messageHeight()-1)-m.scroll)
+		if _, ok := m.replaceCachedMessageRows(packet.ID); ok {
+			newRows := m.messageRowsByID[packet.ID]
+			if m.scroll > 0 && oldRows.End <= oldTop {
+				m.scroll += (newRows.End-newRows.Start)-(oldRows.End-oldRows.Start)
+			}
+			m.clampScroll()
+			m.refreshRenderedWindow()
+			return
+		}
+	}
+	m.rebuildMessageCache()
+}
+
+// pollOptionAt maps a mouse position to one of the visible poll's option
+// rows; unlike normal message text hitboxes, the full option row is clickable.
+func (m model) pollOptionAt(x,y int) (string,int) {
+	if m.usersOpen || m.splashOpen || m.width<1 {return "",0}
+	left:=0
+	if !narrowBordersHidden(m.width) {left=1}
+	if x<left || x>=m.chatScrollbarX() {return "",0}
+	height:=max(1,m.messageHeight()-1)
+	if y<2 || y>=2+height {return "",0}
+	lines:=m.renderMessageLines()
+	start:=max(0,len(lines)-height-m.scroll)
+	row:=start+y-2
+	packet,span,ok:=m.messageAtRow(row)
+	if !ok || packet.Type!="poll_result" || packet.Poll==nil || packet.Poll.Closed {return "",0}
+	_,choices:=m.pollLayout(packet,m.width)
+	relative:=row-span.Start
+	if relative<0 || relative>=len(choices) || choices[relative]==0 {return "",0}
+	return packet.ID,choices[relative]
+}

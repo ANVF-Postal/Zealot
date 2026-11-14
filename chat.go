@@ -26,6 +26,7 @@ func (m model) renderMessageLines() []string {
  // or constructing terminal row strings. It is used for off-screen messages
  // so scroll geometry remains accurate while rendering stays viewport-bound.
 func (m model) renderPacketLineCount(msg Packet, width int) int {
+	msg = m.displayedMessage(msg)
 	if width < 1 {
 		return 1
 	}
@@ -47,11 +48,20 @@ func (m model) renderPacketLineCount(msg Packet, width int) int {
 		}
 		return count
 	case "system":
-		text := fmt.Sprintf("[%s] %s", msg.Time.Local().Format("15:04"), msg.Text)
+		text := fmt.Sprintf("[%s] %s%s", msg.Time.Local().Format("15:04"), msg.Text, colorChangeTextSuffix(msg))
 		return max(1, wrapTextLineCount(text, contentWidth-2))
 	case "me":
 		text := fmt.Sprintf("[%s] * %s %s", msg.Time.Local().Format("15:04"), msg.User.Name, msg.Text)
 		return max(1, wrapTextLineCount(text, contentWidth-2))
+	case "theme_result":
+		return max(1, len(m.renderThemeShareLines(msg, width)))
+	case "poll_result":
+		rows, _ := m.pollLayout(msg, width)
+		return max(1, len(rows))
+	case "whisper_result":
+		// Private replies can add the same trailing [1]/[2] navigation rows
+		// as ordinary messages. Count them through the shared renderer.
+		return max(1, len(m.renderPacketLines(msg, width)))
 	case "message":
 		if msg.XKeyscore > 0 {
 			return m.xkeyscoreLineCount(msg, width)
@@ -308,7 +318,7 @@ func trimANSIEndPadding(line string) string {
 
 func (m model) renderPacketLines(msg Packet, width int) []string {
 	lines := m.renderPacketBaseLines(msg, width)
-	if msg.Type != "message" || msg.ID == "" || msg.XKeyscore > 0 {
+	if (msg.Type != "message" && msg.Type != "whisper_result") || msg.ID == "" || msg.XKeyscore > 0 {
 		return lines
 	}
 	replies := m.repliesFor(msg.ID)
@@ -339,8 +349,10 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 		styled := replyMarkerStyle.Render(marker)
 		trimmed := trimANSIEndPadding(lines[markerRow])
 		used := visibleChatTextWidth(trimmed)
-		if used+1+lipgloss.Width(marker) <= contentWidth {
-			lines[markerRow] = renderChatRow(rowFill, trimmed+separatorStyle.Render(" ")+styled, contentWidth)
+		separatorWidth := 1
+		if msg.Long && n == 0 { separatorWidth = 3 }
+		if used+separatorWidth+lipgloss.Width(marker) <= contentWidth {
+			lines[markerRow] = renderChatRow(rowFill, trimmed+separatorStyle.Render(func() string { if msg.Long && n == 0 { return " | " }; return " " }())+styled, contentWidth)
 		} else {
 			lines = append(lines, renderChatRow(rowFill, styled, contentWidth))
 			markerRow = len(lines) - 1
@@ -352,8 +364,12 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
 func (m *model) rebuildMessageIndexes() {
 	messagesByID := make(map[string]Packet, len(m.messages))
 	repliesByMessageID := make(map[string][]string)
-	for _, packet := range m.messages {
-		if packet.Type != "message" || packet.ID == "" {
+	pollsByID := make(map[string]int)
+	for index, packet := range m.messages {
+		if packet.Type == "poll_result" && packet.ID != "" {
+			pollsByID[packet.ID] = index
+		}
+		if (packet.Type != "message" && packet.Type != "whisper_result" && packet.Type != "poll_result") || packet.ID == "" {
 			continue
 		}
 		messagesByID[packet.ID] = packet
@@ -363,6 +379,7 @@ func (m *model) rebuildMessageIndexes() {
 	}
 	m.messageByID = messagesByID
 	m.replyIDsByMessageID = repliesByMessageID
+	m.pollIndexByID = pollsByID
 }
 
 func (m *model) addMessageToIndexes(packet Packet) {
@@ -370,7 +387,7 @@ func (m *model) addMessageToIndexes(packet Packet) {
 		m.rebuildMessageIndexes()
 		return
 	}
-	if packet.Type != "message" || packet.ID == "" {
+	if (packet.Type != "message" && packet.Type != "whisper_result" && packet.Type != "poll_result") || packet.ID == "" {
 		return
 	}
 	m.messageByID[packet.ID] = packet
@@ -388,7 +405,7 @@ func (m model) repliesFor(messageID string) []string {
 	}
 	var replies []string
 	for _, packet := range m.messages {
-		if packet.Type == "message" && packet.ReplyTo == messageID && packet.ID != "" {
+		if (packet.Type == "message" || packet.Type == "whisper_result") && packet.ReplyTo == messageID && packet.ID != "" {
 			replies = append(replies, packet.ID)
 		}
 	}
@@ -404,7 +421,7 @@ func (m model) hasMessageID(messageID string) bool {
 		return exists
 	}
 	for _, packet := range m.messages {
-		if packet.ID == messageID && packet.Type == "message" {
+		if packet.ID == messageID && (packet.Type == "message" || packet.Type == "whisper_result") {
 			return true
 		}
 	}
@@ -437,7 +454,38 @@ func (m model) renderReplyBadgeForWidth(msg Packet, width int) string {
 	return style.Render(replyBadgeLabelForWidth(width))
 }
 
+// whisperHeaderParts keeps the private header and its click geometry in sync.
+// Compact whispers trade the long conversational heading for a short [W] label.
+func (m model) whisperHeaderParts(msg Packet, width int) (beforeBadge, afterBadge string, compact bool) {
+	name := msg.User.Name
+	if strings.EqualFold(name, m.user.Name) {
+		name = msg.WhisperTo
+	}
+	name = terminalSafeText(name)
+	compact = width <= 48
+	if compact {
+		return "[W] " + name, ": ", true
+	}
+	stamp := "[" + msg.Time.Local().Format("15:04") + "] "
+	if strings.EqualFold(msg.User.Name, m.user.Name) {
+		return stamp + "Whispered to " + name, ": ", false
+	}
+	return stamp + name + " whispers", ": ", false
+}
+
+// renderSpoilerBodyAt keeps the visible spoiler marker muted even after the
+// body is revealed. The marker is a display suffix, never stored in the packet.
+func renderSpoilerBodyAt(part string, spoiler bool, mentions []string, bodyStyle, mentionStyle, tagStyle lipgloss.Style, rainbow bool, phase float64, offset int) string {
+	if spoiler && strings.HasSuffix(part, "(spoiler)") {
+		body := strings.TrimSuffix(part, "(spoiler)")
+		return renderMentionBodyAt(body, mentions, bodyStyle, mentionStyle, rainbow, phase, offset) + tagStyle.Render("(spoiler)")
+	}
+	return renderMentionBodyAt(part, mentions, bodyStyle, mentionStyle, rainbow, phase, offset)
+}
+
 func (m model) renderPacketBaseLines(msg Packet, width int) []string {
+	original := msg
+	msg = m.displayedMessage(msg)
 	// The final interior column is reserved for the permanent scrollbar.
 	// When the side borders disappear at narrow widths, those two columns
 	// become available to message content.
@@ -447,11 +495,132 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 	text := lipgloss.Color(m.cfg.Theme.TextColor)
 	rowFill := lipgloss.NewStyle().Width(contentWidth).Background(bg)
 	normalBodyStyle := lipgloss.NewStyle().Foreground(text).Background(bg)
+	spoilerTagStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).Background(bg)
 	bodyStyle := normalBodyStyle
-	hovered := msg.Type == "message" && msg.ID != "" && (msg.ID == m.hoveredMessageID || msg.ID == m.highlightedMessageID)
-	if hovered {
+	if original.Long {
+		bodyStyle = bodyStyle.Foreground(lipgloss.Color(m.cfg.Theme.AccentColor))
+	} else if original.Spoiler && !m.revealedSpoilers[original.ID] {
+		bodyStyle = bodyStyle.Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor))
+	}
+	hovered := (msg.Type == "message" || msg.Type == "whisper_result") && msg.ID != "" && (msg.ID == m.hoveredMessageID || msg.ID == m.highlightedMessageID)
+	if hovered && !isSpecialMessage(original) {
 		hoverColor := lipgloss.Color(m.cfg.Theme.HoverTextColor)
 		bodyStyle = bodyStyle.Foreground(hoverColor)
+	}
+
+	if msg.Type == "poll_result" {
+		return m.renderPollLines(msg,width)
+	}
+	if msg.Type == "theme_result" {
+		return m.renderThemeShareLines(msg,width)
+	}
+	if msg.Type == "whisper_result" {
+		otherName := msg.User.Name
+		outgoing := strings.EqualFold(otherName, m.user.Name)
+		if outgoing {
+			otherName = msg.WhisperTo
+		}
+		name := terminalSafeText(otherName)
+		_, _, compact := m.whisperHeaderParts(msg, width)
+		accent := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).Background(bg).Bold(true)
+		nameColor := msg.User.Color
+		if outgoing {
+			// The whisper packet carries the sender's color, not the
+			// recipient's. Resolve the addressee from the live room roster
+			// so outgoing headers use that person's own username color.
+			nameColor = m.cfg.Theme.AccentColor
+			for _, user := range m.onlineUsers {
+				if strings.EqualFold(user.Name, msg.WhisperTo) {
+					if user.Color != "" {
+						nameColor = user.Color
+					}
+					break
+				}
+			}
+		}
+		nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(nameColor)).Background(bg).Bold(true)
+		timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).Background(bg)
+		styled := ""
+		if compact {
+			styled = accent.Render("[W] ") + nameStyle.Render(name)
+		} else {
+			styled = timeStyle.Render("["+msg.Time.Local().Format("15:04")+"] ")
+			if outgoing {
+				styled += accent.Render("Whispered to ") + nameStyle.Render(name)
+			} else {
+				styled += nameStyle.Render(name) + accent.Render(" whispers")
+			}
+		}
+		styled += m.renderReplyBadgeForWidth(msg, width) +
+			normalBodyStyle.Render(": ") + bodyStyle.Render(terminalSafeText(msg.Text))
+		var result []string
+		for _, line := range wrapANSIHardLine(styled, max(1, contentWidth)) {
+			result = append(result, renderChatRow(rowFill, line, contentWidth))
+		}
+		if compact {
+			result = append(result, renderChatRow(rowFill,
+				timeStyle.Render("["+msg.Time.Local().Format("15:04")+"]"), contentWidth))
+		}
+		return result
+	}
+
+	if msg.Type == "fortune_result" {
+		prefix := terminalSafeText(msg.User.Name) + "'s Fortune: "
+		if msg.FortuneTo != "" {
+			prefix = terminalSafeText(msg.FortuneTo) + ", your fortune is: "
+		}
+		fortuneAccent := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).
+			Background(bg).
+			Bold(true)
+		styled := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).Background(bg).Render("["+msg.Time.Local().Format("15:04")+"] ") +
+			fortuneAccent.Render(prefix) + normalBodyStyle.Render(terminalSafeText(msg.Text))
+		var result []string
+		for _, line := range wrapANSIHardLine(styled, max(1, contentWidth)) {
+			result = append(result, renderChatRow(rowFill, line, contentWidth))
+		}
+		return result
+	}
+
+	if msg.Type == "coinflip_result" || msg.Type == "random_result" || msg.Type == "roll_result" {
+		label := "[COIN FLIP]"
+		action := msg.User.Name + " flipped a coin: "
+		outcome := msg.Text
+		if msg.Type == "roll_result" {
+			label = "[ROLL]"
+		}
+		if msg.Type == "random_result" {
+			label = "[RANDOM]"
+			// Random results are daemon-generated as "MIN–MAX: RESULT".
+			// Keep the range with the user's coloured action and render only
+			// the final number in normal chat text.
+			if colon := strings.LastIndex(msg.Text, ": "); colon >= 0 {
+				action = msg.User.Name + " rolled " + msg.Text[:colon+2]
+				outcome = msg.Text[colon+2:]
+			} else {
+				action = msg.User.Name + " rolled: "
+			}
+		}
+		userStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.User.Color)).Background(bg)
+		styled := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).Background(bg).Render("["+msg.Time.Local().Format("15:04")+"] ") +
+			m.styles.accent.Render(label) + normalBodyStyle.Render(" ")
+		if msg.Type == "roll_result" {
+			// Highlight both the username and dice notation in the roller's
+			// color, but keep " rolled ", the colon and results in normal text.
+			styled += userStyle.Render(msg.User.Name) + normalBodyStyle.Render(" rolled ")
+			if colon := strings.Index(msg.Text, ":"); colon >= 0 {
+				styled += userStyle.Render(msg.Text[:colon]) + normalBodyStyle.Render(msg.Text[colon:])
+			} else {
+				styled += normalBodyStyle.Render(msg.Text)
+			}
+		} else {
+			styled += userStyle.Render(action) + normalBodyStyle.Render(outcome)
+		}
+		var result []string
+		for _, line := range wrapANSIHardLine(styled, max(1, contentWidth)) {
+			result = append(result, renderChatRow(rowFill, line, contentWidth))
+		}
+		return result
 	}
 
 	if msg.Type == "letter" {
@@ -482,14 +651,40 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 
 	if msg.Type == "system" {
 		systemText := fmt.Sprintf(
-			"[%s] %s",
+			"[%s] %s%s",
 			msg.Time.Local().Format("15:04"),
 			msg.Text,
+			colorChangeTextSuffix(msg),
 		)
 		wrapped := wrapText(systemText, contentWidth-2)
 		lines := make([]string, 0, len(wrapped))
+		colored := colorChangeTextSuffix(msg) != ""
+		blocks := 0
+		if colored { blocks = strings.Count(systemText, "█") }
+		seen := 0
 		for _, line := range wrapped {
 			styled := m.styles.system.Render("  " + line)
+			if colored {
+				// Apply colors to the final two block runes, even when word
+				// wrapping puts the arrow and blocks on different rows.
+				var styledParts strings.Builder
+				parts := strings.Split("  "+line, "█")
+				for index, part := range parts {
+					styledParts.WriteString(m.styles.system.Render(part))
+					if index == len(parts)-1 { continue }
+					seen++
+					block := m.styles.system.Render("█")
+					if seen == blocks-1 {
+						block = lipgloss.NewStyle().Foreground(lipgloss.Color(msg.ColorBefore)).
+							Background(lipgloss.Color(m.cfg.Theme.Background)).Render("█")
+					} else if seen == blocks {
+						block = lipgloss.NewStyle().Foreground(lipgloss.Color(msg.ColorAfter)).
+							Background(lipgloss.Color(m.cfg.Theme.Background)).Render("█")
+					}
+					styledParts.WriteString(block)
+				}
+				styled = styledParts.String()
+			}
 			lines = append(lines, renderChatRow(rowFill, styled, contentWidth))
 		}
 		return lines
@@ -521,7 +716,7 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 		if width <= 48 {
 			header := msg
 			header.Text = ""
-			lines = renderCompactMessage(rowFill, bodyStyle, normalBodyStyle, nameStyle, mentionStyle, timeStyle, replyBadge, header, timeText, contentWidth)
+			lines = renderCompactMessage(rowFill, bodyStyle, normalBodyStyle, nameStyle, mentionStyle, timeStyle, spoilerTagStyle, replyBadge, header, timeText, contentWidth)
 		} else {
 			prefix := timeStyle.Render("[" + timeText + "]") + normalBodyStyle.Render(" ") + nameStyle.Render(msg.User.Name)
 			if replyBadge != "" {
@@ -531,7 +726,7 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 			if lipgloss.Width(prefix) >= contentWidth {
 				header := msg
 				header.Text = ""
-				lines = renderCompactMessage(rowFill, bodyStyle, normalBodyStyle, nameStyle, mentionStyle, timeStyle, m.renderReplyBadgeForWidth(msg, 48), header, timeText, contentWidth)
+				lines = renderCompactMessage(rowFill, bodyStyle, normalBodyStyle, nameStyle, mentionStyle, timeStyle, spoilerTagStyle, m.renderReplyBadgeForWidth(msg, 48), header, timeText, contentWidth)
 			} else {
 				logoIndent = lipgloss.Width(prefix)
 				lines = append(lines, renderChatRow(rowFill, prefix, contentWidth))
@@ -650,7 +845,7 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 		if hovered {
 			displayMessage.Rainbow = false
 		}
-		return renderCompactMessage(rowFill, bodyStyle, normalBodyStyle, nameStyle, mentionStyle, timeStyle, replyBadge, displayMessage, timeText, contentWidth)
+		return renderCompactMessage(rowFill, bodyStyle, normalBodyStyle, nameStyle, mentionStyle, timeStyle, spoilerTagStyle, replyBadge, displayMessage, timeText, contentWidth)
 	}
 
 	timestamp := timeStyle.Render("[" + timeText + "]")
@@ -666,7 +861,7 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 		if hovered {
 			displayMessage.Rainbow = false
 		}
-		return renderCompactMessage(rowFill, bodyStyle, normalBodyStyle, nameStyle, mentionStyle, timeStyle, m.renderReplyBadgeForWidth(msg, 48), displayMessage, timeText, contentWidth)
+		return renderCompactMessage(rowFill, bodyStyle, normalBodyStyle, nameStyle, mentionStyle, timeStyle, spoilerTagStyle, m.renderReplyBadgeForWidth(msg, 48), displayMessage, timeText, contentWidth)
 	}
 
 	wrapped := wrapText(msg.Text, contentWidth-prefixWidth)
@@ -676,12 +871,12 @@ func (m model) renderPacketBaseLines(msg Packet, width int) []string {
 
 	lines := make([]string, 0, len(wrapped))
 	runeOffset := 0
-	firstBody := renderMentionBodyAt(wrapped[0], msg.Mentions, bodyStyle, mentionStyle, msg.Rainbow && !hovered, msg.RainbowPhase, runeOffset)
+	firstBody := renderSpoilerBodyAt(wrapped[0], msg.Spoiler, msg.Mentions, bodyStyle, mentionStyle, spoilerTagStyle, msg.Rainbow && !hovered, msg.RainbowPhase, runeOffset)
 	lines = append(lines, renderChatRow(rowFill, prefix+firstBody, contentWidth))
 	runeOffset += utf8.RuneCountInString(wrapped[0])
 	indent := strings.Repeat(" ", prefixWidth)
 	for _, line := range wrapped[1:] {
-		body := renderMentionBodyAt(line, msg.Mentions, bodyStyle, mentionStyle, msg.Rainbow && !hovered, msg.RainbowPhase, runeOffset)
+		body := renderSpoilerBodyAt(line, msg.Spoiler, msg.Mentions, bodyStyle, mentionStyle, spoilerTagStyle, msg.Rainbow && !hovered, msg.RainbowPhase, runeOffset)
 		lines = append(lines, renderChatRow(rowFill, normalBodyStyle.Render(indent)+body, contentWidth))
 		runeOffset += utf8.RuneCountInString(line)
 	}
@@ -698,6 +893,7 @@ func renderCompactMessage(
 	nameStyle lipgloss.Style,
 	mentionStyle lipgloss.Style,
 	timeStyle lipgloss.Style,
+	spoilerTagStyle lipgloss.Style,
 	replyBadge string,
 	msg Packet,
 	timeText string,
@@ -718,7 +914,7 @@ func renderCompactMessage(
 	lines := make([]string, 0, 4)
 	runeOffset := 0
 	renderBody := func(part string) string {
-		rendered := renderMentionBodyAt(part, msg.Mentions, bodyStyle, mentionStyle, msg.Rainbow, msg.RainbowPhase, runeOffset)
+		rendered := renderSpoilerBodyAt(part, msg.Spoiler, msg.Mentions, bodyStyle, mentionStyle, spoilerTagStyle, msg.Rainbow, msg.RainbowPhase, runeOffset)
 		runeOffset += utf8.RuneCountInString(part)
 		return rendered
 	}
@@ -772,4 +968,14 @@ func renderCompactMessage(
 		lines = append(lines, renderChatRow(rowFill, renderBody(part), contentWidth))
 	}
 	return lines
+}
+
+ // colorChangeTextSuffix is shared by the sizing and rendering paths.
+ // Never inject arbitrary colors or raw ANSI from a wire packet.
+func colorChangeTextSuffix(msg Packet) string {
+	if msg.ColorBefore == "" || msg.ColorAfter == "" ||
+		!validUserColor(msg.ColorBefore) || !validUserColor(msg.ColorAfter) {
+		return ""
+	}
+	return " █ → █"
 }

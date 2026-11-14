@@ -41,12 +41,33 @@ func (m model) messageBodyRanges(msg Packet, width int) []messageBodyRange {
 }
 
 func (m model) messageBodyRangesForLineCount(msg Packet, width, lineCount int) []messageBodyRange {
+	msg = m.displayedMessage(msg)
 	ranges := make([]messageBodyRange, lineCount)
-	if msg.Type != "message" || msg.Text == "" || msg.XKeyscore > 0 || lineCount == 0 {
+	if (msg.Type != "message" && msg.Type != "whisper_result") || msg.Text == "" || msg.XKeyscore > 0 || lineCount == 0 {
 		return ranges
 	}
 
 	contentWidth := chatContentWidth(width)
+	if msg.Type == "whisper_result" {
+		// Use the same contextual header geometry as the renderer; all
+		// coordinates start at the first chat cell, with no special padding.
+		before, after, compact := m.whisperHeaderParts(msg, width)
+		headerWidth := lipgloss.Width(before+after) +
+			lipgloss.Width(m.renderReplyBadgeForWidth(msg, width))
+		bodyWidth := lipgloss.Width(terminalSafeText(msg.Text))
+		limit := max(1, contentWidth)
+		for row := range ranges {
+			if compact && row == len(ranges)-1 {
+				break // muted timestamp occupies a separate final row
+			}
+			start := max(0, headerWidth-row*limit)
+			end := min(limit, headerWidth+bodyWidth-row*limit)
+			if start < limit && end > start {
+				ranges[row] = clippedMessageBodyRange(start, end, contentWidth)
+			}
+		}
+		return ranges
+	}
 	if contentWidth < 1 {
 		return ranges
 	}
@@ -163,7 +184,7 @@ func (m model) cachedBodyRangesForMessage(messageID string, lineCount int) []mes
 	packet, exists := m.messageByID[messageID]
 	if !exists {
 		for _, candidate := range m.messages {
-			if candidate.ID == messageID && candidate.Type == "message" {
+			if candidate.ID == messageID && (candidate.Type == "message" || candidate.Type == "whisper_result") {
 				packet, exists = candidate, true
 				break
 			}
@@ -196,7 +217,7 @@ func (m model) cachedLinkRangesForMessage(messageID string, lineCount int) [][]m
 	packet, exists := m.messageByID[messageID]
 	if !exists {
 		for _, candidate := range m.messages {
-			if candidate.ID == messageID && candidate.Type == "message" {
+			if candidate.ID == messageID && (candidate.Type == "message" || candidate.Type == "whisper_result") {
 				packet, exists = candidate, true
 				break
 			}
@@ -248,19 +269,21 @@ func (m *model) refreshMessageHover() {
 		return
 	}
 	hoveredID := ""
+	pollID, pollChoice := "", 0
 	if !m.usersOpen && !m.splashOpen {
 		hoveredID = m.messageIDAt(m.lastMouseX, m.lastMouseY)
+		pollID, pollChoice = m.pollOptionAt(m.lastMouseX, m.lastMouseY)
 	}
-	if hoveredID == m.hoveredMessageID {
+	if hoveredID == m.hoveredMessageID && pollID == m.pollHoveredID && pollChoice == m.pollHoveredOption {
 		return
 	}
 
-	previousID := m.hoveredMessageID
+	previousID, previousPoll := m.hoveredMessageID, m.pollHoveredID
 	m.hoveredMessageID = hoveredID
-	// Hover changes only foreground styling; they do not change wrapping or
-	// hitboxes. Restyle the affected cached rows in place instead of laying
-	// out the entire chat history on every pointer transition.
-	if !m.restyleMessageRows(previousID) || !m.restyleMessageRows(hoveredID) {
+	m.pollHoveredID, m.pollHoveredOption = pollID, pollChoice
+	// Reuse the same targeted row restyling for chat and poll options.
+	if !m.restyleMessageRows(previousID) || !m.restyleMessageRows(hoveredID) ||
+		!m.restyleMessageRows(previousPoll) || !m.restyleMessageRows(pollID) {
 		m.rebuildMessageCache()
 	}
 }
@@ -419,11 +442,25 @@ func (m model) messageLinkRanges(msg Packet, width int) [][]messageLinkRange {
 
 func (m model) messageLinkRangesForLineCount(msg Packet, width, lineCount int) [][]messageLinkRange {
 	regions := make([][]messageLinkRange, lineCount)
-	if len(regions) == 0 || msg.Type != "message" {
+	if len(regions) == 0 || (msg.Type != "message" && msg.Type != "whisper_result") {
 		return regions
 	}
 
 	if msg.ReplyTo != "" && m.hasMessageID(msg.ReplyTo) {
+		if msg.Type == "whisper_result" {
+			// Reuse the contextual header's pre-badge text rather than
+			// guessing at the sender/recipient layout.
+			before, _, _ := m.whisperHeaderParts(msg, width)
+			start := lipgloss.Width(before)
+			limit := max(1, chatContentWidth(width))
+			row, column := start/limit, start%limit
+			badgeWidth := lipgloss.Width(replyBadgeLabelForWidth(width))
+			if row < len(regions) && column+badgeWidth <= limit {
+				regions[row] = append(regions[row], messageLinkRange{
+					Start: column, End: column+badgeWidth, TargetID: msg.ReplyTo,
+				})
+			}
+		} else {
 		badgeRow, badgeStart := 0, 0
 		widthForBadge := width
 		badge := m.renderReplyBadgeForWidth(msg, width)
@@ -454,6 +491,7 @@ func (m model) messageLinkRangesForLineCount(msg Packet, width, lineCount int) [
 		if badgeRow < len(regions) {
 			regions[badgeRow] = append(regions[badgeRow], messageLinkRange{Start: badgeStart, End: badgeStart + lipgloss.Width(replyBadgeLabelForWidth(widthForBadge)), TargetID: msg.ReplyTo})
 		}
+		}
 	}
 	replies := m.repliesFor(msg.ID)
 	if len(replies) > 0 && msg.XKeyscore == 0 {
@@ -472,9 +510,11 @@ func (m model) messageLinkRangesForLineCount(msg Packet, width, lineCount int) [
 		column, contentWidth := visibleChatTextWidth(trimmed), chatContentWidth(width)
 		for n, replyID := range replies {
 			markerWidth := lipgloss.Width(fmt.Sprintf("[%d]", n+1))
-			if column+1+markerWidth <= contentWidth {
-				regions[row] = append(regions[row], messageLinkRange{Start:column+1,End:column+1+markerWidth,TargetID:replyID})
-				column += 1+markerWidth
+			separatorWidth := 1
+			if msg.Long && n == 0 {separatorWidth = 3}
+			if column+separatorWidth+markerWidth <= contentWidth {
+				regions[row] = append(regions[row], messageLinkRange{Start:column+separatorWidth,End:column+separatorWidth+markerWidth,TargetID:replyID})
+				column += separatorWidth+markerWidth
 			} else {
 				row++; column=0
 				if row >= len(regions) { break }
@@ -569,7 +609,10 @@ func (m *model) beginReply(id string) {
 		return
 	}
 	for _, packet := range m.messages {
-		if packet.ID == id && packet.Type == "message" {
+		if packet.ID == id && (packet.Type == "message" || packet.Type == "whisper_result") {
+			if packet.Spoiler && !m.revealedSpoilers[id] {
+				return
+			}
 			if m.replyTargetID != id {
 				m.replyTargetID = id
 				m.input.EndSelection()

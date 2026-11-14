@@ -250,7 +250,7 @@ func splashLogoLayout(logo []string, width int) []string {
 // Click detection uses the same block origin, clipping and viewport scroll
 // as the renderer, without treating the outside centering margin as artwork.
 func (m model) splashLogoContains(x, y int) bool {
-	if !m.splashOpen || m.themesOpen {
+	if !m.splashOpen || m.themesOpen || m.commandsOpen {
 		return false
 	}
 	width := chatContentWidth(m.width) // excludes splash scrollbar
@@ -301,17 +301,31 @@ func (m model) splashRows() []string {
 	rows = append(rows, m.styles.app.Render(center("History Enabled: "+historyStatus)))
 	rows = append(rows, m.styles.app.Render(center(fmt.Sprintf("Online users: %d", m.onlineCount))))
 	rows = append(rows, "")
+	rows = append(rows, m.styles.accent.Render(center("[COMMANDS]")))
 	rows = append(rows, m.styles.accent.Render(center("[THEMES]")))
 	return rows
 }
 
 // splashThemesButtonContains reports whether a click lands on the centered
 // [THEMES] action, accounting for the splash's vertical scroll offset.
+func (m model) splashCommandsButtonContains(x, y int) bool {
+	button := "[COMMANDS]"
+	row := len(m.splashRows())-2
+	screenY := 2+row-m.splashScroll
+	left := 0
+	if !narrowBordersHidden(m.width) { left = 1 }
+	startX := left+max(0,(chatContentWidth(m.width)-lipgloss.Width(button))/2)
+	return m.splashOpen && !m.themesOpen && !m.commandsOpen &&
+		y == screenY && x >= startX && x < startX+lipgloss.Width(button)
+}
+
 func (m model) splashThemesButtonContains(x, y int) bool {
 	button := "[THEMES]"
 	row := len(m.splashRows()) - 1
 	screenY := 2 + row - m.splashScroll // chat pane's top border and first content row
-	startX := 1 + max(0, (chatContentWidth(m.width)-lipgloss.Width(button))/2)
+	left := 0
+	if !narrowBordersHidden(m.width) { left = 1 }
+	startX := left+max(0, (chatContentWidth(m.width)-lipgloss.Width(button))/2)
 	return y == screenY && x >= startX && x < startX+lipgloss.Width(button)
 }
 
@@ -760,8 +774,15 @@ func (m *model) appendMessages(packets []Packet) {
 	if m.messageByID == nil || m.replyIDsByMessageID == nil {
 		m.rebuildMessageIndexes()
 	} else {
-		for _, packet := range packets {
+		if m.pollIndexByID == nil {
+			m.pollIndexByID = make(map[string]int)
+		}
+		startIndex := len(m.messages) - len(packets)
+		for i, packet := range packets {
 			m.addMessageToIndexes(packet)
+			if packet.Type == "poll_result" && packet.ID != "" {
+				m.pollIndexByID[packet.ID] = startIndex + i
+			}
 		}
 	}
 
@@ -784,7 +805,7 @@ func (m *model) appendMessages(packets []Packet) {
 	// list below, so only messages already present in the cache are replaced.
 	parents := make(map[string]struct{})
 	for _, packet := range packets {
-		if packet.Type != "message" || packet.ReplyTo == "" {
+		if (packet.Type != "message" && packet.Type != "whisper_result") || packet.ReplyTo == "" {
 			continue
 		}
 		if _, cached := m.messageRowsByID[packet.ReplyTo]; cached {
@@ -1062,32 +1083,9 @@ func (m model) scrollbarThumb() (top, thumbHeight, trackHeight int) {
 }
 
 func (m model) scrollbarThumbForLineCount(total int) (top, thumbHeight, trackHeight int) {
-	trackHeight = m.messageHeight() - 2
-	if trackHeight < 1 {
-		trackHeight = 1
-	}
-	visible := m.messageHeight() - 1
-	if visible < 1 {
-		visible = 1
-	}
-	if total <= visible {
-		return 0, trackHeight, trackHeight
-	}
-
-	thumbHeight = visible * trackHeight / total
-	if thumbHeight < 1 {
-		thumbHeight = 1
-	}
-	if thumbHeight > trackHeight {
-		thumbHeight = trackHeight
-	}
-	maxTop := trackHeight - thumbHeight
-	maxScroll := total - visible
-	if maxScroll > 0 {
-		scrollFromTop := maxScroll - min(max(m.scroll, 0), maxScroll)
-		top = scaleScrollbarPosition(scrollFromTop, maxScroll, maxTop)
-	}
-	return
+	visible := max(1, m.messageHeight()-1)
+	fromTop := max(0, total-visible)-m.scroll
+	return scrollbarGeometry(total, visible, m.messageHeight()-2, fromTop)
 }
 
 func (m *model) setScrollFromTrack(trackPosition int) {

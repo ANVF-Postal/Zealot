@@ -34,6 +34,7 @@ type serverClient struct {
 	room      string
 	user      User
 	typing    bool
+	whisperTarget string
 	ephemeral bool
 }
 
@@ -41,6 +42,8 @@ type roomState struct {
 	messages       []Packet
 	clients        map[string]*serverClient
 	historyEnabled bool
+	polls map[string]*pollState
+	pollSequence int
 }
 
 type server struct {
@@ -55,6 +58,7 @@ func newServer() *server {
 func (s *server) room(name string, historyEnabled bool) *roomState {
 	r := &roomState{
 		clients:        make(map[string]*serverClient),
+		polls:          make(map[string]*pollState),
 		historyEnabled: historyEnabled,
 	}
 	s.rooms[name] = r
@@ -123,6 +127,23 @@ func (s *server) systemMessage(
 		Room: roomName,
 		Text: text,
 		Time: time.Now().UTC(),
+	}
+	s.mu.Lock()
+	if room := s.rooms[roomName]; room != nil && room.historyEnabled {
+		room.messages = append(room.messages, packet)
+	}
+	s.mu.Unlock()
+	s.broadcast(roomName, packet)
+}
+
+
+ // colorChangeMessage stores the swatch values as data, not inline terminal
+ // escape codes, so a client can render them safely and history can replay them.
+func (s *server) colorChangeMessage(roomName, name, before, after string) {
+	packet := Packet{
+		ID: nextMessageID(), Type: "system", Room: roomName,
+		Text: fmt.Sprintf("%s changed their color.", name),
+		ColorBefore: before, ColorAfter: after, Time: time.Now().UTC(),
 	}
 	s.mu.Lock()
 	if room := s.rooms[roomName]; room != nil && room.historyEnabled {
@@ -202,11 +223,10 @@ func (s *server) handle(conn net.Conn) {
 	user.Name = uniqueUserName(room, user.Name)
 	client.user = user
 	room.clients[client.id] = client
-	var history []Packet
 	historyEnabled := room.historyEnabled
-	if historyEnabled {
-		history = append([]Packet(nil), room.messages...)
-	}
+	// Poll snapshots are tailored to this client's vote. Active polls are
+	// also introduced to new arrivals when public history is disabled.
+	history := s.personalizePollHistory(room, user.Name, roomName)
 
 	// Hold this client's write lock before releasing the server lock. Any
 	// concurrent broadcast will wait behind the welcome/history sequence,
@@ -295,6 +315,65 @@ func (s *server) handle(conn net.Conn) {
 		}
 
 		switch packet.Type {
+		case "theme_share":
+			s.shareTheme(roomName, client, packet.Theme)
+		case "poll_create":
+			s.createPoll(roomName, client, packet.Text, false)
+		case "multipoll_create":
+			s.createPoll(roomName, client, packet.Text, true)
+		case "poll_vote":
+			s.votePoll(roomName, client, packet.Poll)
+		case "poll_close":
+			s.closePoll(roomName, client, packet.Text)
+
+		case "coinflip":
+			result, err := newCoinflipResult(roomName, client.user)
+			if err != nil {
+				client.send(Packet{Type: "system", Room: roomName, Text: "Coin flip failed: could not obtain secure randomness.", Time: time.Now().UTC()})
+				continue
+			}
+			s.broadcastGameResult(roomName, client, result)
+
+		case "random":
+			result, err := newRandomResult(roomName, client.user, packet.Text)
+			if err != nil {
+				client.send(Packet{Type: "system", Room: roomName, Text: err.Error(), Time: time.Now().UTC()})
+				continue
+			}
+			s.broadcastGameResult(roomName, client, result)
+
+
+		case "roll":
+			result, err := newRollResult(roomName, client.user, packet.Text)
+			if err != nil {
+				client.send(Packet{Type: "system", Room: roomName, Text: err.Error(), Time: time.Now().UTC()})
+				continue
+			}
+			s.broadcastGameResult(roomName, client, result)
+
+		case "whisper_typing":
+			s.setWhisperTyping(roomName, client, packet.WhisperTo, packet.Typing)
+
+		case "whisper":
+			s.setWhisperTyping(roomName, client, "", false)
+			if err := s.sendWhisper(roomName, client, packet.WhisperTo, packet.Text, packet.ReplyTo); err != nil {
+				client.send(Packet{Type: "system", Room: roomName, Text: err.Error(), Time: time.Now().UTC()})
+			}
+			// No broadcast, history, roster update, or public typing event.
+
+		case "fortune":
+			target, valid := s.resolveFortuneTarget(roomName, packet.Text)
+			if !valid {
+				client.send(Packet{Type: "system", Room: roomName, Text: "Usage: /fortune [@user] (user must be online in this room)", Time: time.Now().UTC()})
+				continue
+			}
+			result, err := newFortuneResult(roomName, client.user, target)
+			if err != nil {
+				client.send(Packet{Type: "system", Room: roomName, Text: err.Error(), Time: time.Now().UTC()})
+				continue
+			}
+			s.broadcastGameResult(roomName, client, result)
+
 
 		case "letter":
 			// Letters are one-shot, multiline messages sent by stdin/pipes.
@@ -328,9 +407,22 @@ func (s *server) handle(conn net.Conn) {
 				continue
 			}
 
-			if len([]rune(text)) > maxMessage {
-				runes := []rune(text)
-				text = string(runes[:maxMessage])
+			// The daemon enforces the special type and the corresponding
+			// limit. Other chat messages retain the original 4,000-rune cap.
+			longMessage := packet.Long && !packet.Spoiler
+			spoilerMessage := packet.Spoiler && !packet.Long
+			limit := maxMessage
+			if longMessage {
+				limit = maxLongMessage
+			}
+			if len([]rune(text)) > limit {
+				if !longMessage && !spoilerMessage {
+					// Preserve ordinary chat's existing truncation policy.
+					text = string([]rune(text)[:limit])
+				} else {
+					client.send(Packet{Type: "system", Room: roomName, Text: "Message exceeds its allowed length.", Time: time.Now().UTC()})
+					continue
+				}
 			}
 
 			message := Packet{
@@ -344,6 +436,14 @@ func (s *server) handle(conn net.Conn) {
 				Rainbow:      packet.Rainbow,
 				RainbowPhase: packet.RainbowPhase,
 				XKeyscore:    packet.XKeyscore,
+				Long:         longMessage,
+				Spoiler:      spoilerMessage,
+			}
+			if longMessage || spoilerMessage {
+				// Prevent visual-effect flags from overriding the special
+				// message's hidden/interactive presentation.
+				message.Rainbow = false
+				message.XKeyscore = 0
 			}
 
 			s.mu.Lock()
@@ -375,6 +475,7 @@ func (s *server) handle(conn net.Conn) {
 			s.broadcastRoster(roomName)
 
 		case "rename":
+			s.setWhisperTyping(roomName, client, "", false)
 			requested := strings.TrimSpace(packet.User.Name)
 			if requested == "" || len([]rune(requested)) > 32 || strings.ContainsAny(requested, "\r\n\t") {
 				client.send(Packet{Type: "system", Room: roomName, Text: "Usage: /rename name (1–32 characters).", Time: time.Now().UTC()})
@@ -390,6 +491,22 @@ func (s *server) handle(conn net.Conn) {
 				requested = uniqueUserName(room, requested)
 				room.clients[client.id] = client
 			}
+			// Carry the existing vote across a rename. Otherwise a user
+			// could change their name and count twice in the same poll.
+			var changedPolls []string
+			if room != nil {
+				for _, poll := range room.polls {
+					if choice, voted := poll.votes[strings.ToLower(oldName)]; voted {
+						delete(poll.votes, strings.ToLower(oldName))
+						poll.votes[strings.ToLower(requested)] = choice
+						poll.version++
+						changedPolls = append(changedPolls, poll.id)
+					}
+					if poll.creatorID == client.id {
+						poll.creator = requested
+					}
+				}
+			}
 			// Clear any typing state under the old name before changing identity.
 			wasTyping := client.typing
 			client.typing = false
@@ -402,19 +519,23 @@ func (s *server) handle(conn net.Conn) {
 			s.systemMessage(roomName, fmt.Sprintf("%s is now %s", oldName, requested))
 			client.send(Packet{Type: "identity", Room: roomName, User: client.user})
 			s.broadcastRoster(roomName)
+			for _, id := range changedPolls {
+				s.notifyPoll(roomName, id)
+			}
 
 		case "color":
-			color := strings.TrimSpace(packet.User.Color)
-			if !validUserColor(color) {
-				client.send(Packet{Type: "system", Room: roomName, Text: "Usage: /color #RRGGBB (or an ANSI color number 0–255).", Time: time.Now().UTC()})
+			color, valid := normalizeUserColor(packet.User.Color)
+			if !valid {
+				client.send(Packet{Type: "system", Room: roomName, Text: "Usage: /color [#]RRGGBB (or an ANSI color number 0–255).", Time: time.Now().UTC()})
 				continue
 			}
 			s.mu.Lock()
+			oldColor := client.user.Color
 			client.user.Color = color
 			user = client.user
 			s.mu.Unlock()
 			client.send(Packet{Type: "identity", Room: roomName, User: client.user})
-			s.systemMessage(roomName, fmt.Sprintf("%s changed their color.", user.Name))
+			s.colorChangeMessage(roomName, user.Name, oldColor, color)
 			s.broadcastRoster(roomName)
 
 		case "me":
@@ -487,6 +608,8 @@ func (s *server) handle(conn net.Conn) {
 func (s *server) removeClient(
 	client *serverClient,
 ) {
+	// Notify a private recipient before the sender leaves the room.
+	s.setWhisperTyping(client.room, client, "", false)
 	s.mu.Lock()
 
 	room := s.rooms[client.room]

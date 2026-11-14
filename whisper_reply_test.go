@@ -1,0 +1,347 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"strings"
+	"testing"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+)
+
+func whisperReplyTestPacket(id, sender, recipient, body string) Packet {
+	return Packet{
+		Type: "whisper_result", ID: id, Room: "test",
+		User: User{Name: sender, Color: "#ff3399"},
+		WhisperTo: recipient, Text: body,
+		Time: time.Date(2026, time.January, 2, 15, 4, 0, 0, time.UTC),
+	}
+}
+
+func TestWhisperHoverClickUsesExistingReplyComposer(t *testing.T) {
+	packet := whisperReplyTestPacket("private-target", "Alice", "Postal", "secret message body")
+	m := newMessageInteractionTestModel(100, packet)
+	m.user = User{Name:"Postal"}
+	m.resizeInput()
+	m.input.SetValue("already drafted")
+	bodies := m.messageBodyRanges(packet, m.width)
+	if len(bodies) == 0 || bodies[0].End <= bodies[0].Start {
+		t.Fatalf("whisper body hitbox is missing: %+v", bodies)
+	}
+	left := 0
+	if !narrowBordersHidden(m.width) {left = 1}
+	x, y := left+bodies[0].Start+1, 2
+	if got := m.messageIDAt(x,y); got != packet.ID {
+		t.Fatalf("whisper body hitbox returned %q instead of %q",got,packet.ID)
+	}
+	m.mousePositionKnown = true
+	m.lastMouseX, m.lastMouseY = x, y
+	m.refreshMessageHover()
+	if m.hoveredMessageID != packet.ID {
+		t.Fatalf("whisper failed to hover: got %q",m.hoveredMessageID)
+	}
+	updated, _ := m.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X:x, Y:y})
+	m = updated.(model)
+	if m.replyTargetID != packet.ID || m.input.Value() != "already drafted" {
+		t.Fatalf("whisper click did not use shared reply composer: id=%q draft=%q",m.replyTargetID,m.input.Value())
+	}
+	m.cancelReply()
+	if m.replyTargetID != "" || m.input.Value() != "already drafted" {
+		t.Fatal("cancel reply did not preserve whisper reply draft")
+	}
+}
+
+func TestWhisperReplyRoutesPrivatelyForSenderAndRecipient(t *testing.T) {
+	for _, tc := range []struct{
+		name, currentUser, origin, target, want string
+	}{
+		{"incoming", "Postal", "Alice", "Postal", "Alice"},
+		{"outgoing", "Alice", "Alice", "Postal", "Postal"},
+	} {
+		t.Run(tc.name,func(t *testing.T){
+			parent := whisperReplyTestPacket("whisper-original",tc.origin,tc.target,"initial")
+			m := newMessageInteractionTestModel(100,parent)
+			m.user = User{Name:tc.currentUser}
+			m.room = "test"
+			var out bytes.Buffer
+			m.client = &wireClient{enc:json.NewEncoder(&out)}
+			m.beginReply(parent.ID)
+			if m.replyTargetID != parent.ID {t.Fatal("reply selection failed")}
+			if !m.sendMessage("private answer",m.replyTargetID) {
+				t.Fatal("whisper reply was not sent")
+			}
+			var packet Packet
+			if err := json.NewDecoder(&out).Decode(&packet);err != nil {t.Fatal(err)}
+			if packet.Type!="whisper" || packet.Text!="private answer" ||
+				packet.WhisperTo!="@"+tc.want || packet.ReplyTo!=parent.ID ||
+				packet.Room!="test" {
+				t.Fatalf("reply escaped private routing: %+v",packet)
+			}
+			// The same selected composer must not allow a public message
+			// merely because its content resembles a normal slash command.
+			out.Reset()
+			if !m.sendMessage("/me secret action",m.replyTargetID) {t.Fatal("special draft failed")}
+			if err:=json.NewDecoder(&out).Decode(&packet);err!=nil {t.Fatal(err)}
+			if packet.Type!="whisper" || packet.Text!="/me secret action" {
+				t.Fatalf("slash-like reply escaped into public chat: %+v",packet)
+			}
+		})
+	}
+}
+
+func TestWhisperReplyUsesExistingNavigationMarkers(t *testing.T) {
+	parent := whisperReplyTestPacket("private-parent","Alice","Postal","first secret")
+	reply := whisperReplyTestPacket("private-reply","Postal","Alice","second secret")
+	reply.ReplyTo = parent.ID
+	m := newMessageInteractionTestModel(100,parent,reply)
+	for _, packet := range []Packet{parent,reply} {
+		if got,want:=m.renderPacketLineCount(packet,m.width),len(m.renderPacketLines(packet,m.width));got!=want {
+			t.Fatalf("whisper row count %q = %d; renderer gave %d",packet.ID,got,want)
+		}
+	}
+	parentLines:=strings.Join(m.renderPacketLines(parent,m.width),"\n")
+	replyLines:=strings.Join(m.renderPacketLines(reply,m.width),"\n")
+	if !strings.Contains(stripANSISequences(parentLines),"[1]") ||
+		!strings.Contains(stripANSISequences(replyLines),"[Re]") {
+		t.Fatalf("shared reply markers missing: parent=%q reply=%q",parentLines,replyLines)
+	}
+	parentLinks:=m.messageLinkRanges(parent,m.width)
+	if len(parentLinks)==0 || len(parentLinks[0])==0 || parentLinks[0][0].TargetID!=reply.ID {
+		t.Fatalf("numbered whisper reply link missing: %+v",parentLinks)
+	}
+	replyLinks:=m.messageLinkRanges(reply,m.width)
+	if len(replyLinks)==0 || len(replyLinks[0])==0 || replyLinks[0][0].TargetID!=parent.ID {
+		t.Fatalf("whisper [Re] jump target missing: %+v",replyLinks)
+	}
+	badge := replyLinks[0][0]
+	if got:=m.messageLinkAt(badge.Start+1,3);got!=parent.ID {
+		t.Fatalf("whisper [Re] click target=%q; want %q",got,parent.ID)
+	}
+}
+
+func TestWhisperBodyHitboxesWorkAtCompactWidths(t *testing.T) {
+	for _, width := range []int{20, 32, 48, 49, 80} {
+		p := whisperReplyTestPacket("compact-whisper","Alice","Postal",
+			"this whisper body must remain clickable even when it wraps across the whole screen")
+		m := newMessageInteractionTestModel(width,p)
+		ranges:=m.messageBodyRanges(p,width)
+		if got,want:=len(ranges),len(m.renderPacketLines(p,width));got!=want {
+			t.Fatalf("width=%d: %d hitboxes for %d rendered rows",width,got,want)
+		}
+		found:=false
+		for row,hit:=range ranges {
+			if hit.End <= hit.Start {continue}
+			left:=0
+			if !narrowBordersHidden(width) {left=1}
+			x,y:=left+hit.Start,2+row
+			if y>=2+max(1,m.messageHeight()-1) {continue}
+			if id:=m.messageIDAt(x,y);id!=p.ID {
+				t.Fatalf("width=%d row=%d: body click returned %q",width,row,id)
+			}
+			found=true
+			break
+		}
+		if !found {
+			t.Fatalf("width=%d: no visible whisper body is clickable",width)
+		}
+	}
+}
+
+func TestWhisperReplyMarkerRemainsClickableAfterIncomingAppend(t *testing.T) {
+	// Both participants receive the same private packets but maintain
+	// independent viewport caches. Reproduce the incremental arrival of
+	// Daniel2's "bruh" reply on each client, rather than rebuilding history.
+	for _, name := range []string{"Daniel1", "Daniel2"} {
+		t.Run(name, func(t *testing.T) {
+			parent := whisperReplyTestPacket("whisper-daniel1", "Daniel1", "Daniel2", "hey")
+			reply := whisperReplyTestPacket("whisper-daniel2", "Daniel2", "Daniel1", "bruh")
+			reply.ReplyTo = parent.ID
+			m := newMessageInteractionTestModel(100, parent)
+			m.user.Name = name
+			// Prime the lazy interaction cache before the reply arrives.
+			if link := m.messageLinkRanges(parent, m.width); len(link) == 0 {
+				t.Fatal("initial private message did not have an interaction row")
+			}
+			m.appendMessage(reply)
+			m.renderMessageLines()
+
+			links := m.cachedLinkRangesForMessage(parent.ID, 0)
+			var link messageLinkRange
+			markerRow := -1
+			for row, entries := range links {
+				for _, entry := range entries {
+					if entry.TargetID == reply.ID {
+						link, markerRow = entry, row
+						break
+					}
+				}
+			}
+			if markerRow == -1 {
+				t.Fatalf("%s cannot find clickable [1] reply link", name)
+			}
+			absolute := m.messageRowsByID[parent.ID].Start + markerRow
+			visible := stripANSISequences(m.renderMessageLines()[absolute])
+			cells := []rune(visible)
+			if link.End > len(cells) || string(cells[link.Start:link.End]) != "[1]" {
+				t.Fatalf("%s reply link hitbox does not match displayed marker: row=%q hit=%+v", name, visible, link)
+			}
+			left := 1
+			x, y := left+link.Start+1, 2+markerRow
+			if target := m.messageLinkAt(x, y); target != reply.ID {
+				t.Fatalf("%s clicked [1] but got %q instead of %q", name, target, reply.ID)
+			}
+			updated, _ := m.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: x, Y: y})
+			m = updated.(model)
+			if m.highlightedMessageID != reply.ID {
+				t.Fatalf("%s clicking [1] did not navigate to the reply: selected %q", name, m.highlightedMessageID)
+			}
+		})
+	}
+}
+
+func TestIncomingWhisperReplyUpdatesParentMarkersIncrementally(t *testing.T) {
+	parent := whisperReplyTestPacket("private-live-parent","Alice","Postal","initial whisper")
+	reply := whisperReplyTestPacket("private-live-reply","Postal","Alice","private response")
+	reply.ReplyTo = parent.ID
+	m := newMessageInteractionTestModel(100,parent)
+	originalRows := m.messageRowsByID[parent.ID]
+	m.appendMessage(reply)
+	if got:=m.messageByID[reply.ID].ID; got!=reply.ID {
+		t.Fatalf("new whisper reply was not indexed: %q",got)
+	}
+	replies:=m.repliesFor(parent.ID)
+	if len(replies)!=1 || replies[0]!=reply.ID {
+		t.Fatalf("private reply not connected to parent: %v",replies)
+	}
+	if got:=m.messageRowsByID[parent.ID];got.Start!=originalRows.Start {
+		t.Fatalf("parent whisper was displaced: %+v",got)
+	}
+	if !strings.Contains(stripANSISequences(strings.Join(m.renderPacketLines(parent,m.width),"\n")),"[1]") {
+		t.Fatal("new private reply did not add the shared numbered reply marker")
+	}
+}
+
+func TestWhisperHeadingsAreContextualAndUnpadded(t *testing.T) {
+	parent := whisperReplyTestPacket("context-parent", "Daniel1", "Daniel2", "hello")
+	reply := whisperReplyTestPacket("context-reply", "Daniel2", "Daniel1", "bruh")
+	reply.ReplyTo = parent.ID
+	for _, tc := range []struct {
+		viewer string
+		width int
+		heading string
+	}{
+		{"Daniel1", 100, "Whispered to Daniel2:"},
+		{"Daniel2", 100, "Daniel1 whispers:"},
+		{"Daniel1", 40, "[W] Daniel2:"},
+		{"Daniel2", 40, "[W] Daniel1:"},
+	} {
+		t.Run(tc.viewer+"/"+tc.heading, func(t *testing.T) {
+			m := newMessageInteractionTestModel(tc.width, parent, reply)
+			m.user.Name = tc.viewer
+			// Original private message must have a short, viewer-specific
+			// heading, regardless of the reply markers attached to it.
+			lines := m.renderPacketBaseLines(parent, tc.width)
+			plain := stripANSISequences(strings.Join(lines, "\n"))
+			if !strings.Contains(plain, tc.heading) {
+				t.Fatalf("whisper heading %q missing from %q", tc.heading, plain)
+			}
+			first := stripANSISequences(lines[0])
+			if strings.HasPrefix(first, " ") {
+				t.Fatalf("whisper starts with unwanted padding: %q", first)
+			}
+			if tc.width <= 48 {
+				if !strings.HasPrefix(first, "[W] ") {
+					t.Fatalf("compact whisper did not start with [W]: %q", first)
+				}
+				if got := strings.TrimSpace(stripANSISequences(lines[len(lines)-1])); got != "["+parent.Time.Local().Format("15:04")+"]" {
+					t.Fatalf("compact whisper missing separate timestamp: %q", got)
+				}
+			} else if !strings.HasPrefix(first, "["+parent.Time.Local().Format("15:04")+"] ") {
+				t.Fatalf("wide whisper timestamp is not left-aligned: %q", first)
+			}
+			if got,want := m.renderPacketLineCount(parent,tc.width),len(m.renderPacketLines(parent,tc.width));got!=want {
+				t.Fatalf("whisper cached row count=%d; renderer=%d",got,want)
+			}
+			for _, line := range lines {
+				if width := lipgloss.Width(line);width > chatContentWidth(tc.width) {
+					t.Fatalf("whisper row overflows chat: %d > %d",width,chatContentWidth(tc.width))
+				}
+			}
+		})
+	}
+}
+
+func TestWhisperReplyHitboxesMatchContextualHeader(t *testing.T) {
+	for _, width := range []int{40, 100} {
+		for _, viewer := range []string{"Daniel1", "Daniel2"} {
+			parent := whisperReplyTestPacket("ctx-original","Daniel1","Daniel2","hello")
+			reply := whisperReplyTestPacket("ctx-reply","Daniel2","Daniel1","bruh")
+			reply.ReplyTo = parent.ID
+			m := newMessageInteractionTestModel(width,parent,reply)
+			m.user.Name=viewer
+			m.rebuildMessageCache()
+			badgeRow := -1
+			for row, hits := range m.messageLinkRanges(reply,width) {
+				for _, hit := range hits {
+					if hit.TargetID == parent.ID {
+						badgeRow = row
+						visible := []rune(stripANSISequences(m.renderPacketLines(reply,width)[row]))
+						if hit.End>len(visible) || string(visible[hit.Start:hit.End])!=replyBadgeLabelForWidth(width) {
+							t.Fatalf("width=%d viewer=%s reply badge not aligned: hit=%+v line=%q",width,viewer,hit,string(visible))
+						}
+					}
+				}
+			}
+			if badgeRow < 0 {
+				t.Fatalf("width=%d viewer=%s no reply badge hitbox",width,viewer)
+			}
+			parentLines := m.renderPacketLines(parent,width)
+			parentLinks := m.messageLinkRanges(parent,width)
+			found := false
+			for row,hits := range parentLinks {
+				for _,hit := range hits {
+					if hit.TargetID!=reply.ID {continue}
+					visible:=[]rune(stripANSISequences(parentLines[row]))
+					if hit.End>len(visible) || string(visible[hit.Start:hit.End])!="[1]" {
+						t.Fatalf("width=%d viewer=%s numbered link not aligned: hit=%+v line=%q",width,viewer,hit,string(visible))
+					}
+					found=true
+				}
+			}
+			if !found {t.Fatalf("width=%d viewer=%s [1] missing",width,viewer)}
+		}
+	}
+}
+
+func TestOutgoingWhisperUsesRecipientUsernameColor(t *testing.T) {
+	for _, width := range []int{40, 100} {
+		packet := whisperReplyTestPacket("recipient-color", "Daniel1", "Daniel2", "bruh")
+		packet.User.Color = "#FF3399"
+		m := newMessageInteractionTestModel(width, packet)
+		m.user.Name = "Daniel1"
+		m.onlineUsers = []User{
+			{Name: "Daniel1", Color: "#FF3399"},
+			{Name: "Daniel2", Color: "#11CC88"},
+		}
+		rendered := strings.Join(m.renderPacketBaseLines(packet, width), "\n")
+		recipientStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#11CC88")).
+			Background(m.messageBackground(packet)).Bold(true)
+		if !strings.Contains(rendered, recipientStyle.Render("Daniel2")) {
+			t.Errorf("width %d: outgoing recipient name is not their own color: %q", width, rendered)
+		}
+		senderStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FF3399")).
+			Background(m.messageBackground(packet)).Bold(true)
+		if strings.Contains(rendered, senderStyle.Render("Daniel2")) {
+			t.Errorf("width %d: outgoing recipient was incorrectly colored as the sender", width)
+		}
+		m.user.Name = "Daniel2"
+		rendered = strings.Join(m.renderPacketBaseLines(packet, width), "\n")
+		if !strings.Contains(rendered, senderStyle.Render("Daniel1")) {
+			t.Errorf("width %d: incoming sender lost their username color", width)
+		}
+	}
+}
