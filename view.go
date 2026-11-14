@@ -239,6 +239,9 @@ func (m model) View() tea.View {
 			scrollbarRows[i] = scrollbarStyle.Render(glyph)
 		}
 	}
+	// ChatFX is painted on a copy of the visible chat rows, never the
+	// message cache. Its backdrop has no influence on hit-testing.
+	m.renderChatFXBackground(visible, chatContentWidth(m.width))
 	for i := range visible {
 		visible[i] = truncateANSI(visible[i], chatContentWidth(m.width)) + scrollbarRows[i]
 	}
