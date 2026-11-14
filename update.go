@@ -122,6 +122,10 @@ func (m model) Update(
 		case "poll_result":
 			m.applyPollSnapshot(packet)
 
+		case "fx_state":
+			m.receiveChatFX(packet)
+			if m.fxSalt == 0 { m.fxSalt = uint64(time.Now().UnixNano()) }
+
 		case "message", "system", "me", "letter", "coinflip_result", "random_result", "roll_result", "fortune_result", "whisper_result", "theme_result":
 			m.appendMessage(packet)
 			if (packet.Type == "message" || packet.Type == "whisper_result") && packet.User.Name != m.user.Name {
@@ -226,7 +230,14 @@ func (m model) Update(
 				commands = append(commands, terminalBellCmd())
 			}
 		}
+		if fxCmd := m.ensureChatFXTick(); fxCmd != nil {
+			commands = append(commands, fxCmd)
+		}
 		return m, tea.Batch(commands...)
+	}
+
+	if tick, ok := msg.(chatFXTickMsg); ok {
+		return m, m.advanceChatFX(tick)
 	}
 
 	if _, ok := msg.(usersAnimationMsg); ok {
@@ -1284,7 +1295,8 @@ func (m model) Update(
 
 		case "enter":
 			m.sendCurrentMessage()
-			return m, nil
+			if m.fxSalt == 0 { m.fxSalt = uint64(time.Now().UnixNano()) }
+			return m, m.ensureChatFXTick()
 		}
 	}
 
