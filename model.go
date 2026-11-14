@@ -131,6 +131,16 @@ type model struct {
 	privateTyping map[string]User
 	privateTypingOrder []string
 
+	// Visual effects are an optional, client-rendered chat decoration.
+	fxRoom chatFXState
+	fxLocal chatFXState
+	fxLocalOverride bool
+	fxDisabled bool
+	fxFrame uint64
+	fxSalt uint64
+	fxTickPending bool
+	fxTickGeneration int
+
 	input          textarea.Model
 	inputSelecting bool
 	rainbowMode    bool
