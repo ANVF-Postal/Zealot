@@ -387,12 +387,15 @@ func (m model) Update(
 			}
 			if targets.hasSend && mouse.X >= targets.sendStart && mouse.X < targets.sendEnd {
 				m.sendCurrentMessage()
+				if m.fxSalt == 0 { m.fxSalt = uint64(time.Now().UnixNano()) }
+				fxCmd := m.ensureChatFXTick()
 				m.sendFeedback = true
 				m.sendFeedbackGeneration++
 				generation := m.sendFeedbackGeneration
-				return m, tea.Tick(350*time.Millisecond, func(time.Time) tea.Msg {
+				feedbackCmd := tea.Tick(350*time.Millisecond, func(time.Time) tea.Msg {
 					return sendFeedbackTimeoutMsg{generation: generation}
 				})
+				return m, tea.Batch(feedbackCmd, fxCmd)
 			}
 			if targets.hasPageScroll && mouse.X >= targets.pgUpStart && mouse.X < targets.pgUpEnd {
 				m.scrollPage(true)
