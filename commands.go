@@ -200,6 +200,9 @@ func (m *model) sendMessage(text string, replyTo string) bool {
 		}
 		_ = m.client.send(packet)
 		return true
+	case "/rain", "/stop", "/stopfx", "/disablefx":
+		m.chatFXCommand(strings.ToLower(fields[0]), fields)
+		return false
 	case "/rainbow":
 		if len(fields) != 1 {
 			m.appendMessage(Packet{Type: "system", Text: "Usage: /rainbow", Time: time.Now()})
