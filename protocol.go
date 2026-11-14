@@ -42,6 +42,9 @@ type Packet struct {
 	Room       string    `json:"room,omitempty"`
 	User       User      `json:"user,omitempty"`
 	Text       string    `json:"text,omitempty"`
+	FX string `json:"fx,omitempty"`
+	FXSeconds int `json:"fx_seconds,omitempty"`
+	FXUntil time.Time `json:"fx_until,omitempty"`
 	ColorBefore string `json:"color_before,omitempty"`
 	ColorAfter  string `json:"color_after,omitempty"`
 	FortuneTo  string    `json:"fortune_to,omitempty"`
