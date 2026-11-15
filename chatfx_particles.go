@@ -12,10 +12,11 @@ import (
 // to the next target. No weather-state animation data travels over IPC.
 func rainDensityAt(seconds float64, salt uint64) float64 {
 	if seconds < 0 { seconds = 0 }
-	// Bound lookup work even in an unusually long-running terminal session.
-	seconds = math.Mod(seconds, 3600)
+	// Advance deterministically through variable-length segments. Do not
+	// wrap at a fixed wall-clock interval: that would cause a visible jump
+	// after an hour of continuous weather.
 	previous := 0.65
-	for segment:=uint64(0); segment<128; segment++ {
+	for segment:=uint64(0); segment<65536; segment++ {
 		seed := chatFXHash(salt+segment*0x9e3779b97f4a7c15)
 		target := 0.28 + 0.70*chatFXUnit(seed+1)
 		hold := 30 + 150*chatFXUnit(seed+2)
@@ -61,7 +62,7 @@ func (m model) confettiPositions(width, height int) []map[int]chatFXCell {
 		// Each particle starts above the top border at a staggered time,
 		// then respawns after reaching the bottom of the viewport.
 		period := float64(height+10)/speed + 3
-		start := float64(i)*0.095
+		start := float64(i)*0.055-0.5
 		age := t-start
 		if age < 0 { continue }
 		cycle := math.Floor(age/period)
