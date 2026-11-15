@@ -349,8 +349,27 @@ func aquariumCanEat(f aquariumSwimmer) bool {
 func aquariumSwimmersTouch(a,b aquariumSwimmer) bool {
     aw,bw:=aquariumFishWidth(a),aquariumFishWidth(b)
     ah,bh:=aquariumFishHeight(a),aquariumFishHeight(b)
-    return a.x<b.x+bw && b.x<a.x+aw &&
-        a.y<b.y+bh && b.y<a.y+ah
+    if a.x>=b.x+bw || b.x>=a.x+aw ||
+        a.y>=b.y+bh || b.y>=a.y+ah {return false}
+    // Most species are solid single-row sprites, so their overlapping
+    // bounding boxes already represent a real touch.
+    if a.kind!=aquariumMuskie && b.kind!=aquariumMuskie {return true}
+    // A muskie has large gaps between its fins. Check printed ASCII
+    // cells, so it cannot swallow a fish through empty visual space.
+    left:=max(a.x,b.x)
+    right:=min(a.x+aw,b.x+bw)
+    top:=max(a.y,b.y)
+    bottom:=min(a.y+ah,b.y+bh)
+    artA,artB:=aquariumFishArt(a),aquariumFishArt(b)
+    for y:=top;y<bottom;y++ {
+        rowA,rowB:=[]rune(artA[y-a.y]),[]rune(artB[y-b.y])
+        for x:=left;x<right;x++ {
+            ax,bx:=x-a.x,x-b.x
+            if ax<len(rowA) && bx<len(rowB) &&
+                rowA[ax]!=' ' && rowB[bx]!=' ' {return true}
+        }
+    }
+    return false
 }
 
 func (s *aquariumState) advance(m model,width,height int,seconds float64) {
