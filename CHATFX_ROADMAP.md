@@ -9,7 +9,9 @@ ever cross the Unix socket.
 
 - Background FX is the default. Render only inside the chat viewport, without
   covering message glyphs, selection controls, scrollbars, or click targets.
-- One room-wide **primary** effect at a time. Starting another replaces it.
+- One room-wide **primary** effect at a time. Starting another replaces it as
+  the active emitter; the old effect's airborne particles may briefly overlap
+  while they fall or fade out.
 - A **secondary** effect may coexist with one primary effect, but secondary
   effects should remain individually bounded and opt-out friendly.
 - A local `self` override affects only that client. When it stops, room FX
@@ -36,7 +38,7 @@ ever cross the Unix socket.
 
 ### Stage 2 — Weather and primary-effect control (gentle snow implemented)
 
-- Gentle `/snow [self] [seconds]` with variable intensity and slow horizontal drift
+- Gentle `/snow [self] [seconds]` with variable intensity and slow horizontal drift; tiny dot flakes fall fastest
 - Add `/blizzard` and `/embers`
 - Define primary-effect replace semantics across room and local scopes
 - Add consistent adjustable density and appropriate default motion
@@ -45,8 +47,10 @@ ever cross the Unix socket.
 ### Stage 3 — Brief celebrations (confetti implemented; fireworks pending)
 
 - `/confetti [self] [seconds]`: 10-second default, saturated candy-colored glyphs, rare 3–7-cell vertical streamers, variable speed and gentle sway; stop emission on timeout and allow airborne pieces to clear the viewport
-- Add `/fireworks` with a short default duration
+- `/fireworks [self] [seconds]` with a 10-second default; neutral rising shells,
+  directional orange trails, colorful radial/willow/crackle/peony explosions
 - Permit optional durations and cap particle and flash rates
+- Stop/switch now retires existing particles instead of clearing the chat layer instantly
 - Introduce an accessibility-aware reduced-motion behavior
 
 ### Stage 4 — Secondary effects
