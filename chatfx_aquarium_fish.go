@@ -105,7 +105,13 @@ func aquariumFishArt(f aquariumSwimmer) []string {
         result:=make([]string,len(frame))
         copy(result,frame)
         if f.direction<0 {
-            for i:=range result {result[i]=aquariumMirror(result[i])}
+            // Mirror across the entire multi-line sprite width, not each
+            // row's own width; short fin rows stay attached to the body.
+            fullWidth:=0
+            for _,line:=range result {fullWidth=max(fullWidth,utf8.RuneCountInString(line))}
+            for i,line:=range result {
+                result[i]=aquariumMirror(line+strings.Repeat(" ",fullWidth-utf8.RuneCountInString(line)))
+            }
         }
         return result
     default:return nil
