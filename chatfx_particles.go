@@ -117,10 +117,14 @@ func (m model) snowPositions(width, height int) []map[int]chatFXCell {
 	t := (float64(m.fxSimSteps)+float64(m.fxSimAccumulator)/float64(chatFXSimulationStep))/30
 	intensity := rainDensityAt(t,m.fxSalt^0x5eafc0de)
 	count := max(4,int(float64(min(220,max(10,width*height/28)))*intensity))
-	glyphs := []rune{'*','·','✻','+'}
+	glyphs := []rune{'*','.','✻','+'}
 	for i:=0;i<count;i++ {
 		seed := chatFXHash(uint64(i+1)*0x517cc1b727220a95+m.fxSalt)
-		speed := 0.75+1.9*chatFXUnit(seed+1)
+		// All snow falls a little faster; tiny dots are the quickest,
+		// creating subtle depth without turning snowfall into a storm.
+		glyph := glyphs[int(chatFXHash(seed+7)%uint64(len(glyphs)))]
+		speed := 1.15+2.2*chatFXUnit(seed+1)
+		if glyph == '.' { speed *= 1.65 }
 		startX := chatFXUnit(seed+2)*float64(width)
 		startY := chatFXUnit(seed+3)*float64(height)
 		sway := 0.7+1.3*chatFXUnit(seed+4)
@@ -128,7 +132,6 @@ func (m model) snowPositions(width, height int) []map[int]chatFXCell {
 		x := int(math.Floor(math.Mod(startX+sway*math.Sin(t*frequency+chatFXUnit(seed+6)*6.28)+float64(width),float64(width))))
 		y := int(math.Floor(math.Mod(startY+t*speed,float64(height))))
 		if positions[y]==nil { positions[y]=make(map[int]chatFXCell) }
-		glyph := glyphs[int(chatFXHash(seed+7)%uint64(len(glyphs)))]
 		shade := []string{"#DDF4FF","#BCE6FF","#F4FDFF"}[int(chatFXHash(seed+8)%3)]
 		positions[y][x]=chatFXCell{glyph:glyph,color:shade}
 	}
