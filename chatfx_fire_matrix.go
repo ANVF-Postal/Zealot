@@ -148,20 +148,19 @@ func (f *doomFireState) advance(target uint64,salt uint64) {
 	f.step=target
 }
 
-// doomFireBlend blends two consecutive Doom heat states without increasing
-// the propagation speed. Phase 0 displays the previous field; the following
-// 30 Hz steps (and fractional /fxfps frames) transition toward the new field.
-// The next propagation begins at exactly the previous target, avoiding jumps.
-func (f *doomFireState) heatLevel(i int, fraction float64) uint8 {
-	if f.step<4 || len(f.previous)!=len(f.heat) {
-		return f.heat[i]
-	}
-	phase:=(float64(f.step%4)+fraction)/4
-	if phase<0 {phase=0}
-	if phase>1 {phase=1}
-	old:=float64(f.previous[i])
-	current:=float64(f.heat[i])
-	return uint8(math.Round(old+(current-old)*phase))
+// Interpolate fixed-point heat values without extra grid allocations.
+// A whole propagation takes four 30 Hz ticks; render FPS only chooses how
+// many intermediate states are shown, never how quickly heat advances.
+func doomFireBlend(step uint64, remainder float64) int {
+	if step<4 {return 256}
+	phase:=(float64(step%4)+remainder)*64
+	return max(0,min(256,int(phase)))
+}
+
+func (f *doomFireState) heatLevel(i, blend int) uint8 {
+	if f.step<4 || len(f.previous)!=len(f.heat) {return f.heat[i]}
+	old,current:=int(f.previous[i]),int(f.heat[i])
+	return uint8((old*(256-blend)+current*blend+128)/256)
 }
 
 func (m model) firePositions(width,height int) []map[int]chatFXCell {
@@ -173,11 +172,11 @@ func (m model) firePositions(width,height int) []map[int]chatFXCell {
 		state=newDoomFireState(width,height,m.fxSalt)
 	}
 	state.advance(m.fxSimSteps,m.fxSalt)
-	fraction:=float64(m.fxSimAccumulator)/float64(chatFXSimulationStep)
+	blend:=doomFireBlend(state.step,float64(m.fxSimAccumulator)/float64(chatFXSimulationStep))
 	for y:=0;y<state.height;y++ {
 		row:=height-state.height+y
 		for x:=0;x<width;x++ {
-			level:=state.heatLevel(y*width+x,fraction)
+			level:=state.heatLevel(y*width+x,blend)
 			// Skip the weakest dying heat: fine punctuation should be rare
 			// near flame tips, not a constant cloud across the viewport.
 			if level<5 {continue}
