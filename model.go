@@ -138,6 +138,10 @@ type model struct {
 	fxDisabled bool
 	fxFrame uint64
 	fxSalt uint64
+	fxRenderFPS int
+	fxLastTick time.Time
+	fxSimSteps uint64
+	fxSimAccumulator time.Duration
 	fxTickPending bool
 	fxTickGeneration int
 
