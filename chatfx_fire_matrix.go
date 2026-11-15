@@ -75,7 +75,9 @@ func newDoomFireState(width, height int, salt uint64) *doomFireState {
 // it, so flames bend together instead of jittering independently.
 func fireWind(index uint64, salt uint64) float64 {
 	phase:=2*math.Pi*chatFXUnit(salt+0xf1e5)
-	return math.Sin(float64(index)*0.062+phase)
+	// Let each direction hold for longer; one complete sway lasts about
+	// 33 seconds at the 7.5 Hz heat-step rate.
+	return math.Sin(float64(index)*0.025+phase)
 }
 
 func (f *doomFireState) spread(salt, index uint64) {
@@ -91,7 +93,7 @@ func (f *doomFireState) spread(salt, index uint64) {
 			random:=chatFXHash(salt+index*0x9e3779b97f4a7c15+
 				uint64(y+1)*0xbf58476d1ce4e5b9+uint64(x+1)*0x94d049bb133111eb)
 			// Strong, contiguous fuel near the bottom. Heat thins and cools
-			// progressively as it rises; there is no geometric height cap.
+			// progressively as it rises within the width-aware flame height.
 			decay:=int(random%3)
 			if depth>3 {decay=1+int(random%4)}
 			if depth>7 {decay=2+int(random%5)}
