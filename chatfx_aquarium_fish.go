@@ -30,7 +30,8 @@ type aquariumSwimmer struct {
     length int
     mouthOpen bool
     school bool
-    seed uint64 // individual motion and eel body follow-through
+    seed uint64 // route and movement seed
+    colorSeed uint64 // unique per fish, including members of the same school
     route aquariumRoute
     routePhase float64
     baseY int
@@ -172,7 +173,11 @@ func aquariumMinnowColor(seed uint64) string {
 }
 
 func aquariumFishGlyphColor(f aquariumSwimmer,row,index int,glyph rune) string {
-    if f.kind==aquariumMinnow {return aquariumMinnowColor(f.seed)}
+    if f.kind==aquariumMinnow {
+        seed:=f.colorSeed
+        if seed==0 {seed=f.seed}
+        return aquariumMinnowColor(seed)
+    }
     originalIndex:=index
     if f.direction<0 {originalIndex=aquariumFishWidth(f)-1-index}
     if f.kind==aquariumPike && (glyph=='(' || glyph==')') {
@@ -360,7 +365,8 @@ func aquariumSwimmers(width,height int,seconds float64,salt uint64) []aquariumSw
         if school {speed*=1.2}
         candidate:=aquariumSwimmer{
             kind:kind,direction:direction,length:length,
-            seed:seed,vx:float64(direction)*speed,school:school,
+            seed:seed,colorSeed:chatFXHash(seed+idBase*0x9e3779b97f4a7c15),
+            vx:float64(direction)*speed,school:school,
             baseY:aquariumFishDepth(kind,seed+3,height),
         }
         fw:=aquariumFishWidth(candidate)
