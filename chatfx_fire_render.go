@@ -61,26 +61,15 @@ func (m model) renderDoomFireRows(rows []string, width int) {
 	}
 	state.advance(m.fxSimSteps,m.fxSalt)
 	bgANSI:=doomFireBackgroundANSI(m.cfg.Theme.Background)
-	// The sparse upper layer shares the ANSI renderer, without a full
-	// viewport-sized heat grid or a map of terminal particles.
-	tips:=doomFireTips(state,viewportHeight,m.fxSalt)
-	tipLevels:=make([]uint8,width)
-	for y:=0;y<viewportHeight;y++ {
-		var heatRow []uint8
-		if y<viewportHeight-flameHeight {
-			clear(tipLevels)
-			hasTip:=false
-			for _,tip:=range tips {
-				if tip.y==y {
-					tipLevels[tip.x]=tip.level
-					hasTip=true
-				}
-			}
-			if !hasTip {continue}
-			heatRow=tipLevels
-		} else {
-			heatRow=state.heat[(y-(viewportHeight-flameHeight))*width:]
+	// Render the actual heat grid; the mostly empty upper rows are
+	// skipped without creating additional particles or ANSI fragments.
+	for y:=viewportHeight-flameHeight;y<viewportHeight;y++ {
+		heatRow:=state.heat[(y-(viewportHeight-flameHeight))*width:]
+		hot:=false
+		for _,level:=range heatRow {
+			if level>=5 {hot=true;break}
 		}
+		if !hot {continue}
 		original:=rows[y]
 		// Fast-path ordinary padded rows: avoid stripping ANSI + measuring
 		// and do nothing to existing chat text or mention backgrounds.
