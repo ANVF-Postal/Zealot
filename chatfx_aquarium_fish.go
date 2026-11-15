@@ -363,6 +363,7 @@ func aquariumSwimmers(width,height int,seconds float64,salt uint64) []aquariumSw
             baseY:aquariumFishDepth(kind,seed+3,height),
         }
         fw:=aquariumFishWidth(candidate)
+        if idBase>=100 && idBase<200 {fw=max(14,fw)}
         turns:=1+int(chatFXHash(seed+17)%2)
         if kind==aquariumMuskie {turns=1} // a deliberate sweep and departure
         route:=aquariumMakeRoute(width,fw,direction,speed,seed,turns)
@@ -375,6 +376,15 @@ func aquariumSwimmers(width,height int,seconds float64,salt uint64) []aquariumSw
         phase:=aquariumCycle(clock,period)
         x,heading,active:=aquariumRouteAt(route,phase)
         if !active {return}
+        if idBase>=100 && idBase<200 {
+            // A new individual replaces the last visitor after departure.
+            // Species, markings and depth only change while offscreen.
+            generation:=uint64(int64(cycle)+65537)
+            lifeSeed:=chatFXHash(seed+generation*0x9e3779b97f4a7c15)
+            candidate.kind=aquariumOtherSpecies(lifeSeed)
+            candidate.length=3+int(chatFXHash(lifeSeed+12)%7)
+            candidate.baseY=aquariumFishDepth(candidate.kind,lifeSeed+3,height)
+        }
         candidate.x=int(math.Floor(x))
         candidate.direction=heading
         candidate.vx=float64(heading)*speed
