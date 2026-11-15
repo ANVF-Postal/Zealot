@@ -3,7 +3,6 @@ package main
 import (
     "bytes"
     "encoding/json"
-    "math"
     "reflect"
     "strings"
     "testing"
@@ -203,7 +202,7 @@ func TestAquariumEelBendsTailBetweenRows(t *testing.T) {
         eelVisible:=false
         for _,f:=range fish {
             if f.kind==aquariumEel && f.x>=0 && f.x+aquariumFishWidth(f)<98 {
-                if math.Abs(math.Sin(float64(sec)*0.9+float64(f.id%17)))>0.65 {
+                if f.tailBend!=0 {
                     eelVisible=true
                 }
             }
