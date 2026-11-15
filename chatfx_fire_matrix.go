@@ -70,7 +70,7 @@ func newDoomFireState(width, height int, salt uint64) *doomFireState {
 }
 
 // Give neighboring columns similar but not identical fuel strengths.
- // Long-lived patches make the flame front uneven without isolated sparks.
+// Long-lived patches make the flame front uneven without isolated sparks.
 func doomFireFuel(salt, index uint64, x int) uint8 {
 	patch:=x/5
 	phase:=index/12
@@ -106,7 +106,7 @@ func (f *doomFireState) spread(salt, index uint64) {
 			// Varying fuel strength creates tall tongues beside shorter ones;
 			// no hard height threshold and no artificial ceiling cooling.
 			decay:=int(random%3) // 0..2 heat near the fuel
-			if depth>2 {decay=1+int(random%3)} // 1..3 higher up
+			if depth>2 {decay=1+int((random>>12)%2)} // 1..2 higher up
 			if source<17 {decay++} // fine tips burn out instead of hanging in place
 			heat:=source-decay
 			if heat<=0 {continue}
@@ -118,7 +118,7 @@ func (f *doomFireState) spread(salt, index uint64) {
 				if destX<0 || destX>=w {destX=x}
 			}
 			if uint8(heat)>f.scratch[destX] {f.scratch[destX]=uint8(heat)}
-			if destX!=x {
+			if destX!=x && (random>>16)%3==0 {
 				verticalHeat:=heat-3
 				if verticalHeat>0 && uint8(verticalHeat)>f.scratch[x] {
 					f.scratch[x]=uint8(verticalHeat)
