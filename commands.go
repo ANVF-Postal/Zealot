@@ -39,6 +39,12 @@ func (m *model) sendMessage(text string, replyTo string) bool {
 	if len(fields) == 0 {
 		return false
 	}
+	// ChatFX controls are local actions or dedicated FX packets, never
+	// public text or whisper replies. Handle them before reply routing.
+	if command := strings.ToLower(fields[0]); isChatFXCommand(command) {
+		m.chatFXCommand(command, fields)
+		return false
+	}
 	// Replying to a whisper always stays private, even when the draft
 	// resembles a slash command. Reuse the selected reply target rather
 	// than creating a separate composer or interaction state.
@@ -200,9 +206,6 @@ func (m *model) sendMessage(text string, replyTo string) bool {
 		}
 		_ = m.client.send(packet)
 		return true
-	case "/rain", "/confetti", "/stop", "/stopfx", "/disablefx", "/fxfps":
-		m.chatFXCommand(strings.ToLower(fields[0]), fields)
-		return false
 	case "/rainbow":
 		if len(fields) != 1 {
 			m.appendMessage(Packet{Type: "system", Text: "Usage: /rainbow", Time: time.Now()})
