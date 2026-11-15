@@ -129,7 +129,8 @@ func (m model) snowPositions(width, height int) []map[int]chatFXCell {
 		startY := chatFXUnit(seed+3)*float64(height)
 		sway := 0.7+1.3*chatFXUnit(seed+4)
 		frequency := 0.35+0.45*chatFXUnit(seed+5)
-		x := int(math.Floor(math.Mod(startX+sway*math.Sin(t*frequency+chatFXUnit(seed+6)*6.28)+float64(width),float64(width))))
+		horizontal := startX+sway*math.Sin(t*frequency+chatFXUnit(seed+6)*6.28)
+		x := int(math.Floor(math.Mod(math.Mod(horizontal,float64(width))+float64(width),float64(width))))
 		y := int(math.Floor(math.Mod(startY+t*speed,float64(height))))
 		if positions[y]==nil { positions[y]=make(map[int]chatFXCell) }
 		shade := []string{"#DDF4FF","#BCE6FF","#F4FDFF"}[int(chatFXHash(seed+8)%3)]
