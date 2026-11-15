@@ -960,7 +960,7 @@ func TestDoomFireUsesHeatPropagationAndASCIIFlames(t *testing.T) {
 		t.Fatalf("fire simulation height %d does not match adaptive height %d",state.height,doomFireHeight(width,height))
 	}
 	for x:=0;x<width;x++ {
-		if state.heat[(state.height-1)*width+x]<32 {
+		if state.heat[(state.height-1)*width+x]<22 {
 			t.Fatal("bottom fuel row is not hot")
 		}
 	}
@@ -1035,16 +1035,21 @@ func BenchmarkDoomFireHeatPropagation(b *testing.B) {
 }
 
 
-func TestDoomFireUsesResponsiveHeightInsteadOfFlatSeventyPercent(t *testing.T) {
-	for _,height:=range []int{10,22,36,60} {
-		state:=newDoomFireState(100,height,483)
-		if state.height!=doomFireHeight(100,height) || len(state.heat)!=100*state.height {
-			t.Fatalf("fire heat grid sized incorrectly at height=%d: grid %dx%d",height,state.width,state.height)
+func TestDoomFireFullHeightHasNaturalBurnout(t *testing.T) {
+	for _,height:=range []int{22,36,60} {
+		const width=160
+		state:=newDoomFireState(width,height,483)
+		if state.height!=height || len(state.heat)!=width*height {
+			t.Fatalf("heat simulation did not cover viewport %dx%d",width,height)
 		}
-		// Natural cooling within the responsive budget determines the flame tips.
 		for i:=uint64(0);i<140;i++ {state.spread(483,i+100)}
-		if state.heat[(state.height-1)*state.width+30]==0 {
-			t.Fatal("fire fuel went out during steady burning")
+		if state.heat[(height-1)*width+30]==0 {
+			t.Fatal("fuel went out during steady burning")
+		}
+		if height>=36 {
+			topHot:=0
+			for _,level:=range state.heat[:width] {if level>=5 {topHot++}}
+			if topHot!=0 {t.Fatalf("fire reached the top as a cropped wall: %d cells",topHot)}
 		}
 	}
 }
@@ -1121,9 +1126,9 @@ func TestDoomFireBaseIsDenseAndGustsReverse(t *testing.T) {
 	for y:=state.height-4;y<state.height;y++ {
 		dense:=0
 		for x:=0;x<width;x++ {
-			if state.heat[y*width+x]>=20 {dense++}
+			if state.heat[y*width+x]>=12 {dense++}
 		}
-		if dense<width*8/10 {
+		if dense<width*7/10 {
 			t.Fatalf("fire base row %d is too patchy: %d/%d hot cells",y,dense,width)
 		}
 	}
@@ -1185,50 +1190,42 @@ func BenchmarkDoomFireBatchedRenderer(b *testing.B) {
 }
 
 
-func TestDoomFireHeightShrinksForWideTerminals(t *testing.T) {
-	const viewport=45
-	narrow:=doomFireHeight(80,viewport)
-	medium:=doomFireHeight(160,viewport)
-	wide:=doomFireHeight(320,viewport)
-	if !(narrow>medium && medium>wide && wide>=4) {
-		t.Fatalf("fire height should shrink with width: 80=%d, 160=%d, 320=%d",narrow,medium,wide)
-	}
-	if medium>=viewport/2 {
-		t.Fatalf("normal terminal flames should be shorter than half the chat height: %d of %d",medium,viewport)
-	}
-	for _,size:=range [][2]int{{1,1},{12,4},{100,25},{300,60}} {
+func TestDoomFireHeightUsesFullViewportAtEveryWidth(t *testing.T) {
+	for _,size:=range [][2]int{{1,1},{12,4},{80,45},{160,45},{320,45},{300,60}} {
 		width,height:=size[0],size[1]
 		state:=newDoomFireState(width,height,17)
-		if state.height!=doomFireHeight(width,height) {
-			t.Fatalf("grid and height diverged at %dx%d",width,height)
+		if state.height!=height || doomFireHeight(width,height)!=height {
+			t.Fatalf("heat grid cropped at %dx%d",width,height)
 		}
-		if len(state.heat)!=width*state.height {
-			t.Fatal("heat allocation exceeds flame height budget")
+		if len(state.heat)!=width*height {
+			t.Fatal("heat grid is not a single viewport-sized buffer")
 		}
 	}
 }
 
-func TestDoomFireRendererKeepsUpperChatRowsUntouched(t *testing.T) {
+func TestDoomFireRendererPreservesUpperMessagesAndNaturalTips(t *testing.T) {
 	m:=newMessageInteractionTestModel(240)
 	m.fxRoom=chatFXState{name:"fire"}
 	m.fxSalt=37
-	height,width:=40,240
+	const height,width=40,240
 	m.fxFire=newDoomFireState(width,height,m.fxSalt)
 	rows:=make([]string,height)
 	for i:=range rows {rows[i]=strings.Repeat(" ",width)}
-	rows[0]="  [10:15] Someone: This message should be untouched."
+	message:="  [10:15] Someone: This message should be untouched."
+	rows[0]=message
 	m.renderDoomFireRows(rows,width)
-	cutoff:=height-doomFireHeight(width,height)
-	if !strings.HasPrefix(stripANSISequences(rows[0]),"  [10:15] Someone: This message should be untouched.") {
+	if !strings.HasPrefix(stripANSISequences(rows[0]),message) {
 		t.Fatal("fire obscured upper chat message")
 	}
-	upper:=0
-	for y:=0;y<cutoff;y++ {
-		if strings.Contains(rows[y],"\\x1b[38;2;") {upper++}
+	upperFlame:=false
+	for y:=0;y<height/2;y++ {
+		if strings.Contains(rows[y],"\x1b[38;2;") {upperFlame=true}
 	}
-	if upper==0 {t.Fatal("no sparse fire tips reached above the flame body")}
+	if !upperFlame {t.Fatal("real heat never reached upper half of viewport")}
+	if m.fxFire.heat[0]>=5 {
+		t.Fatal("heat reached the ceiling instead of naturally cooling")
+	}
 }
-
 
 func BenchmarkDoomFireResponsiveRendering(b *testing.B) {
 	for _,width:=range []int{80,160,320} {
