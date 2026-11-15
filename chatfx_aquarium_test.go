@@ -75,8 +75,15 @@ func TestAquariumSpeciesUseRequestedASCII(t *testing.T) {
             }
         }
         f.direction=-1
+        f.mouthOpen=false
         if reversed:=aquariumFishArt(f)[0];reversed!=aquariumMirror(art[0]) {
-            t.Fatalf("species %d wasn't mirrored correctly",tc.kind)
+            t.Fatalf("species %d closed-mouth pose wasn't mirrored correctly: got %q, want %q",tc.kind,reversed,aquariumMirror(art[0]))
+        }
+        if tc.open!="" {
+            f.mouthOpen=true
+            if reversed:=aquariumFishArt(f)[0];reversed!=aquariumMirror(tc.open) {
+                t.Fatalf("species %d open-mouth pose wasn't mirrored correctly: got %q, want %q",tc.kind,reversed,aquariumMirror(tc.open))
+            }
         }
     }
     for _,mouth:=range []bool{false,true} {
