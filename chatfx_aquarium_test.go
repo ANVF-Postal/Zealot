@@ -52,6 +52,66 @@ func TestAquariumUsesDeterministic30HzClock(t *testing.T) {
     }
 }
 
+func TestAquariumFishSpeciesAreDistinctAndDirectional(t *testing.T) {
+    if len(aquariumSpecies)<4 {t.Fatal("expected several fish species")}
+    shapes:=map[string]bool{}
+    speeds:=map[float64]bool{}
+    for _,species:=range aquariumSpecies {
+        if len(species.left)<3 || len(species.right)<3 ||
+            species.left[0]!='<' || species.right[len(species.right)-1]!='>' {
+            t.Fatalf("invalid directional fish: %+v",species)
+        }
+        if len(species.left)!=len(species.right) {t.Fatal("species changes width when turning")}
+        if shapes[species.left] || shapes[species.right] {
+            t.Fatalf("duplicated species shape: %+v",species)
+        }
+        shapes[species.left]=true
+        shapes[species.right]=true
+        speeds[species.speed]=true
+        if aquariumFishShape(species,-1)!=species.left || aquariumFishShape(species,1)!=species.right {
+            t.Fatal("fish direction selection failed")
+        }
+    }
+    if len(speeds)<4 {t.Fatalf("species speeds insufficiently varied: %d",len(speeds))}
+}
+
+func TestAquariumSchoolsHaveDistinctTravelAndRestWindows(t *testing.T) {
+    phase,active:=aquariumSchoolPhase(4,0,12,18)
+    if !active || phase!=4 {t.Fatalf("school absent during crossing: %v, %.1f",active,phase)}
+    if _,active:=aquariumSchoolPhase(16,0,12,18);active {
+        t.Fatal("school did not leave for its resting interval")
+    }
+    if phase,active:=aquariumSchoolPhase(34,0,12,18);!active || phase!=4 {
+        t.Fatalf("school did not re-enter after rest: %v, %.1f",active,phase)
+    }
+    if _,active:=aquariumSchoolPhase(0,17,12,18);active {
+        t.Fatal("offset school appeared during its inactive interval")
+    }
+}
+
+func TestAquariumSchoolsOccasionallyCrossWithoutRemainingPermanent(t *testing.T) {
+    m:=newMessageInteractionTestModel(130)
+    m.fxRoom=chatFXState{name:"aquarium"}
+    m.fxSalt=177
+    // School fish are coloured the same as individuals, but the number
+    // of visible fish (particularly on long paths) should vary with time.
+    populations:=map[int]bool{}
+    for second:=0;second<160;second+=4 {
+        m.fxSimSteps=uint64(second*30)
+        rows:=m.aquariumPositions(128,32)
+        heads:=0
+        for _,row:=range rows {
+            for _,cell:=range row {
+                if cell.glyph=='<' || cell.glyph=='>' {heads++}
+            }
+        }
+        populations[heads]=true
+    }
+    if len(populations)<3 {
+        t.Fatalf("schools never entered or exited: observed %d fish populations",len(populations))
+    }
+}
+
 func TestAquariumKelpAnchorsAndLengthsVary(t *testing.T) {
     m:=newMessageInteractionTestModel(180)
     m.fxRoom=chatFXState{name:"aquarium"}
