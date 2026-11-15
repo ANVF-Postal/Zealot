@@ -33,6 +33,8 @@ type aquariumSwimmer struct {
     stripePhase int // legacy field; stripes are now permanent
     tailBend int // retained for compatibility with older aquarium tests
     seed uint64 // individual motion and eel body follow-through
+    route aquariumRoute
+    routePhase float64
 }
 
 type aquariumChomp struct {
@@ -227,143 +229,205 @@ func aquariumFishDepth(kind aquariumKind,seed uint64,height int) int {
     }
 }
 
-// Solitary fish endlessly cruise, while schools make complete crossings with
-// rest windows. Every individual has a stable identity per crossing, allowing
-// an eaten fish to disappear without disturbing the other swimmers.
+// Every fish has a self-contained journey: enter, roam, turn at one or two
+// personal waypoints, leave the screen and spend time away. Crucially this
+// path is continuous; the sprite never teleports when it changes heading.
+type aquariumRoute struct {
+    points [4]float64
+    count int
+    speed float64
+    pause float64
+    travel float64
+}
+
+func aquariumMakeRoute(width,fishWidth int,initialDirection int,speed float64,seed uint64,turns int) aquariumRoute {
+    r:=aquariumRoute{speed:speed,pause:0.4+1.6*chatFXUnit(seed+21)}
+    if initialDirection>0 {
+        r.points=[4]float64{-float64(fishWidth+3),
+            float64(width)*(0.60+0.22*chatFXUnit(seed+22)),
+            float64(width)*(0.18+0.22*chatFXUnit(seed+23)),
+            float64(width+3)}
+    } else {
+        r.points=[4]float64{float64(width+3),
+            float64(width)*(0.18+0.22*chatFXUnit(seed+22)),
+            float64(width)*(0.60+0.22*chatFXUnit(seed+23)),
+            -float64(fishWidth+3)}
+    }
+    if turns<1 {turns=1}
+    if turns>2 {turns=2}
+    r.count=turns+2
+    if turns==1 {r.points[2]=r.points[0]}
+    for i:=0;i<r.count-1;i++ {
+        r.travel+=math.Abs(r.points[i+1]-r.points[i])/speed
+        if i<r.count-2 {r.travel+=r.pause}
+    }
+    return r
+}
+
+func aquariumRouteAt(r aquariumRoute,phase float64) (float64,int,bool) {
+    if r.count<2 || r.speed<=0 || phase<0 || phase>=r.travel {return 0,1,false}
+    for i:=0;i<r.count-1;i++ {
+        from,to:=r.points[i],r.points[i+1]
+        duration:=math.Abs(to-from)/r.speed
+        dir:=1
+        if to<from {dir=-1}
+        if phase<duration {
+            return from+float64(dir)*phase*r.speed,dir,true
+        }
+        phase-=duration
+        if i<r.count-2 {
+            if phase<r.pause {return to,-dir,true} // fish pauses before turning
+            phase-=r.pause
+        }
+    }
+    return r.points[r.count-1],1,false
+}
+
+func aquariumOtherSpecies(seed uint64) aquariumKind {
+    value:=chatFXUnit(seed)
+    switch {
+    case value<0.15:return aquariumPike
+    case value<0.34:return aquariumPerch
+    case value<0.60:return aquariumBluegill
+    case value<0.78:return aquariumLargemouth
+    case value<0.91:return aquariumCute
+    default:return aquariumWalleye
+    }
+}
+
+func aquariumFishRest(kind aquariumKind,seed uint64) float64 {
+    switch kind {
+    case aquariumMinnow:return 3+8*chatFXUnit(seed+33)
+    case aquariumPerch:return 22+31*chatFXUnit(seed+33)
+    case aquariumWalleye:return 36+42*chatFXUnit(seed+33)
+    case aquariumEel:return 220+80*chatFXUnit(seed+33)
+    case aquariumMuskie:return 1150+300*chatFXUnit(seed+33)
+    default:return 12+25*chatFXUnit(seed+33)
+    }
+}
+
+func aquariumFishY(f aquariumSwimmer,seconds float64,height int) int {
+    if f.kind==aquariumMuskie {return max(0,min(height-5,f.y))}
+    base:=f.y
+    seed:=f.seed
+    switch f.kind {
+    case aquariumMinnow:
+        base+=int(math.Round(1.4*math.Sin(seconds*0.95+chatFXUnit(seed+1)*6.283)))
+    case aquariumPike:
+        base+=int(math.Round(0.65*math.Sin(seconds*0.21+chatFXUnit(seed+2)*6.283)))
+    case aquariumPerch:
+        base+=int(math.Round(0.8*math.Sin(seconds*0.48+chatFXUnit(seed+3)*6.283)))
+    case aquariumBluegill:
+        base+=int(math.Round(1.3*math.Sin(seconds*0.37+chatFXUnit(seed+4)*6.283)))
+    case aquariumLargemouth:
+        base+=int(math.Round(0.5*math.Sin(seconds*0.26+chatFXUnit(seed+5)*6.283)))
+    case aquariumWalleye:
+        base+=int(math.Round(0.7*math.Sin(seconds*0.19+chatFXUnit(seed+6)*6.283)))
+    case aquariumCute:
+        base+=int(math.Round(2.4*math.Sin(seconds*0.83+chatFXUnit(seed+7)*6.283)))
+    case aquariumEel:
+        base+=int(math.Round(3.0*math.Sin(seconds*0.28+chatFXUnit(seed+8)*6.283)+
+            0.9*math.Sin(seconds*0.51+chatFXUnit(seed+9)*6.283)))
+    }
+    switch f.kind {
+    case aquariumLargemouth:
+        return max(0,min(max(1,height/4),base))
+    case aquariumWalleye:
+        return max(height*2/3,min(height-2,base))
+    default:
+        return max(0,min(height-2,base))
+    }
+}
+
+// The number of minnow slots scales with the viewport, and schools contain
+// minnows almost exclusively. Large predators are deliberately infrequent.
 func aquariumSwimmers(width,height int,seconds float64,salt uint64) []aquariumSwimmer {
     if width<8 || height<3 {return nil}
-    count:=min(11,max(5,width*height/650))
-    if height<8 {count=3}
-    swimmers:=make([]aquariumSwimmer,0,count+20)
-    for i:=0;i<count;i++ {
-        seed:=chatFXHash(salt+uint64(i+1)*0x94d049bb133111eb+0xf15a)
-        kind:=aquariumFishWeight(seed+6)
+    minnowCount:=min(46,max(14,width*height/230))
+    otherCount:=min(9,max(3,width*height/1150))
+    if height<8 {minnowCount=5;otherCount=1}
+    swimmers:=make([]aquariumSwimmer,0,minnowCount+otherCount+32)
+
+    add:=func(idBase uint64,kind aquariumKind,seed uint64,school bool,member int) {
         direction:=1
         if chatFXHash(seed+8)%2==0 {direction=-1}
         length:=3+int(chatFXHash(seed+12)%7)
+        if kind==aquariumEel {length=11+int(chatFXHash(seed+12)%11)}
         speed:=aquariumFishSpeed(kind,seed+1)
-        candidate:=aquariumSwimmer{kind:kind,direction:direction,length:length,vx:float64(direction)*speed}
-        widthFish:=aquariumFishWidth(candidate)
-        span:=float64(width+widthFish+6)
-        offset:=chatFXUnit(seed+2)*span
-        distance:=aquariumCycle(offset+seconds*speed,span)
-        if kind==aquariumWalleye {
-            // Nocturnal walleye cross quickly, then remain away for a while.
-            travel:=span/speed
-            rest:=10+18*chatFXUnit(seed+14)
-            activeSeconds:=seconds+offset/speed
-            phase:=aquariumCycle(activeSeconds,travel+rest)
-            if phase>=travel {continue}
-            distance=phase*speed
-            candidate.id=(uint64(i+1)<<32)|uint64(math.Floor(activeSeconds/(travel+rest))+1)
+        if kind==aquariumEel {speed*=1.5}
+        if kind==aquariumMuskie {speed*=3.2}
+        if school {speed*=1.2}
+        candidate:=aquariumSwimmer{
+            kind:kind,direction:direction,length:length,
+            seed:seed,vx:float64(direction)*speed,school:school,
+            y:aquariumFishDepth(kind,seed+3,height),
         }
-        x:=-widthFish-2+int(math.Floor(distance))
-        if direction<0 {x=width+2-int(math.Floor(distance))}
-        y:=aquariumFishDepth(kind,seed+3,height)
-        if kind!=aquariumLargemouth && kind!=aquariumWalleye {
-            y+=int(math.Round(math.Sin(seconds*0.58+chatFXUnit(seed+4)*6.28)*0.8))
+        fw:=aquariumFishWidth(candidate)
+        turns:=1+int(chatFXHash(seed+17)%2)
+        if kind==aquariumMuskie {turns=1} // a deliberate sweep and departure
+        route:=aquariumMakeRoute(width,fw,direction,speed,seed,turns)
+        rest:=aquariumFishRest(kind,seed)
+        period:=route.travel+rest
+        initialOffset:=chatFXUnit(seed+16)*period
+        if school {initialOffset-=float64(member)*float64(fw+3)/speed}
+        clock:=seconds+initialOffset
+        cycle:=math.Floor(clock/period)
+        phase:=aquariumCycle(clock,period)
+        x,heading,active:=aquariumRouteAt(route,phase)
+        if !active {return}
+        candidate.x=int(math.Floor(x))
+        candidate.direction=heading
+        candidate.vx=float64(heading)*speed
+        candidate.id=(idBase<<32)|uint64(int64(cycle)+1+65536)
+        candidate.mouthOpen=kind==aquariumPerch &&
+            aquariumCycle(seconds+chatFXUnit(seed+13)*6,5.4)<1.4
+        if kind==aquariumMuskie {
+            candidate.mouthOpen=aquariumCycle(seconds+chatFXUnit(seed+24)*3,3.8)<1.8
         }
-        if kind==aquariumCute {
-            // The cheerful oddball zigzags and briefly darts between plants.
-            x+=int(math.Round(2.8*math.Sin(seconds*1.05+chatFXUnit(seed+9)*6.28)))
-            y+=int(math.Round(1.4*math.Sin(seconds*0.92+chatFXUnit(seed+10)*6.28)))
-        }
-        y=max(0,min(height-2,y))
-        candidate.x,candidate.y=x,y
-        candidate.stripePhase=int(math.Floor(seconds*1.45))%2
-        // Perch frequently inspect passing fish with an open mouth.
-        candidate.mouthOpen=kind==aquariumPerch && aquariumCycle(seconds+chatFXUnit(seed+13)*5,5.2)<1.8
-        if kind!=aquariumWalleye {
-            candidate.id=(uint64(i+1)<<32)|uint64(math.Floor((offset+seconds*speed)/span)+1)
-        }
+        candidate.y=aquariumFishY(candidate,seconds,height)
+        candidate.route=route
+        candidate.routePhase=phase
         swimmers=append(swimmers,candidate)
     }
 
-    // Temporary schools: small fish arrive as staggered groups, cross
-    // together, then vanish for a quiet spell before the next crossing.
+    for i:=0;i<minnowCount;i++ {
+        seed:=chatFXHash(salt+uint64(i+1)*0x94d049bb133111eb+0xf15a)
+        add(uint64(i+1),aquariumMinnow,seed,false,0)
+    }
+    for i:=0;i<otherCount;i++ {
+        seed:=chatFXHash(salt+uint64(i+1)*0x5274a122ab9038bd+0x2917)
+        add(uint64(100+i),aquariumOtherSpecies(seed+6),seed,false,0)
+    }
+
+    // School visits are shared journeys, not permanent groups. A common
+    // seed keeps their heading and route aligned, with staggered arrivals.
     schoolCount:=min(3,max(1,width/75))
     if height<9 || width<27 {schoolCount=0}
     for school:=0;school<schoolCount;school++ {
         seed:=chatFXHash(salt+uint64(school+1)*0x517cc1b727220a95+0x5c4001)
-        species:=[]aquariumKind{aquariumBluegill,aquariumPerch,aquariumCute}[int(chatFXHash(seed+2)%3)]
-        direction:=1
-        if chatFXHash(seed+3)%2==0 {direction=-1}
-        groupSize:=3+int(chatFXHash(seed+4)%3)
-        speed:=aquariumFishSpeed(species,seed+5)*1.12
-        sample:=aquariumSwimmer{kind:species,direction:direction,length:5}
-        fishWidth:=aquariumFishWidth(sample)
-        spacing:=float64(fishWidth+3)
-        crossing:=float64(width+2*fishWidth+6)+float64(groupSize-1)*spacing
-        travel:=crossing/speed
-        rest:=17+29*chatFXUnit(seed+6)
-        offset:=chatFXUnit(seed+7)*(travel+rest)
-        cycle:=math.Floor((seconds+offset)/(travel+rest))
-        phase:=aquariumCycle(seconds+offset,travel+rest)
-        if phase>=travel {continue}
-        baseY:=aquariumFishDepth(species,seed+8,height)
-        for member:=0;member<groupSize;member++ {
-            distance:=phase*speed-float64(member)*spacing
-            x:=-fishWidth-2+int(math.Floor(distance))
-            if direction<0 {x=width+2-int(math.Floor(distance))}
-            y:=max(0,min(height-2,baseY+(member%3-1)*2))
-            candidate:=aquariumSwimmer{
-                id:(uint64(100+school*8+member)<<32)|uint64(cycle+1),
-                kind:species,direction:direction,length:5,
-                x:x,y:y,vx:float64(direction)*speed,school:true,
+        members:=5+int(chatFXHash(seed+4)%5)
+        schoolKind:=aquariumMinnow
+        if chatFXUnit(seed+18)>0.92 {schoolKind=aquariumBluegill}
+        for member:=0;member<members;member++ {
+            // Distinct identities, staggered timing, shared depth and course.
+            add(uint64(200+school*16+member),schoolKind,seed,true,member)
+            if len(swimmers)>0 {
+                f:=&swimmers[len(swimmers)-1]
+                if f.school && f.id>>32==uint64(200+school*16+member) {
+                    f.y=max(0,min(height-2,f.y+(member%3-1)*2))
+                }
             }
-            candidate.mouthOpen=species==aquariumPerch &&
-                aquariumCycle(seconds+float64(member)*0.6,5)<1.4
-            swimmers=append(swimmers,candidate)
         }
     }
 
-    // Rare visitors have long inactive periods and complete off-screen
-    // crossings. Eels undulate; muskies use the user's full five-line art.
-    rare:=[]struct{
-        kind aquariumKind
-        rest float64
-        seed uint64
-    }{
-        {aquariumEel,240,0xe311},
-        {aquariumMuskie,1200,0xa115},
+    // Eels and muskies are rare enough to be an event, not tank residents.
+    if width>=30 && height>=8 {
+        seed:=chatFXHash(salt+0xe311)
+        add(500,aquariumEel,seed,false,0)
     }
-    for _,visitor:=range rare {
-        if visitor.kind==aquariumMuskie && (width<45 || height<11) {continue}
-        if visitor.kind==aquariumEel && (width<30 || height<8) {continue}
-        seed:=chatFXHash(salt+visitor.seed)
-        kind:=visitor.kind
-        direction:=1
-        if chatFXHash(seed+3)%2==0 {direction=-1}
-        length:=11+int(chatFXHash(seed+4)%11)
-        fish:=aquariumSwimmer{kind:kind,direction:direction,length:length}
-        fw:=aquariumFishWidth(fish)
-        speed:=aquariumFishSpeed(kind,seed+1)
-        if kind==aquariumEel {speed*=1.35}
-        if kind==aquariumMuskie {speed*=3.0}
-        travel:=float64(width+fw+8)/speed
-        // Offset within the inactive period makes appearance unpredictable,
-        // with longer pauses for the unusually large muskie.
-        offset:=chatFXUnit(seed+2)*visitor.rest
-        cycle:=math.Floor((seconds+offset)/(travel+visitor.rest))
-        phase:=aquariumCycle(seconds+offset,travel+visitor.rest)
-        if phase>=travel {continue}
-        distance:=phase*speed
-        x:=-fw-4+int(math.Floor(distance))
-        if direction<0 {x=width+4-int(math.Floor(distance))}
-        fish.id=((uint64(500)+uint64(kind))<<32)|uint64(cycle+1)
-        fish.x,fish.y=x,aquariumFishDepth(kind,seed+5,height)
-        if kind==aquariumEel {
-            // The head changes depth; the rear body trails behind the turn.
-            wave:=seconds*0.40+chatFXUnit(seed+6)*2*math.Pi
-            fish.y+=int(math.Round(2.2*math.Sin(wave)))
-            fish.y=max(1,min(height-3,fish.y))
-            vertical:=math.Cos(wave)
-            if vertical>0.2 {fish.tailBend=-1}
-            if vertical< -0.2 {fish.tailBend=1}
-        }
-        fish.vx=float64(direction)*speed
-        fish.mouthOpen=kind==aquariumMuskie && aquariumCycle(seconds,3.8)<1.8
-        swimmers=append(swimmers,fish)
+    if width>=45 && height>=11 {
+        seed:=chatFXHash(salt+0xa115)
+        add(501,aquariumMuskie,seed,false,0)
     }
     return swimmers
 }
