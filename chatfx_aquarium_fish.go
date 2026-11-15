@@ -31,6 +31,7 @@ type aquariumSwimmer struct {
     school bool
     stripePhase int
     tailBend int
+}
 
 type aquariumChomp struct {
     x,y int
