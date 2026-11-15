@@ -13,6 +13,13 @@ type bubbleParticle struct {
     radius float64 // vertical cell radius
     age,lifetime float64
     color [3]int
+    wobble float64 // gentle springy deformation after collision
+}
+
+type bubblePop struct {
+    x,y float64
+    age float64
+    color [3]int
 }
 
 type bubbleState struct {
@@ -21,6 +28,7 @@ type bubbleState struct {
     steps uint64
     serial uint64
     bubbles []bubbleParticle
+    pops []bubblePop
 }
 
 func bubbleCapacity(width,height int) int {
@@ -52,6 +60,7 @@ func (s *bubbleState) resize(width,height int) {
         kept=append(kept,b)
     }
     s.bubbles=kept
+    s.pops=nil // discard old viewport-space bursts on resize
     s.width,s.height=width,height
     capacity:=bubbleCapacity(width,height)
     if len(s.bubbles)>capacity {s.bubbles=s.bubbles[:capacity]}
@@ -64,12 +73,15 @@ func (s *bubbleState) spawn() {
     maxRadius:=math.Min(6.5,math.Min(float64(s.width)/5,float64(s.height)/2.8))
     if maxRadius<2.2 {return}
     radius:=2.2+(maxRadius-2.2)*chatFXUnit(seed+1)
-    // Keep whole bubbles inside their boundaries, with correct terminal
-    // aspect ratio. Reject crowded positions rather than spawning overlaps.
-    for attempt:=uint64(0);attempt<28;attempt++ {
+    // Bubbles enter from the lower-right, then carry up-left momentum.
+    // Broaden the launch area as it fills, avoiding a pile-up in the corner.
+    for attempt:=uint64(0);attempt<36;attempt++ {
         value:=chatFXHash(seed+attempt*0x9e3779b97f4a7c15)
-        x:=radius*2+(float64(s.width)-radius*4)*chatFXUnit(value+2)
-        y:=radius+(float64(s.height)-radius*2)*chatFXUnit(value+3)
+        spread:=math.Min(0.85,0.18+float64(len(s.bubbles))*0.024)
+        x:=float64(s.width)-radius*2-
+            (float64(s.width)-radius*4)*spread*chatFXUnit(value+2)
+        y:=float64(s.height)-radius-
+            (float64(s.height)-radius*2)*spread*chatFXUnit(value+3)
         clear:=true
         for _,other:=range s.bubbles {
             dx:=(x-other.x)*0.5
@@ -80,11 +92,12 @@ func (s *bubbleState) spawn() {
             }
         }
         if !clear {continue}
-        angle:=chatFXUnit(value+4)*2*math.Pi
-        speed:=0.7+1.6*chatFXUnit(value+5)
+        speed:=1.0+1.5*chatFXUnit(value+5)
+        vx:=-(1.6+1.2*chatFXUnit(value+4))*speed
+        vy:=-(0.55+0.8*chatFXUnit(value+9))*speed
         red,green,blue:=hsvToRGB(chatFXUnit(value+6),0.55+0.35*chatFXUnit(value+7),0.90)
         s.bubbles=append(s.bubbles,bubbleParticle{
-            x:x,y:y,vx:2*speed*math.Cos(angle),vy:speed*math.Sin(angle),
+            x:x,y:y,vx:vx,vy:vy,
             radius:radius,age:0,
             lifetime:11+23*chatFXUnit(value+8),
             color:[3]int{red,green,blue},
@@ -97,10 +110,23 @@ func (s *bubbleState) tick() {
     if s.width<8 || s.height<5 {return}
     s.steps++
     dt:=bubbleStepSeconds
+    // Short ASCII bursts survive the instantaneous disappearance of a bubble.
+    pops:=s.pops[:0]
+    for _,p:=range s.pops {
+        p.age+=dt
+        if p.age<0.65 {pops=append(pops,p)}
+    }
+    s.pops=pops
     alive:=s.bubbles[:0]
     for _,bubble:=range s.bubbles {
         bubble.age+=dt
-        if bubble.age>=bubble.lifetime {continue} // occasional natural pop
+        if bubble.age>=bubble.lifetime {
+            if len(s.pops)<bubbleMaximum {
+                s.pops=append(s.pops,bubblePop{x:bubble.x,y:bubble.y,color:bubble.color})
+            }
+            continue // immediate pop: the sphere is gone this frame
+        }
+        bubble.wobble*=0.965
         bubble.x+=bubble.vx*dt
         bubble.y+=bubble.vy*dt
         minX,maxX:=bubble.radius*2,float64(s.width)-bubble.radius*2
@@ -133,6 +159,8 @@ func (s *bubbleState) tick() {
             // Equal-mass impulse along the collision normal.
             approach:=((b.vx-a.vx)*0.5)*nx+(b.vy-a.vy)*ny
             if approach<0 {
+                a.wobble=math.Min(0.20,a.wobble+0.07)
+                b.wobble=math.Min(0.20,b.wobble+0.07)
                 impulse:=-approach*0.97
                 a.vx-=2*impulse*nx
                 a.vy-=impulse*ny
