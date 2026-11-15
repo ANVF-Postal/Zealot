@@ -67,20 +67,19 @@ func aquariumMirror(line string) string {
 }
 
 var aquariumMuskieClosed=[...]string{
-    "|\           |\\",
-    "\\ \\____^_____| \\______\\  ^",
-    " |                     --O-\\",
-    "/ /===================-----/",
-    "|/",
+    `|\           |\`,
+    `\ \____^_____| \______\  ^`,
+    ` |                     --O-\`,
+    `/ /===================-----/`,
+    `|/`,
 }
 var aquariumMuskieOpen=[...]string{
-    "|\           |\\",
-    "\\ \\____^_____| \\______\\  V",
-    " |                     --O-/",
-    "/ /===================-----\\",
-    "|/",
+    `|\           |\`,
+    `\ \____^_____| \______\  V`,
+    ` |                     --O-/`,
+    `/ /===================-----\`,
+    `|/`,
 }
-
 // Natural variation in pike and walleye length keeps their elongated forms
 // recognisable without substituting unrelated ASCII artwork.
 func aquariumFishArt(f aquariumSwimmer) []string {
