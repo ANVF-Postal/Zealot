@@ -13,7 +13,8 @@ type bubbleParticle struct {
     radius float64 // vertical cell radius
     age,lifetime float64
     color [3]int
-    wobble float64 // gentle springy deformation after collision
+    wobble float64 // signed, spring-driven squash/stretch
+    wobbleVelocity float64
 }
 
 type bubblePop struct {
@@ -92,7 +93,11 @@ func (s *bubbleState) spawn() {
             }
         }
         if !clear {continue}
-        speed:=1.0+1.5*chatFXUnit(value+5)
+        // Most bubbles glide, some race dramatically into the room.
+        // Speeds use terminal cells per second, in the same fixed-step
+        // simulation so /fxfps cannot alter their trajectories.
+        speed:=1.3+2.5*chatFXUnit(value+5)
+        if chatFXUnit(value+10)>0.81 {speed*=3.1+1.8*chatFXUnit(value+11)}
         vx:=-(1.6+1.2*chatFXUnit(value+4))*speed
         vy:=-(0.55+0.8*chatFXUnit(value+9))*speed
         red,green,blue:=hsvToRGB(chatFXUnit(value+6),0.55+0.35*chatFXUnit(value+7),0.90)
@@ -126,15 +131,18 @@ func (s *bubbleState) tick() {
             }
             continue // immediate pop: the sphere is gone this frame
         }
-        bubble.wobble*=0.965
+        // Underdamped spring: squash, overshoot, then settle.
+        bubble.wobbleVelocity+=(-58*bubble.wobble-9*bubble.wobbleVelocity)*dt
+        bubble.wobble+=bubble.wobbleVelocity*dt
+        bubble.wobble=math.Max(-0.29,math.Min(0.29,bubble.wobble))
         bubble.x+=bubble.vx*dt
         bubble.y+=bubble.vy*dt
         minX,maxX:=bubble.radius*2,float64(s.width)-bubble.radius*2
         minY,maxY:=bubble.radius,float64(s.height)-bubble.radius
-        if bubble.x<minX {bubble.x=minX;bubble.vx=math.Abs(bubble.vx)}
-        if bubble.x>maxX {bubble.x=maxX;bubble.vx=-math.Abs(bubble.vx)}
-        if bubble.y<minY {bubble.y=minY;bubble.vy=math.Abs(bubble.vy)}
-        if bubble.y>maxY {bubble.y=maxY;bubble.vy=-math.Abs(bubble.vy)}
+        if bubble.x<minX {bubble.x=minX;bubble.vx=math.Abs(bubble.vx);bubble.wobbleVelocity-=4.0}
+        if bubble.x>maxX {bubble.x=maxX;bubble.vx=-math.Abs(bubble.vx);bubble.wobbleVelocity+=4.0}
+        if bubble.y<minY {bubble.y=minY;bubble.vy=math.Abs(bubble.vy);bubble.wobbleVelocity+=3.0}
+        if bubble.y>maxY {bubble.y=maxY;bubble.vy=-math.Abs(bubble.vy);bubble.wobbleVelocity-=3.0}
         alive=append(alive,bubble)
     }
     s.bubbles=alive
@@ -159,8 +167,9 @@ func (s *bubbleState) tick() {
             // Equal-mass impulse along the collision normal.
             approach:=((b.vx-a.vx)*0.5)*nx+(b.vy-a.vy)*ny
             if approach<0 {
-                a.wobble=math.Min(0.20,a.wobble+0.07)
-                b.wobble=math.Min(0.20,b.wobble+0.07)
+                kick:=math.Min(11,2.2+math.Abs(approach)*1.4)
+                a.wobbleVelocity+=kick
+                b.wobbleVelocity-=kick
                 impulse:=-approach*0.97
                 a.vx-=2*impulse*nx
                 a.vy-=impulse*ny
