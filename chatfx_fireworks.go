@@ -50,14 +50,16 @@ func (m model) fireworkPositions(width,height int) []map[int]chatFXCell {
 	}
 	// A launch roughly every 0.8s; late arrivals will not spawn once
 	// the chosen celebration duration has elapsed.
-	for i:=0;i<min(400,int(math.Ceil(emitUntil/0.78)));i++ {
+	first := max(0,int(math.Floor((t-7)/0.78)))
+	last := min(400,int(math.Ceil(math.Min(t+0.78,emitUntil)/0.78)))
+	for i:=first;i<last;i++ {
 		launchAt := float64(i)*0.78
 		if launchAt>=emitUntil || t<launchAt { continue }
 		seed := chatFXHash(uint64(i+1)*0x9e3779b97f4a7c15+m.fxSalt)
 		x0 := (0.14+0.72*chatFXUnit(seed+1))*float64(width)
-		vx := (chatFXUnit(seed+2)-0.5)*5.2
+		vx := (chatFXUnit(seed+2)-0.5)*math.Min(12,float64(width)*0.13)
 		curve := (chatFXUnit(seed+3)-0.5)*1.5
-		launchSpeed := math.Max(8, float64(height)*0.40)*(0.85+0.30*chatFXUnit(seed+4))
+		launchSpeed := math.Max(8, float64(height)*0.52)*(0.85+0.30*chatFXUnit(seed+4))
 		burstAt := 1.10+0.70*chatFXUnit(seed+5)
 		elapsed := t-launchAt
 		if elapsed<burstAt {
