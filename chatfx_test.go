@@ -1224,3 +1224,25 @@ func TestDoomFireRendererKeepsUpperChatRowsUntouched(t *testing.T) {
 		}
 	}
 }
+
+
+func BenchmarkDoomFireResponsiveRendering(b *testing.B) {
+	for _,width:=range []int{80,160,320} {
+		b.Run(fmt.Sprintf("%d_columns",width),func(b *testing.B) {
+			const height=45
+			m:=newMessageInteractionTestModel(width)
+			m.fxRoom=chatFXState{name:"fire"}
+			m.fxSalt=991
+			m.fxFire=newDoomFireState(width,height,m.fxSalt)
+			base:=make([]string,height)
+			for y:=range base {base[y]=strings.Repeat(" ",width)}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i:=0;i<b.N;i++ {
+				m.fxSimSteps=uint64(i)
+				rows:=append([]string(nil),base...)
+				m.renderDoomFireRows(rows,width)
+			}
+		})
+	}
+}
