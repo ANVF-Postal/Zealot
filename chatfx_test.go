@@ -1155,12 +1155,14 @@ func TestDoomFireBatchedRendererPreservesMessages(t *testing.T) {
 	}
 	// A contiguous row of one heat shade must be one foreground run,
 	// not a separate styled fragment for every single character.
-	for x:=range m.fxFire.heat[(height-1)*width:] {
-		m.fxFire.heat[(height-1)*width+x]=36
+	// Use a genuine one-row grid. The regular 22-row viewport now
+	// allocates a shorter, adaptive flame grid, so slicing with (height-1)
+	// would index beyond the state and panic.
+	m.fxFire=newDoomFireState(width,1,m.fxSalt)
+	for x:=range m.fxFire.heat {
+		m.fxFire.heat[x]=36
 	}
 	blank:=[]string{strings.Repeat(" ",width)}
-	m.fxFire.height=1
-	m.fxFire.heat=m.fxFire.heat[(height-1)*width:]
 	m.renderDoomFireRows(blank,width)
 	if strings.Count(blank[0],"\x1b[")>=width/4 {
 		t.Fatalf("batched fire emitted too many ANSI fragments: %d",strings.Count(blank[0],"\x1b["))
