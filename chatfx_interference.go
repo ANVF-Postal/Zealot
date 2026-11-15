@@ -7,8 +7,11 @@ package main
 var crtStaticGlyphs = [...]rune{'.', ':', ',', '*', '+', '#', '%', '/', '\\'}
 var crtStaticColors = [...]string{"#66717B", "#87919A", "#A8AFB5", "#D2D6D9", "#F1F1ED"}
 var digitalGlitchGlyphs = [...]rune{'#', '%', '=', '_', '/', '\\', '|', '+', 'x', '0'}
+// Classic PuTTY ANSI colour table: standard and bright entries.
+// Black is deliberately omitted as invisible against dark chat backgrounds.
 var digitalGlitchColors = [...]string{
-    "#00F5FF", "#FF38C8", "#A85CFF", "#40FF8A", "#FFDB4A", "#3D8FFF",
+    "#BB0000", "#00BB00", "#BBBB00", "#0000BB", "#BB00BB", "#00BBBB", "#BBBBBB",
+    "#FF5555", "#55FF55", "#FFFF55", "#5555FF", "#FF55FF", "#55FFFF", "#FFFFFF",
 }
 
 // Major events use an irregular renewal schedule rather than fixed cycles.
@@ -112,6 +115,9 @@ func (m model) staticPositions(width,height int) []map[int]chatFXCell {
 
 func (m model) glitchPositions(width,height int) []map[int]chatFXCell {
     if width<1||height<1 {return nil}
+    // Written-out terminal errors own the display until fully faded.
+    // Return immediately: no major glitches OR minor speckles can coexist.
+    if rows,active:=m.glitchErrorPositions(width,height);active {return rows}
     rows:=make([]map[int]chatFXCell,height)
     tick:=m.fxSimSteps
     seed,active:=interferenceBurst(tick,m.fxSalt^0x6117c4,true)
