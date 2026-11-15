@@ -88,7 +88,7 @@ func TestInterrogationPointLightVignetteAndFlicker(t *testing.T) {
     }
     if corner<0.23 || center>1 {t.Fatal("lighting leaves safe intensity range")}
     emphasized:=interrogationLightAt(50,28,width,height,1,1)
-    if emphasized<=center {t.Fatal("spotlight doesn't favor recent messages")}
+    if emphasized!=center {t.Fatal("message identity changed the fixed light map")}
     if interrogationLightAt(50,28,width,height,0,0.88)>=center {
         t.Fatal("lamp flicker has no effect")
     }
@@ -119,24 +119,51 @@ func TestInterrogationPerCharacterLightingPreservesMessageAndBackground(t *testi
     if lit==row {t.Fatal("spatial lighting not applied")}
 }
 
-func TestInterrogationSpotlightHandoffTwoSeconds(t *testing.T) {
+func TestInterrogationLightIsStationaryWhenNewMessagesArrive(t *testing.T) {
     m:=newRenderCacheTestModel()
     m.rebuildMessageCache()
-    start:=time.Date(2026,11,15,12,0,0,0,time.UTC)
-    m.fxRoom=chatFXState{name:"interrogation"}
-    m.advanceInterrogationFade(start)
-    m.advanceInterrogationFade(start.Add(time.Second))
-    old:=m.fxInterrogationCurrent
+    m.fxInterrogationAmount=1
+    row:="\x1b[48;2;17;19;24m\x1b[38;2;230;230;230mHello" +
+        strings.Repeat(" ",chatContentWidth(m.width)-5)
+    before:=[]string{row,row,row}
+    m.renderInterrogationRows(before,0)
+    // Newly appended messages must not restart the fade for a single row.
     m.messages=append(m.messages,Packet{Type:"message",User:User{Name:"Alice"},Text:"new testimony"})
-    m.advanceInterrogationFade(start.Add(1500*time.Millisecond))
-    if m.fxInterrogationCurrent!=old+1 || m.fxInterrogationPrevious!=old {
-        t.Fatalf("spotlight did not hand off: old=%d current=%d previous=%d",
-            old,m.fxInterrogationCurrent,m.fxInterrogationPrevious)
+    after:=[]string{row,row,row}
+    m.renderInterrogationRows(after,10)
+    for i:=range before {
+        if before[i]!=after[i] {
+            t.Fatalf("fixed lamp changed intensity at viewport row %d when history grew",i)
+        }
     }
-    if m.fxInterrogationHandoff.IsZero() {t.Fatal("handoff has no start time")}
-    m.advanceInterrogationFade(start.Add(3500*time.Millisecond))
-    if m.fxInterrogationLast.Sub(m.fxInterrogationHandoff)!=2*time.Second {
-        t.Fatal("handoff has incorrect timing")
+    // The older row above a new message has a smooth coordinate-based
+    // progression rather than a separate message-specific brightness boost.
+    upper:=interrogationLightAt(40,18,80,24,0,1)
+    lower:=interrogationLightAt(40,19,80,24,0,1)
+    if lower<upper || lower-upper>0.12 {
+        t.Fatalf("abrupt vertical lighting jump: upper=%f lower=%f",upper,lower)
+    }
+}
+
+func TestInterrogationTypingRowSharesMessageGradient(t *testing.T) {
+    m:=newMessageInteractionTestModel(90)
+    m.fxInterrogationAmount=1
+    width:=chatContentWidth(m.width)
+    row:="\x1b[48;2;17;19;24m\x1b[38;2;230;230;230m  Alice is typing..." +
+        strings.Repeat(" ",width-len("  Alice is typing..."))
+    m.fxSimSteps=100
+    lastMessage:=[]string{row}
+    // A one-row viewport is enough to verify continuity with the row below.
+    m.renderInterrogationRows(lastMessage,0)
+    typing:=m.renderInterrogationTypingRow(row,1)
+    if typing==row || !strings.Contains(typing,"\x1b[48;2;") {
+        t.Fatal("typing row escaped the vignette")
+    }
+    if stripANSISequences(typing)!=stripANSISequences(row) {
+        t.Fatal("lighting altered the typing notification")
+    }
+    if stripANSISequences(lastMessage[0])!=stripANSISequences(row) {
+        t.Fatal("lighting altered message text")
     }
 }
 
