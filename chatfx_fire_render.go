@@ -61,13 +61,14 @@ func (m model) renderDoomFireRows(rows []string, width int) {
 	}
 	state.advance(m.fxSimSteps,m.fxSalt)
 	bgANSI:=doomFireBackgroundANSI(m.cfg.Theme.Background)
+	blend:=doomFireBlend(state.step,float64(m.fxSimAccumulator)/float64(chatFXSimulationStep))
 	// Render the actual heat grid; the mostly empty upper rows are
 	// skipped without creating additional particles or ANSI fragments.
 	for y:=viewportHeight-flameHeight;y<viewportHeight;y++ {
-		heatRow:=state.heat[(y-(viewportHeight-flameHeight))*width:]
+		rowOffset:=(y-(viewportHeight-flameHeight))*width
 		hot:=false
-		for _,level:=range heatRow {
-			if level>=5 {hot=true;break}
+		for x:=0;x<width;x++ {
+			if state.heatLevel(rowOffset+x,blend)>=5 {hot=true;break}
 		}
 		if !hot {continue}
 		original:=rows[y]
@@ -81,7 +82,7 @@ func (m model) renderDoomFireRows(rows []string, width int) {
 		lastShade:=-1
 		wrote:=false
 		for x:=prefix;x<width;x++ {
-			level:=heatRow[x]
+			level:=state.heatLevel(rowOffset+x,blend)
 			if level<5 {
 				if lastShade>=0 {result.WriteString("\x1b[39m");lastShade=-1}
 				result.WriteByte(' ')
