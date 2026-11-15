@@ -18,18 +18,6 @@ func (m *model) advanceInterrogationFade(now time.Time) {
         m.fxInterrogationLast=now
         return
     }
-    if m.currentChatFX().name=="interrogation" {
-        newest:=m.interrogationSpotlightIndex()
-        if !m.fxInterrogationTracked {
-            m.fxInterrogationTracked=true
-            m.fxInterrogationCurrent=newest
-            m.fxInterrogationPrevious=-1
-        } else if newest!=m.fxInterrogationCurrent {
-            m.fxInterrogationPrevious=m.fxInterrogationCurrent
-            m.fxInterrogationCurrent=newest
-            m.fxInterrogationHandoff=now
-        }
-    }
     delta:=now.Sub(m.fxInterrogationLast)
     m.fxInterrogationLast=now
     if delta<0 {delta=0}
@@ -149,39 +137,31 @@ func (m model) interrogationSpotlightIndex() int {
     return len(m.messages)-1
 }
 
+// The point light is anchored to the chat viewport, never a particular
+// message row. Incoming messages therefore inherit the existing lighting
+// immediately; there is no per-message fade-in stripe as history scrolls.
 func (m model) renderInterrogationRows(rows []string, start int) {
     if m.fxDisabled || m.fxInterrogationAmount<=0 || len(rows)==0 {return}
     width:=chatContentWidth(m.width)
     if width<1 {return}
-    current:=m.interrogationSpotlightIndex()
-    previous:=-1
-    handoff:=0.0
-    if m.fxInterrogationTracked && m.fxInterrogationCurrent==current {
-        elapsed:=m.fxInterrogationLast.Sub(m.fxInterrogationHandoff).Seconds()
-        if !m.fxInterrogationHandoff.IsZero() && elapsed>=0 && elapsed<2 {
-            previous=m.fxInterrogationPrevious
-            handoff=1-elapsed/2
-        }
-    }
-    // Resolve the rows occupied by the current and previous messages once.
-    latestRange:=m.interrogationMessageRange(current)
-    previousRange:=m.interrogationMessageRange(previous)
     flicker:=interrogationLampIntensity(m.fxSimSteps,m.fxSalt)
+    // The reserved typing row is one more row in the same light field.
+    fullHeight:=len(rows)+1
     for i,row:=range rows {
-        // Blank rows are still part of the illuminated surface: paint their
-        // backgrounds too, otherwise the vignette exists only behind text.
-        absolute:=start+i
-        emphasis:=0.0
-        if absolute>=latestRange.Start && absolute<latestRange.End {
-            emphasis=1
-        } else if previous>=0 && absolute>=previousRange.Start && absolute<previousRange.End {
-            emphasis=handoff
-        }
         rows[i]=interrogationLightRow(
             row,m.cfg.Theme.Background,m.cfg.Theme.TextColor,
-            width,len(rows),i,m.fxInterrogationAmount,emphasis,flicker,
+            width,fullHeight,i,m.fxInterrogationAmount,0,flicker,
         )
     }
+}
+
+func (m model) renderInterrogationTypingRow(row string, y int) string {
+    if m.fxDisabled || m.fxInterrogationAmount<=0 {return row}
+    return interrogationLightRow(
+        row,m.cfg.Theme.Background,m.cfg.Theme.TextColor,
+        chatContentWidth(m.width),y+1,y,m.fxInterrogationAmount,0,
+        interrogationLampIntensity(m.fxSimSteps,m.fxSalt),
+    )
 }
 
 func (m model) interrogationMessageRange(index int) messageRowRange {
