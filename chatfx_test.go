@@ -1112,3 +1112,72 @@ func TestDoomFireRendersWarmFlamesWithoutFaintSparkCloud(t *testing.T) {
 		}
 	}
 }
+
+
+func TestDoomFireBaseIsDenseAndGustsReverse(t *testing.T) {
+	const width,height=100,34
+	state:=newDoomFireState(width,height,719)
+	for i:=uint64(0);i<120;i++ {state.spread(719,i+200)}
+	for y:=height-4;y<height;y++ {
+		dense:=0
+		for x:=0;x<width;x++ {
+			if state.heat[y*width+x]>=20 {dense++}
+		}
+		if dense<width*8/10 {
+			t.Fatalf("fire base row %d is too patchy: %d/%d hot cells",y,dense,width)
+		}
+	}
+	positive,negative:=false,false
+	for tick:=uint64(0);tick<240;tick++ {
+		wind:=fireWind(tick,719)
+		if wind>0.5 {positive=true}
+		if wind< -0.5 {negative=true}
+		if tick>0 && math.Abs(wind-fireWind(tick-1,719))>0.07 {
+			t.Fatal("flame wind changed abruptly")
+		}
+	}
+	if !positive || !negative {t.Fatal("fire wind failed to reverse direction")}
+}
+
+func TestDoomFireBatchedRendererPreservesMessages(t *testing.T) {
+	const width,height=100,22
+	m:=newMessageInteractionTestModel(width)
+	m.fxRoom=chatFXState{name:"fire"}
+	m.fxSalt=929
+	m.fxFire=newDoomFireState(width,height,m.fxSalt)
+	rows:=make([]string,height)
+	for i:=range rows {rows[i]=strings.Repeat(" ",width)}
+	message:="  [23:16] Alice: Nice cozy fire."
+	rows[height-2]=message+strings.Repeat(" ",width-len(message))
+	m.renderDoomFireRows(rows,width)
+	if !strings.HasPrefix(stripANSISequences(rows[height-2]),message) {
+		t.Fatal("batched fire renderer overwrote message")
+	}
+	// A contiguous row of one heat shade must be one foreground run,
+	// not a separate styled fragment for every single character.
+	for x:=range m.fxFire.heat[(height-1)*width:] {
+		m.fxFire.heat[(height-1)*width+x]=36
+	}
+	blank:=[]string{strings.Repeat(" ",width)}
+	m.fxFire.height=1
+	m.fxFire.heat=m.fxFire.heat[(height-1)*width:]
+	m.renderDoomFireRows(blank,width)
+	if strings.Count(blank[0],"\\x1b[")>=width/4 {
+		t.Fatalf("batched fire emitted too many ANSI fragments: %d",strings.Count(blank[0],"\\x1b["))
+	}
+}
+
+func BenchmarkDoomFireBatchedRenderer(b *testing.B) {
+	m:=newMessageInteractionTestModel(160)
+	m.fxRoom=chatFXState{name:"fire"}
+	m.fxSalt=991
+	m.fxFire=newDoomFireState(160,45,m.fxSalt)
+	base:=make([]string,45)
+	for i:=range base {base[i]=strings.Repeat(" ",160)}
+	b.ReportAllocs()
+	for i:=0;i<b.N;i++ {
+		m.fxSimSteps=uint64(i)
+		rows:=append([]string(nil),base...)
+		m.renderDoomFireRows(rows,160)
+	}
+}
