@@ -126,21 +126,38 @@ func TestBubblePaintingPreservesChatAndANSI(t *testing.T) {
     }
 }
 
-func TestBubbleOutlineIsHollowAndHasReflection(t *testing.T) {
+func TestBubbleOutlineIsHollowAndHasOneReflection(t *testing.T) {
     bubble:=bubbleParticle{x:30,y:10,radius:5,color:[3]int{70,180,255},age:1,lifetime:30}
     if glyph:=bubbleGlyphAt(bubble,30,10);glyph!=0 {
         t.Fatalf("bubble centre should be empty, got %q",glyph)
     }
-    outline,reflection:=0,0
+    outline:=0
     for y:=4;y<16;y++ {
         for x:=17;x<43;x++ {
             glyph:=bubbleGlyphAt(bubble,x,y)
             if glyph!=0 {outline++}
-            if glyph=='o' {reflection++}
+            if glyph=='o' {t.Fatal("reflection was rendered once per cell")}
         }
     }
     if outline<20 || outline>140 {t.Fatalf("unexpected outline density: %d",outline)}
-    if reflection==0 {t.Fatal("bubble has no small reflected glint")}
+    grid:=(&bubbleState{bubbles:[]bubbleParticle{bubble}}).raster(80,26)
+    highlights:=0
+    for _,row:=range grid {
+        for _,cell:=range row {
+            if cell.color==[3]int{244,250,255} {highlights++}
+        }
+    }
+    if highlights<2 || highlights>3 {
+        t.Fatalf("expected one 2-3-cell crescent highlight, got %d cells",highlights)
+    }
+    small:=bubble
+    small.radius=3
+    smallGrid:=(&bubbleState{bubbles:[]bubbleParticle{small}}).raster(80,26)
+    countO:=0
+    for _,row:=range smallGrid {
+        for _,cell:=range row {if cell.glyph=='o' {countO++}}
+    }
+    if countO!=1 {t.Fatalf("small bubble should have one 'o', got %d",countO)}
 }
 
 func TestBubbleLaunchesFromBottomRightAndMovesUpLeft(t *testing.T) {
@@ -167,7 +184,29 @@ func TestBubbleBrailleOutlineHasSubcellResolution(t *testing.T) {
     if len(masks)<5 {t.Fatalf("braille border lacks curved subcell detail: %d shapes",len(masks))}
 }
 
-func TestBubbleSquishSpringsBackAfterImpact(t *testing.T) {
+func TestBubbleSoftBodyDeformsLocallyAndRecovers(t *testing.T) {
+    b:=bubbleParticle{x:45,y:18,radius:4,lifetime:100}
+    b.pressRim(0,0.45)
+    // The nearest node is pushed inward, but the far side is unaffected.
+    b.advanceRim(bubbleStepSeconds)
+    right:=b.rimRadius(0)
+    left:=b.rimRadius(math.Pi)
+    if right>=b.radius*0.98 || math.Abs(left-b.radius)>0.02 {
+        t.Fatalf("contact wasn't local: right %.3f left %.3f radius %.3f",right,left,b.radius)
+    }
+    distorted:=false
+    for i:=0;i<55;i++ {
+        b.advanceRim(bubbleStepSeconds)
+        if b.rimRadius(math.Pi/3)!=b.radius {distorted=true}
+    }
+    if !distorted {t.Fatal("border deformation didn't propagate along the ring")}
+    for i:=0;i<240;i++ {b.advanceRim(bubbleStepSeconds)}
+    for i,r:=range b.rim {
+        if math.Abs(r)>0.025 {t.Fatalf("rim point %d didn't settle: %f",i,r)}
+    }
+}
+
+func TestBubbleCollisionAndWallPushLocalRim(t *testing.T) {
     s:=newBubbleState(100,35,3)
     s.steps=2
     s.bubbles=[]bubbleParticle{
@@ -175,19 +214,15 @@ func TestBubbleSquishSpringsBackAfterImpact(t *testing.T) {
         {x:55,y:18,vx:-5,vy:0,radius:3,lifetime:100},
     }
     s.tick()
-    if s.bubbles[0].wobbleVelocity==0 || s.bubbles[1].wobbleVelocity==0 {
-        t.Fatal("collision failed to deform bubble")
+    if s.bubbles[0].rimSpeed[0]==0 || s.bubbles[1].rimSpeed[12]==0 {
+        t.Fatal("collision didn't compress contact-side rim nodes")
     }
-    peak:=0.0
-    for i:=0;i<90;i++ {
-        s.bubbles[1].x=85 // prevent repeated collision
-        s.bubbles[1].vx=0
-        s.tick()
-        if magnitude:=math.Abs(s.bubbles[0].wobble);magnitude>peak {peak=magnitude}
-    }
-    if peak<0.03 {t.Fatalf("squish too subtle: %f",peak)}
-    if math.Abs(s.bubbles[0].wobble)>0.02 {
-        t.Fatalf("bubble failed to spring back: %f",s.bubbles[0].wobble)
+    wall:=newBubbleState(100,35,4)
+    wall.steps=2
+    wall.bubbles=[]bubbleParticle{{x:6,y:18,vx:-5,radius:3,lifetime:100}}
+    wall.tick()
+    if wall.bubbles[0].rimSpeed[12]==0 {
+        t.Fatal("wall impact didn't deform the left edge of the bubble")
     }
 }
 
@@ -213,6 +248,12 @@ func TestBubblePopIsInstantWithASCIIFlash(t *testing.T) {
     s.tick()
     if len(s.bubbles)!=0 {t.Fatal("expired bubble lingered or shrank instead of popping")}
     if len(s.pops)!=1 {t.Fatal("pop did not create an ASCII burst")}
+    fragment:=s.pops[0].fragments[0]
+    for i:=0;i<3;i++ {s.tick()}
+    moved:=s.pops[0].fragments[0]
+    if moved.x==fragment.x && moved.y==fragment.y {
+        t.Fatal("pop fragments stayed frozen rather than dispersing")
+    }
     grid:=s.raster(90,30)
     line:=bubblePaintRow(strings.Repeat(" ",90),grid[15],"#111318",90)
     if !strings.Contains(stripANSISequences(line),"*pop*") {
