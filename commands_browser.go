@@ -35,7 +35,7 @@ var handbookPages = []struct {
 		{"/blizzard self [seconds]", "Starts a blizzard only on your screen, without affecting the room."},
 		{"/embers [seconds]", "Starts rising glowing embers for the room, drifting upward and cooling as they fade."},
 		{"/embers self [seconds]", "Starts a warm ember effect only on your terminal."},
-		{"/fire [seconds]", "Renders Doom-style heat-propagating flames using glowing orange, red, and yellow terminal-cell backgrounds."},
+		{"/fire [seconds]", "Renders Doom-style heat-propagating ASCII flames: large @ # % & near the base, fine punctuation embers near the tips, with warm ember colors."},
 		{"/fire self [seconds]", "Displays flames locally without changing the room effect."},
 		{"/matrix [seconds]", "Starts falling columns of green code with glowing heads and fading trails."},
 		{"/matrix self [seconds]", "Displays Matrix code rain only on your terminal."},
