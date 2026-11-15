@@ -10,7 +10,7 @@ import (
     "charm.land/lipgloss/v2"
 )
 
-// The lamp is just above the bottom of the message pane, not the input.
+// The lamp is just above the bottom of the full chat pane, including typing.
 // An elliptical Gaussian produces a rounded vignette in terminal cells.
 // Wider light pool with a deeper rim; older messages remain decipherable.
 func interrogationLightAt(x,y,width,height int, emphasis,flicker float64) float64 {
@@ -27,8 +27,8 @@ func interrogationLightAt(x,y,width,height int, emphasis,flicker float64) float6
     verticalEdge:=math.Abs(float64(y)-cy)/math.Max(1,float64(height-1))
     rim:=1-0.34*math.Pow(horizontalEdge,4)-0.13*math.Pow(verticalEdge,4)
     light:=0.23+0.72*glow*math.Max(0.45,rim)*flicker
-    // Conversation emphasis is part of the light, not immunity from it.
-    light+=0.18*emphasis*glow
+    // No message-specific brightness bands: the pool stays fixed while
+    // chat lines scroll through it, avoiding abrupt horizontal seams.
     return math.Max(0.22,math.Min(1,light))
 }
 
