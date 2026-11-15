@@ -411,7 +411,6 @@ func (s *aquariumState) resolvePredation(fish []aquariumSwimmer,width int) {
             if prey.id==hunter.id || prey.kind==aquariumMuskie ||
                 s.eaten[prey.id] || prey.x>=width ||
                 prey.x+aquariumFishWidth(prey)<=0 {continue}
-            }
             if !aquariumSwimmersTouch(hunter,prey) {continue}
             // A caught fish stays away long enough for the predator to pass;
             // it reappears on its next independent crossing.
