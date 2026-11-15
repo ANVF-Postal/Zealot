@@ -260,3 +260,27 @@ func TestConfettiNeverObscuresChatText(t *testing.T) {
 		t.Fatalf("confetti obscured message: %s",stripANSISequences(rows[0]))
 	}
 }
+
+
+func TestConfettiParticlesStayWithinViewportAtAllAges(t *testing.T) {
+	m := newMessageInteractionTestModel(80)
+	m.fxRoom = chatFXState{name: "confetti"}
+	m.fxSalt = 47
+	for _, size := range [][2]int{{1, 1}, {12, 4}, {40, 12}, {95, 26}} {
+		width, height := size[0], size[1]
+		for second := 0; second < 60; second++ {
+			m.fxSimSteps = uint64(second * 30)
+			positions := m.confettiPositions(width, height)
+			if len(positions) != height {
+				t.Fatalf("%dx%d at %ds: got %d rows", width, height, second, len(positions))
+			}
+			for y, row := range positions {
+				for x := range row {
+					if y < 0 || y >= height || x < 0 || x >= width {
+						t.Fatalf("particle outside %dx%d viewport at %ds: (%d,%d)", width, height, second, x, y)
+					}
+				}
+			}
+		}
+	}
+}
