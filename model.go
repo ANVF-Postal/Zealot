@@ -146,6 +146,8 @@ type model struct {
 	fxSimAccumulator time.Duration
 	fxTickPending bool
 	fxTickGeneration int
+	fxInterrogationAmount float64 // 0..1, transitions across five seconds
+	fxInterrogationLast time.Time
 
 	input          textarea.Model
 	inputSelecting bool
