@@ -37,12 +37,12 @@ type aquariumChomp struct {
 }
 
 type aquariumState struct {
-    eaten map[uint64]float64 // suppress a caught fish until its next pass
+    eaten map[uint64]bool // suppress caught fish for its entire crossing
     chomps []aquariumChomp
 }
 
 func newAquariumState() *aquariumState {
-    return &aquariumState{eaten:make(map[uint64]float64)}
+    return &aquariumState{eaten:make(map[uint64]bool)}
 }
 
 func aquariumMirror(line string) string {
@@ -334,9 +334,8 @@ func aquariumSwimmersTouch(a,b aquariumSwimmer) bool {
 
 func (s *aquariumState) advance(m model,width,height int,seconds float64) {
     if s==nil {return}
-    for id,until:=range s.eaten {
-        if seconds>=until {delete(s.eaten,id)}
-    }
+    // Expire tombstones only when that crossing's identity disappears;
+    // a swallowed fish must never pop back into the same journey.
     live:=s.chomps[:0]
     for _,c:=range s.chomps {
         c.age+=bubbleStepSeconds
@@ -346,16 +345,19 @@ func (s *aquariumState) advance(m model,width,height int,seconds float64) {
     salt:=m.fxAquariumSalt
     if salt==0 {salt=m.fxSalt}
     fish:=aquariumSwimmers(width,height,seconds,salt)
+    current:=make(map[uint64]bool,len(fish))
+    for _,swimmer:=range fish {current[swimmer.id]=true}
+    for id:=range s.eaten {if !current[id] {delete(s.eaten,id)}}
     for _,hunter:=range fish {
-        if !aquariumCanEat(hunter) || seconds<s.eaten[hunter.id] {continue}
+        if !aquariumCanEat(hunter) || s.eaten[hunter.id] {continue}
         for _,prey:=range fish {
             if prey.id==hunter.id || prey.kind==aquariumMuskie ||
-                seconds<s.eaten[prey.id] {continue}
+                s.eaten[prey.id] {continue}
             }
             if !aquariumSwimmersTouch(hunter,prey) {continue}
             // A caught fish stays away long enough for the predator to pass;
             // it reappears on its next independent crossing.
-            s.eaten[prey.id]=seconds+24
+            s.eaten[prey.id]=true
             if len(s.chomps)<16 {
                 s.chomps=append(s.chomps,aquariumChomp{
                     x:max(0,min(width-1,prey.x)),y:max(0,prey.y-1),
@@ -367,7 +369,7 @@ func (s *aquariumState) advance(m model,width,height int,seconds float64) {
 
 func (m model) renderAquariumFish(width,height int,seconds float64,salt uint64,put func(int,int,rune,string)) {
     for _,fish:=range aquariumSwimmers(width,height,seconds,salt) {
-        if m.fxAquarium!=nil && seconds<m.fxAquarium.eaten[fish.id] {continue}
+        if m.fxAquarium!=nil && m.fxAquarium.eaten[fish.id] {continue}
         lines:=aquariumFishArt(fish)
         if fish.kind==aquariumEel && len(lines)>0 {
             // The eel bends mid-body when changing depth, trailing its tail
