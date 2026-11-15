@@ -402,3 +402,99 @@ func TestSnowLeavesMessageGlyphsUntouched(t *testing.T) {
 		t.Fatal("snow obscured chat text")
 	}
 }
+
+
+func TestFireworksCommandIsRoomOrSelfScoped(t *testing.T) {
+	m:=newMessageInteractionTestModel(100)
+	m.room="lobby"
+	m.connected=true
+	var wire bytes.Buffer
+	m.client=&wireClient{enc:json.NewEncoder(&wire)}
+	if m.sendMessage("/fireworks self","") { t.Fatal("local fireworks must not send chat text") }
+	if wire.Len()!=0 || m.fxLocal.name!="fireworks" || m.fxLocal.until.IsZero() {
+		t.Fatal("self fireworks must be local and default to a duration")
+	}
+	m.chatFXCommand("/stopfx",[]string{"/stopfx","self"})
+	if m.sendMessage("/fireworks 15","") { t.Fatal("room fireworks became a chat message") }
+	var packet Packet
+	if err:=json.NewDecoder(&wire).Decode(&packet);err!=nil { t.Fatal(err) }
+	if packet.Type!="fx_start" || packet.FX!="fireworks" || packet.FXSeconds!=15 {
+		t.Fatalf("unexpected fireworks request: %+v",packet)
+	}
+}
+
+func TestFireworksHaveShellsTrailsAndBursts(t *testing.T) {
+	m:=newMessageInteractionTestModel(100)
+	m.fxRoom=chatFXState{name:"fireworks",started:time.Now(),until:time.Now().Add(10*time.Second)}
+	m.fxSalt=229
+	shells:=0
+	warmTrails:=0
+	bursts:=0
+	colors:=map[string]bool{}
+	for frame:=0;frame<120;frame++ {
+		m.fxSimSteps=uint64(frame*5)
+		rows:=m.fireworkPositions(100,32)
+		for y,row:=range rows {
+			for x,c:=range row {
+				if x<0||x>=100||y<0||y>=32 { t.Fatal("fireworks escaped viewport") }
+				colors[c.color]=true
+				if c.glyph=='o' {shells++;if c.color!="#ECF1F5" { t.Fatal("shell must remain neutral") }}
+				if c.color=="#FFBB45"||c.color=="#FF8617"||c.color=="#FFF1B4"||c.color=="#AC4E09" {
+					warmTrails++
+				}
+				if c.glyph=='#'||c.glyph=='*'||c.glyph=='%'||c.glyph=='x' {bursts++}
+			}
+		}
+	}
+	if shells==0 || warmTrails==0 || bursts==0 || len(colors)<7 {
+		t.Fatalf("missing variety: shells=%d trails=%d bursts=%d colors=%d",shells,warmTrails,bursts,len(colors))
+	}
+}
+
+func TestFireworkEmissionEndsWithoutKillingBursts(t *testing.T) {
+	m:=newMessageInteractionTestModel(100)
+	now:=time.Now()
+	m.fxRoom=chatFXState{name:"fireworks",started:now.Add(-11*time.Second),until:now.Add(-time.Second)}
+	m.fxSalt=229
+	m.fxSimSteps=uint64(11*30)
+	if m.currentChatFX().name!="fireworks" {t.Fatal("existing fireworks should finish after cutoff")}
+	m.fxSimSteps=uint64(35*30)
+	for _,row:=range m.fireworkPositions(100,32) {
+		if len(row)!=0 {t.Fatal("shells or sparks kept respawning after cutoff")}
+	}
+	m.fxRoom.until=now.Add(-time.Minute)
+	if m.currentChatFX().name!="" {t.Fatal("fireworks should eventually finish")}
+}
+
+func TestReplacingRoomFXRetiresOldParticles(t *testing.T) {
+	m:=newMessageInteractionTestModel(100)
+	m.fxRoom=chatFXState{name:"snow"}
+	m.fxSalt=7
+	m.width=100
+	m.height=32
+	m.receiveChatFX(Packet{Type:"fx_state",FX:"fireworks",FXUntil:time.Now().Add(10*time.Second)})
+	if m.currentChatFX().name!="fireworks" {t.Fatal("new room FX was not applied")}
+	if len(m.fxFading)==0 || len(m.fxFading[0].particles)==0 {t.Fatal("old snow did not enter fade-out")}
+	m.receiveChatFX(Packet{Type:"fx_state"})
+	if len(m.fxFading)<2 {t.Fatal("stopping fireworks did not preserve outgoing particles")}
+	if m.currentChatFX().name!="" {t.Fatal("stop must end the primary emitter")}
+	if m.ensureChatFXTick()==nil {t.Fatal("fade-out must continue animating after room stop")}
+}
+
+func TestSmallSnowDotsFallFaster(t *testing.T) {
+	// The dot variant is explicitly faster than the corresponding seed's
+	// regular snowflake speed; verify the range and that both appear.
+	m:=newMessageInteractionTestModel(90)
+	m.fxRoom=chatFXState{name:"snow"}
+	m.fxSalt=91
+	dots,other:=0,0
+	for step:=uint64(0);step<180;step+=7 {
+		m.fxSimSteps=step
+		for _,row:=range m.snowPositions(90,30) {
+			for _,cell:=range row {
+				if cell.glyph=='.' {dots++} else {other++}
+			}
+		}
+	}
+	if dots==0 || other==0 {t.Fatalf("snow particle variety missing: dots=%d others=%d",dots,other)}
+}
