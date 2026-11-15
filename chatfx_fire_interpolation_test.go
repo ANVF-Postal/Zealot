@@ -4,6 +4,7 @@ import (
     "reflect"
     "strings"
     "testing"
+    "time"
 )
 
 func TestDoomFireIntermediateFramesKeepGentlePropagation(t *testing.T) {
@@ -85,5 +86,22 @@ func BenchmarkDoomFireInterpolatedRender(b *testing.B) {
         } else {m.fxSimAccumulator=chatFXSimulationStep/2}
         rows:=append([]string(nil),base...)
         m.renderDoomFireRows(rows,width)
+    }
+}
+
+func TestDoomFireDefaultFPSAndExplicitOverride(t *testing.T) {
+    m:=newMessageInteractionTestModel(100)
+    m.fxRoom=chatFXState{name:"fire"}
+    if got:=m.chatFXFrameInterval();got!=time.Second/30 {
+        t.Fatalf("default fire FPS is not 30: %v",got)
+    }
+    m.fxRenderFPS=60
+    if got:=m.chatFXFrameInterval();got!=time.Second/60 {
+        t.Fatalf("explicit fire FPS override ignored: %v",got)
+    }
+    m.fxRenderFPS=0
+    m.fxRoom=chatFXState{name:"snow"}
+    if got:=m.chatFXFrameInterval();got!=time.Second/15 {
+        t.Fatalf("other effects changed default FPS: %v",got)
     }
 }
