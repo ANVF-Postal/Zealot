@@ -33,7 +33,7 @@ func TestDoomFireIntermediateFramesKeepGentlePropagation(t *testing.T) {
         if got:=int(f.heatLevel(i,256));got!=new {
             t.Fatalf("interpolation end: got %d, want %d",got,new)
         }
-        if abs(old-new)>=2 && middle!=old && middle!=new {changed=true}
+        if (old-new>=2 || new-old>=2) && middle!=old && middle!=new {changed=true}
     }
     if !changed {t.Fatal("no intermediate heat levels produced")}
     f.advance(8,salt)
