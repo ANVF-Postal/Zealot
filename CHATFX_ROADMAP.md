@@ -41,7 +41,7 @@ ever cross the Unix socket.
 - Gentle `/snow [self] [seconds]` with variable intensity and slow horizontal drift; tiny dot flakes fall at twice the speed of other flakes
 - `/blizzard [self] [seconds]`: dense sideways snow with 20–120-second sustained gusts, 6–35-second calmer breaks, strong variation in wind speed, and fewer slash glyphs
 - `/embers [self] [seconds]`: rising warm sparks that drift, vary brightness, cool and vanish; no illumination until the future quality-settings phase
-- `/fire [self] [seconds]`: Doom-inspired 37-level full-viewport heat field; dense hot base, coherent slowly reversing flame wind and calm 7.5 Hz propagation. A batched seven-shade foreground renderer avoids per-cell ANSI styling during active fire; confined to unoccupied chat cells
+- `/fire [self] [seconds]`: Doom-inspired 37-level heat field with width-responsive flame height (shorter on wider terminals), denser low base, natural cooling at tips, and slower ~33-second directional sway. Seven-shade ANSI renderer writes directly without per-run lipgloss allocation. Confined to unoccupied chat cells; wide terminal benchmarks at 80/160/320 columns.
 - `/matrix [self] [seconds]`: independent green code streams with bright leading glyphs and darker trails
 - Cached terminal glyph styling and capped blizzard particle count reduce large-terminal render costs (benchmark included)
 - Define primary-effect replace semantics across room and local scopes
