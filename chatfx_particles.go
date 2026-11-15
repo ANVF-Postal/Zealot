@@ -109,8 +109,16 @@ func (m model) confettiPositions(width, height int) []map[int]chatFXCell {
 	return positions
 }
 
+// snowflakeSpeed gives small dots a distinctly quicker fall than the
+// other glyphs generated from the same particle seed.
+func snowflakeSpeed(seed uint64, glyph rune) float64 {
+	speed := 1.15+2.2*chatFXUnit(seed+1)
+	if glyph == '.' { speed *= 1.65 }
+	return speed
+}
+
 // snowPositions uses the same slowly varying weather cycle as rain,
- // with lighter particle counts and slower, softly swaying descent.
+// with lighter particle counts and softly swaying descent.
 func (m model) snowPositions(width, height int) []map[int]chatFXCell {
 	if width < 1 || height < 1 { return nil }
 	positions := make([]map[int]chatFXCell,height)
@@ -123,8 +131,7 @@ func (m model) snowPositions(width, height int) []map[int]chatFXCell {
 		// All snow falls a little faster; tiny dots are the quickest,
 		// creating subtle depth without turning snowfall into a storm.
 		glyph := glyphs[int(chatFXHash(seed+7)%uint64(len(glyphs)))]
-		speed := 1.15+2.2*chatFXUnit(seed+1)
-		if glyph == '.' { speed *= 1.65 }
+		speed := snowflakeSpeed(seed,glyph)
 		startX := chatFXUnit(seed+2)*float64(width)
 		startY := chatFXUnit(seed+3)*float64(height)
 		sway := 0.7+1.3*chatFXUnit(seed+4)
