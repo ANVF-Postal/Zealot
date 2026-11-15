@@ -64,7 +64,9 @@ func TestBubbleCollisionsAndWallBounces(t *testing.T) {
         {x:56,y:18,vx:-3,vy:0,radius:3,lifetime:100},
     }
     s.steps=1
-    for i:=0;i<180;i++ {s.tick()}
+    // Test the actual pair collision before new bubbles spawn, so no
+    // unrelated interactions can alter the two velocities.
+    for i:=0;i<8;i++ {s.tick()}
     if !(s.bubbles[0].vx<0 && s.bubbles[1].vx>0) {
         t.Fatalf("colliding bubbles did not rebound: %f %f",s.bubbles[0].vx,s.bubbles[1].vx)
     }
