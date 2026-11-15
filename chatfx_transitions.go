@@ -38,6 +38,8 @@ func (m model) chatFXActivePositions(name string,width,height int) []map[int]cha
 		return m.snowPositions(width,height)
 	case "blizzard":
 		return m.blizzardPositions(width,height)
+	case "embers":
+		return m.emberPositions(width,height)
 	case "confetti":
 		return m.confettiPositions(width,height)
 	case "fireworks":
@@ -55,6 +57,7 @@ func (m *model) retireChatFX(fx chatFXState) {
 	switch fx.name {
 	case "snow": lifetime=7*time.Second
 	case "blizzard": lifetime=5*time.Second
+	case "embers": lifetime=6*time.Second
 	case "confetti": lifetime=8*time.Second
 	case "fireworks": lifetime=6*time.Second
 	}
@@ -67,6 +70,7 @@ func (m *model) retireChatFX(fx chatFXState) {
 			switch fx.name {
 			case "snow": vy=1.2+2*chatFXUnit(seed+1);if cell.glyph=='.' { vy*=2.0 };vx*=1.6
 			case "blizzard": vy=2.5+3*chatFXUnit(seed+1);vx=blizzardWindSpeed(float64(m.fxSimSteps)/30,m.fxSalt)*(0.65+0.35*chatFXUnit(seed+2))
+			case "embers": vy=-(1.5+3.6*chatFXUnit(seed+1));vx*=2.2
 			case "confetti": vy=3+7*chatFXUnit(seed+1);vx*=2
 			case "fireworks": vy=2+4*chatFXUnit(seed+1);vx*=4
 			}
