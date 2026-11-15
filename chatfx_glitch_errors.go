@@ -150,7 +150,7 @@ func (m model) glitchErrorPositions(width,height int) ([]map[int]chatFXCell,bool
         if count<0 {count=0}
         y:=y0+line
         if y>=height {break}
-        shade:=digitalGlitchColors[int(chatFXHash(event.seed+uint64(line)*17)%uint64(len(digitalGlitchColors)))]
+        shade:=digitalGlitchColors[1+int(chatFXHash(event.seed+uint64(line)*17)%uint64(len(digitalGlitchColors)-1))]
         color:=glitchMutedColor(shade,m.cfg.Theme.Background,fade)
         put:=func(x int,glyph rune) {
             if x<0||x>=width || glyph==' ' {return}
