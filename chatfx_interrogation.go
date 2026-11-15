@@ -148,6 +148,7 @@ func (m model) renderInterrogationRows(rows []string, start int) {
         spotlightStart=m.messageRowRanges[newest].Start
         spotlightEnd=m.messageRowRanges[newest].End
     } else {
+        spotlightEnd=0
         for i,msg:=range m.messages {
             count:=max(1,m.renderPacketLineCount(msg,m.width))
             if i==newest {
