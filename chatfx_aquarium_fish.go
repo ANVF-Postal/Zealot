@@ -35,6 +35,7 @@ type aquariumSwimmer struct {
     seed uint64 // individual motion and eel body follow-through
     route aquariumRoute
     routePhase float64
+    baseY int
 }
 
 type aquariumChomp struct {
@@ -307,8 +308,8 @@ func aquariumFishRest(kind aquariumKind,seed uint64) float64 {
 }
 
 func aquariumFishY(f aquariumSwimmer,seconds float64,height int) int {
-    if f.kind==aquariumMuskie {return max(0,min(height-5,f.y))}
-    base:=f.y
+    if f.kind==aquariumMuskie {return max(0,min(height-5,f.baseY))}
+    base:=f.baseY
     seed:=f.seed
     switch f.kind {
     case aquariumMinnow:
@@ -326,8 +327,7 @@ func aquariumFishY(f aquariumSwimmer,seconds float64,height int) int {
     case aquariumCute:
         base+=int(math.Round(2.4*math.Sin(seconds*0.83+chatFXUnit(seed+7)*6.283)))
     case aquariumEel:
-        base+=int(math.Round(3.0*math.Sin(seconds*0.28+chatFXUnit(seed+8)*6.283)+
-            0.9*math.Sin(seconds*0.51+chatFXUnit(seed+9)*6.283)))
+        return aquariumEelHeadY(f,seconds,height)
     }
     switch f.kind {
     case aquariumLargemouth:
@@ -360,7 +360,7 @@ func aquariumSwimmers(width,height int,seconds float64,salt uint64) []aquariumSw
         candidate:=aquariumSwimmer{
             kind:kind,direction:direction,length:length,
             seed:seed,vx:float64(direction)*speed,school:school,
-            y:aquariumFishDepth(kind,seed+3,height),
+            baseY:aquariumFishDepth(kind,seed+3,height),
         }
         fw:=aquariumFishWidth(candidate)
         turns:=1+int(chatFXHash(seed+17)%2)
@@ -508,30 +508,79 @@ func (s *aquariumState) resolvePredation(fish []aquariumSwimmer,width int) {
     }
 }
 
+// A body point follows the head's path from a slightly earlier moment.
+// Successive ~ segments follow the same route at increasing delays: during a
+// climb they trace a gentle staircase instead of snapping into a rigid kink.
+type aquariumEelPoint struct {
+    x,y int
+    glyph rune
+}
+
+func aquariumEelHeadY(f aquariumSwimmer,seconds float64,height int) int {
+    phase:=chatFXUnit(f.seed+8)*2*math.Pi
+    depth:=float64(f.baseY)+3.0*math.Sin(seconds*0.28+phase)+
+        0.75*math.Sin(seconds*0.51+chatFXUnit(f.seed+9)*2*math.Pi)
+    return max(1,min(height-2,int(math.Round(depth))))
+}
+
+func aquariumEelBody(f aquariumSwimmer,seconds float64,height int) []aquariumEelPoint {
+    art:=aquariumFishArt(f)
+    if len(art)==0 {return nil}
+    runes:=[]rune(art[0])
+    points:=make([]aquariumEelPoint,0,len(runes))
+    headIndex:=len(runes)-1
+    if f.direction<0 {headIndex=0}
+    for index,glyph:=range runes {
+        lag:=math.Abs(float64(index-headIndex))/math.Max(1,f.route.speed)
+        phase:=f.routePhase-lag
+        x,heading,ok:=aquariumRouteAt(f.route,phase)
+        if !ok {continue} // trailing body enters after the head
+        if heading>0 {x+=float64(len(runes)-1)}
+        y:=aquariumEelHeadY(f,seconds-lag,height)
+        points=append(points,aquariumEelPoint{x:int(math.Round(x)),y:y,glyph:glyph})
+    }
+    return points
+}
+
+func aquariumPaintEel(f aquariumSwimmer,seconds float64,height int,put func(int,int,rune,string)) {
+    points:=aquariumEelBody(f,seconds,height)
+    // Draw from tail toward head so overlapping segments during a U-turn
+    // never erase the eye and mouth.
+    headIndex:=len(points)-1
+    if f.direction<0 {headIndex=0}
+    previous:=aquariumEelPoint{}
+    havePrevious:=false
+    for step:=0;step<len(points);step++ {
+        index:=step
+        if headIndex==0 {index=len(points)-1-step}
+        point:=points[index]
+        if havePrevious {
+            dx:=point.x-previous.x
+            dy:=point.y-previous.y
+            if math.Abs(float64(dx))<=2 && math.Abs(float64(dy))<=2 &&
+                (dx!=0 || dy!=0) {
+                // Connect rising/falling segments only where neighbouring
+                // dots would otherwise have an obvious one-cell gap.
+                if dy!=0 {
+                    connector:='/'
+                    if dx*dy>0 {connector='\\'}
+                    put(previous.x,previous.y,connector,aquariumSpeciesColor(aquariumEel))
+                }
+            }
+        }
+        put(point.x,point.y,point.glyph,aquariumSpeciesColor(aquariumEel))
+        previous=point
+        havePrevious=true
+    }
+}
+
 func (m model) renderAquariumFish(width,height int,seconds float64,salt uint64,put func(int,int,rune,string)) {
     for _,fish:=range aquariumSwimmers(width,height,seconds,salt) {
         if m.fxAquarium!=nil && m.fxAquarium.eaten[fish.id] {continue}
         lines:=aquariumFishArt(fish)
-        if fish.kind==aquariumEel && len(lines)>0 {
-            // The eel bends mid-body when changing depth, trailing its tail
-            // into a second row rather than rigidly sliding vertically.
-            bend:=fish.tailBend
-            if bend!=0 && fish.length>=11 {
-                line:=[]rune(lines[0])
-                kink:=len(line)*2/3
-                if kink<len(line)-2 {
-                    for i,glyph:=range line {
-                        localY:=0
-                        if i>kink {localY=bend}
-                        if i==kink || i==kink+1 {
-                            glyph='\\'
-                            if bend<0 {glyph='/'}
-                        }
-                        put(fish.x+i,fish.y+localY,glyph,aquariumFishGlyphColor(fish,0,i,glyph))
-                    }
-                    continue
-                }
-            }
+        if fish.kind==aquariumEel {
+            aquariumPaintEel(fish,seconds,height,put)
+            continue
         }
         for row,line:=range lines {
             for col,glyph:=range line {
