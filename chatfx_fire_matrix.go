@@ -59,40 +59,54 @@ func newDoomFireState(width, height int, salt uint64) *doomFireState {
 	return state
 }
 
+// fireWind returns a slowly reversing current. All cells in a frame share
+// it, so flames bend together instead of jittering independently.
+func fireWind(index uint64, salt uint64) float64 {
+	phase:=2*math.Pi*chatFXUnit(salt+0xf1e5)
+	return math.Sin(float64(index)*0.062+phase)
+}
+
 func (f *doomFireState) spread(salt, index uint64) {
 	w,h:=f.width,f.height
 	if w<1 || h<1 {return}
+	wind:=fireWind(index,salt)
 	for y:=0;y<h-1;y++ {
-		// Rebuild this row completely on every propagation, so a heat
-		// value cannot remain frozen in a cell that no source reached.
 		clear(f.scratch)
+		depth:=h-1-y
 		for x:=0;x<w;x++ {
 			source:=int(f.heat[(y+1)*w+x])
 			if source==0 {continue}
 			random:=chatFXHash(salt+index*0x9e3779b97f4a7c15+
 				uint64(y+1)*0xbf58476d1ce4e5b9+uint64(x+1)*0x94d049bb133111eb)
-			// Gradual 0..4 cooling keeps the silhouette irregular without
-			// introducing large, erratic heat jumps.
-			decay:=int(random%5)
-			// Mostly rise straight upward. Occasional one-cell sideways
-			// movement makes broad, slow tongues instead of turbulence.
-			shift:=int((random>>8)%8)
-			destX:=x
-			if shift==0 {destX--} else if shift==1 {destX++}
-			if destX<0 {destX=0}
-			if destX>=w {destX=w-1}
+			// Strong, contiguous fuel near the bottom. Heat thins and cools
+			// progressively as it rises; there is no geometric height cap.
+			decay:=int(random%3)
+			if depth>5 {decay=1+int(random%4)}
+			if depth>13 {decay=2+int(random%4)}
 			heat:=source-decay
-			if heat>int(f.scratch[destX]) {
-				f.scratch[destX]=uint8(heat)
+			if heat<=0 {continue}
+			// Always feed the cell directly above: drifting source pixels
+			// alone created holes and made the base look skeletal.
+			if uint8(heat)>f.scratch[x] {f.scratch[x]=uint8(heat)}
+			// Add some weaker heat to a downwind neighbor. The probability
+			// and direction evolve together over many seconds.
+			if math.Abs(wind)>0.16 && int((random>>8)%8)<int(2+4*math.Abs(wind)) {
+				destX:=x
+				if wind>0 {destX++} else {destX--}
+				if destX>=0 && destX<w {
+					neighborHeat:=heat-2
+					if neighborHeat>0 && uint8(neighborHeat)>f.scratch[destX] {
+						f.scratch[destX]=uint8(neighborHeat)
+					}
+				}
 			}
 		}
 		copy(f.heat[y*w:(y+1)*w],f.scratch)
 	}
-	// The base stays vigorous; brighter fuel pulses vary per column.
 	base:=(h-1)*w
 	for x:=0;x<w;x++ {
 		r:=chatFXHash(salt+index*0x517cc1b727220a95+uint64(x)*0x9e3779b97f4a7c15)
-		f.heat[base+x]=uint8(32+r%5)
+		f.heat[base+x]=uint8(34+r%3)
 	}
 }
 
