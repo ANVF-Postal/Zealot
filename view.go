@@ -269,6 +269,9 @@ func (m model) View() tea.View {
 			break
 		}
 	}
+	// The typing indicator is the final row of the same illuminated pane.
+	// Shade it before attaching the unaffected scrollbar column.
+	typingLine = m.renderInterrogationTypingRow(typingLine, chatHeight)
 	typingLine = truncateANSI(typingLine, chatContentWidth(m.width)) + scrollbarRows[chatHeight]
 	chat += "\n" + typingLine
 
