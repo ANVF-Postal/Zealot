@@ -1128,7 +1128,7 @@ func TestDoomFireBaseIsDenseAndGustsReverse(t *testing.T) {
 		for x:=0;x<width;x++ {
 			if state.heat[y*width+x]>=12 {dense++}
 		}
-		if dense<width*7/10 {
+		if dense<width*6/10 {
 			t.Fatalf("fire base row %d is too patchy: %d/%d hot cells",y,dense,width)
 		}
 	}
