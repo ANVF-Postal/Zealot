@@ -154,6 +154,10 @@ func (m model) renderChatFXBackground(rows []string, width int) {
 	fx := m.currentChatFX().name
 	if width < 2 || len(rows) == 0 || (fx == "" && len(m.fxFading)==0) { return }
 	if fx=="interrogation" && len(m.fxFading)==0 {return}
+	if fx=="bubbles" && len(m.fxFading)==0 {
+		m.renderBubblesRows(rows,width)
+		return
+	}
 	if fx=="fire" && len(m.fxFading)==0 {
 		// Dense fire has a dedicated renderer that batches adjacent glyphs
 		// into color runs and avoids hundreds of ANSI fragments per frame.
