@@ -119,7 +119,8 @@ func (m model) glitchPositions(width,height int) []map[int]chatFXCell {
     // Return immediately: no major glitches OR minor speckles can coexist.
     if rows,active:=m.glitchErrorPositions(width,height);active {return rows}
     rows:=make([]map[int]chatFXCell,height)
-    tick:=m.fxSimSteps
+    // Suspended across error blocks, so regular glitches resume afterward.
+    tick:=glitchDistortionTick(m.fxSimSteps,m.fxSalt)
     seed,active:=interferenceBurst(tick,m.fxSalt^0x6117c4,true)
     // Minor faults: short-lived chromatic ghosts and an occasional tiny
     // tracking tear. Never a permanent full-screen colourful noise field.
