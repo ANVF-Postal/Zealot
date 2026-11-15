@@ -18,6 +18,7 @@ const (
     aquariumCute
     aquariumWalleye
     aquariumMuskie
+    aquariumMinnow
 )
 
 type aquariumSwimmer struct {
@@ -29,8 +30,9 @@ type aquariumSwimmer struct {
     length int
     mouthOpen bool
     school bool
-    stripePhase int
-    tailBend int
+    stripePhase int // legacy field; stripes are now permanent
+    tailBend int // retained for compatibility with older aquarium tests
+    seed uint64 // individual motion and eel body follow-through
 }
 
 type aquariumChomp struct {
@@ -88,6 +90,7 @@ func aquariumFishArt(f aquariumSwimmer) []string {
     n:=max(3,min(10,f.length))
     var art string
     switch f.kind {
+    case aquariumMinnow:art="><>"
     case aquariumPike:art="><"+strings.Repeat("(",n)+"'>"
     case aquariumPerch:
         art="><((<(O-"
@@ -136,6 +139,7 @@ func aquariumFishHeight(f aquariumSwimmer) int {
 
 func aquariumSpeciesColor(kind aquariumKind) string {
     switch kind {
+    case aquariumMinnow:return "#96DAD6"
     case aquariumPike:return "#83B977"
     case aquariumPerch:return "#E2C77B"
     case aquariumBluegill:return "#67C399"
@@ -152,16 +156,24 @@ func aquariumSpeciesColor(kind aquariumKind) string {
 // just behind the eye is blue, and its leading lip is pale green. Pike body
 // stripes alternate two greens by position, independently of animation FPS.
 func aquariumFishGlyphColor(f aquariumSwimmer,row,index int,glyph rune) string {
-    if f.kind==aquariumPike && glyph=='(' || f.kind==aquariumPike && glyph==')' {
-        if (index+f.stripePhase)%2==0 {return "#A8D990"}
-        return "#4B875B"
+    originalIndex:=index
+    if f.direction<0 {originalIndex=aquariumFishWidth(f)-1-index}
+    if f.kind==aquariumPike && (glyph=='(' || glyph==')') {
+        // The bands belong to body segments, not the animation clock.
+        if (originalIndex-2)%2==0 {return "#94C18A"}
+        return "#649466"
+    }
+    if f.kind==aquariumPerch && originalIndex>=2 && originalIndex<=5 &&
+        (glyph=='(' || glyph==')' || glyph=='<') {
+        if (originalIndex-2)%2==0 {return "#E6AA61"}
+        return "#AF702E"
     }
     if f.kind==aquariumBluegill {
-        width:=aquariumFishWidth(f)
-        originalIndex:=index
-        if f.direction<0 {originalIndex=width-1-index}
         if originalIndex==3 {return "#69A9F7"}
         if glyph=='>' || glyph=='<' {return "#B5F3A5"}
+    }
+    if f.kind==aquariumLargemouth && originalIndex==4 {
+        return "#598969" // second body segment behind the eye
     }
     if f.kind==aquariumWalleye && (glyph=='*' || glyph=='O') {return "#F0F9D4"}
     if f.kind==aquariumMuskie && (glyph=='O' || glyph=='V') {return "#F2E8BD"}
@@ -172,11 +184,12 @@ func aquariumFishGlyphColor(f aquariumSwimmer,row,index int,glyph rune) string {
 func aquariumFishWeight(seed uint64) aquariumKind {
     value:=chatFXUnit(seed)
     switch {
-    case value<0.20:return aquariumPike
-    case value<0.42:return aquariumPerch
-    case value<0.68:return aquariumBluegill
-    case value<0.83:return aquariumLargemouth
-    case value<0.93:return aquariumCute
+    case value<0.70:return aquariumMinnow
+    case value<0.78:return aquariumPike
+    case value<0.85:return aquariumPerch
+    case value<0.91:return aquariumBluegill
+    case value<0.95:return aquariumLargemouth
+    case value<0.985:return aquariumCute
     default:return aquariumWalleye
     }
 }
@@ -184,6 +197,7 @@ func aquariumFishWeight(seed uint64) aquariumKind {
 func aquariumFishSpeed(kind aquariumKind,seed uint64) float64 {
     base:=1.0+2.1*chatFXUnit(seed)
     switch kind {
+    case aquariumMinnow:return base*1.4
     case aquariumPike:return base*1.28
     case aquariumPerch:return base*1.13
     case aquariumBluegill:return base*0.90
