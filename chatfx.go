@@ -190,6 +190,10 @@ func (m *model) resetChatFXSimulation() {
 	m.fxSimSteps = 0
 	m.fxSimAccumulator = 0
 	m.fxLastTick = time.Time{}
+	m.fxFire=nil
+	if m.currentChatFX().name=="fire" {
+		m.fxFire=newDoomFireState(chatContentWidth(m.width),max(1,m.messageHeight()-1),m.fxSalt)
+	}
 }
 
 // advanceChatFXClock has no dependency on the presentation frame rate.
@@ -209,6 +213,14 @@ func (m *model) advanceChatFXClock(now time.Time) {
 	steps := m.fxSimAccumulator / chatFXSimulationStep
 	m.fxSimSteps += uint64(steps)
 	m.fxSimAccumulator -= steps * chatFXSimulationStep
+	if m.currentChatFX().name=="fire" {
+		w,h:=chatContentWidth(m.width),max(1,m.messageHeight()-1)
+		flameHeight:=min(h,max(5,int(math.Ceil(float64(h)*0.70))))
+		if m.fxFire==nil || m.fxFire.width!=w || m.fxFire.height!=flameHeight {
+			m.fxFire=newDoomFireState(w,h,m.fxSalt)
+		}
+		m.fxFire.advance(m.fxSimSteps,m.fxSalt)
+	}
 }
 
 func (m *model) advanceChatFX(msg chatFXTickMsg) tea.Cmd {
