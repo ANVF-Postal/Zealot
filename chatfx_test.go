@@ -945,3 +945,89 @@ func BenchmarkFireAndMatrixPositions(b *testing.B) {
 		m.matrixPositions(160,45)
 	}
 }
+
+
+func TestDoomFireUsesHeatPropagationAndColoredCells(t *testing.T) {
+	const width,height=90,28
+	m:=newMessageInteractionTestModel(width)
+	m.fxRoom=chatFXState{name:"fire"}
+	m.fxSalt=173
+	state:=newDoomFireState(width,height,m.fxSalt)
+	if state==nil || len(state.heat)!=width*state.height {
+		t.Fatal("Doom fire heat grid was not initialized")
+	}
+	if state.height>=height || state.height<height/2 {
+		t.Fatalf("flames should live in lower viewport: height %d of %d",state.height,height)
+	}
+	for x:=0;x<width;x++ {
+		if state.heat[(state.height-1)*width+x]<32 {
+			t.Fatal("bottom fuel row is not hot")
+		}
+	}
+	m.fxFire=state
+	first:=m.firePositions(width,height)
+	colored:=0
+	palette:=map[string]bool{}
+	for y,row:=range first {
+		for x,cell:=range row {
+			if x<0||x>=width||y<height-state.height||y>=height {
+				t.Fatal("Doom fire escaped its lower viewport")
+			}
+			if cell.glyph!=' ' || cell.background=="" || cell.background!=cell.color {
+				t.Fatal("Doom fire must paint colored terminal backgrounds, not ASCII flame tongues")
+			}
+			colored++
+			palette[cell.background]=true
+		}
+	}
+	if colored<width*3 || len(palette)<8 {
+		t.Fatalf("fire is not a dense heat gradient: cells=%d colors=%d",colored,len(palette))
+	}
+	m.fxSimSteps=180
+	later:=m.firePositions(width,height)
+	if reflect.DeepEqual(first,later) {t.Fatal("Doom fire is not propagating")}
+	if state.step!=m.fxSimSteps {t.Fatal("heat simulation did not follow the fixed clock")}
+	m.fxRenderFPS=1
+	low:=m.firePositions(width,height)
+	m.fxRenderFPS=60
+	if !reflect.DeepEqual(low,m.firePositions(width,height)) {
+		t.Fatal("Doom fire physics must not depend on render FPS")
+	}
+}
+
+func TestDoomFireResizesAndKeepsTextReadable(t *testing.T) {
+	m:=newMessageInteractionTestModel(90)
+	m.fxSalt=32
+	m.fxRoom=chatFXState{name:"fire"}
+	m.width=90
+	m.height=30
+	m.resetChatFXSimulation()
+	if m.fxFire==nil {t.Fatal("fire should initialize on FX start")}
+	for _,size:=range [][2]int{{1,1},{12,5},{90,26},{150,42}} {
+		rows:=m.firePositions(size[0],size[1])
+		if len(rows)!=size[1] {t.Fatal("fire height did not adapt on resize")}
+		for y,row:=range rows {
+			for x:=range row {
+				if x<0||x>=size[0]||y<0||y>=size[1] {
+					t.Fatal("fire particle outside viewport")
+				}
+			}
+		}
+	}
+	lines:=[]string{
+		"  [12:00] Alice: Keep this message readable!",
+		strings.Repeat(" ",70),
+		strings.Repeat(" ",70),
+		strings.Repeat(" ",70),
+	}
+	m.renderChatFXBackground(lines,70)
+	if !strings.HasPrefix(stripANSISequences(lines[0]),"  [12:00] Alice: Keep this message readable!") {
+		t.Fatal("Doom fire background obscured chat text")
+	}
+}
+
+func BenchmarkDoomFireHeatPropagation(b *testing.B) {
+	state:=newDoomFireState(160,45,197)
+	b.ReportAllocs()
+	for i:=0;i<b.N;i++ {state.spread(197,uint64(i))}
+}
