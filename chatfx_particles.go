@@ -213,4 +213,7 @@ func (m model) renderChatFXBackground(rows []string, width int) {
 		if prefix>0 { head=truncateANSI(original,prefix) }
 		rows[y]=head+tail.String()
 	}
+	// Bubble backgrounds can coexist with the departing particles of the
+	// previously active effect; they never replace those glyphs or chat text.
+	if fx=="bubbles" {m.renderBubblesRows(rows,width)}
 }
