@@ -21,7 +21,7 @@ func (m *model) advanceInterrogationFade(now time.Time) {
     delta:=now.Sub(m.fxInterrogationLast)
     m.fxInterrogationLast=now
     if delta<0 {delta=0}
-    if delta>time.Second {delta=time.Second}
+    if delta>interrogationFadeDuration {delta=interrogationFadeDuration}
     change:=delta.Seconds()/interrogationFadeDuration.Seconds()
     if m.currentChatFX().name=="interrogation" {
         m.fxInterrogationAmount=min(1,m.fxInterrogationAmount+change)
@@ -144,15 +144,25 @@ func (m model) renderInterrogationRows(rows []string, start int) {
     // The cache holds message row ranges, including multiline/wrapped
     // messages. Keep the entire latest message illuminated, not just a row.
     spotlightStart,spotlightEnd:=-1,-1
-    if newest<len(m.messageRowRanges) {
+    if len(m.messageRowRanges)==len(m.messages) && newest<len(m.messageRowRanges) {
         spotlightStart=m.messageRowRanges[newest].Start
         spotlightEnd=m.messageRowRanges[newest].End
+    } else {
+        for i,msg:=range m.messages {
+            count:=max(1,m.renderPacketLineCount(msg,m.width))
+            if i==newest {
+                spotlightStart=spotlightEnd
+                spotlightEnd+=count
+                break
+            }
+            spotlightEnd+=count
+        }
     }
     for i:=range rows {
         absolute:=start+i
         if absolute>=spotlightStart && absolute<spotlightEnd {continue}
         // Rows beyond history are blank and need no per-frame ANSI work.
-        if absolute>=len(m.renderedLines) {continue}
+        if strings.TrimSpace(stripANSISequences(rows[i]))=="" {continue}
         rows[i]=interrogationDimRow(rows[i],m.cfg.Theme.Background,m.cfg.Theme.TextColor,m.fxInterrogationAmount)
     }
 }
