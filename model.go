@@ -148,6 +148,10 @@ type model struct {
 	fxTickGeneration int
 	fxInterrogationAmount float64 // 0..1, transitions across five seconds
 	fxInterrogationLast time.Time
+	fxInterrogationTracked bool
+	fxInterrogationCurrent int
+	fxInterrogationPrevious int
+	fxInterrogationHandoff time.Time
 
 	input          textarea.Model
 	inputSelecting bool
