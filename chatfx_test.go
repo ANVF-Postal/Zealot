@@ -1068,3 +1068,47 @@ func TestDoomFireHeatMapsToProgressivelyFinerEmbers(t *testing.T) {
 		if !found {t.Fatalf("fine ember glyph %q missing",glyph)}
 	}
 }
+
+
+func TestDoomFireKeepsGentleSevenPointFiveHzCadence(t *testing.T) {
+	state:=newDoomFireState(80,26,313)
+	original:=append([]uint8(nil),state.heat...)
+	state.advance(3,313)
+	if !reflect.DeepEqual(original,state.heat) {
+		t.Fatal("fire propagated before fourth 30 Hz simulation tick")
+	}
+	state.advance(4,313)
+	if reflect.DeepEqual(original,state.heat) {
+		t.Fatal("fire did not propagate on fourth 30 Hz simulation tick")
+	}
+	settled:=append([]uint8(nil),state.heat...)
+	state.advance(7,313)
+	if !reflect.DeepEqual(settled,state.heat) {
+		t.Fatal("fire propagated between scheduled slow heat updates")
+	}
+	state.advance(8,313)
+	if reflect.DeepEqual(settled,state.heat) {
+		t.Fatal("fire did not propagate on next scheduled update")
+	}
+}
+
+func TestDoomFireRendersWarmFlamesWithoutFaintSparkCloud(t *testing.T) {
+	m:=newMessageInteractionTestModel(100)
+	m.fxRoom=chatFXState{name:"fire"}
+	m.fxSalt=281
+	state:=newDoomFireState(100,34,m.fxSalt)
+	m.fxFire=state
+	// A weak heat cell is simulated, but not rendered as endless fine
+	// speckle over the top of the terminal.
+	state.heat[0]=4
+	rows:=m.firePositions(100,34)
+	if _,visible:=rows[0][0];visible {
+		t.Fatal("dying heat should disappear rather than flicker as a stray dot")
+	}
+	for _,row:=range rows {
+		for _,cell:=range row {
+			if cell.background!="" {t.Fatal("fire unexpectedly changed chat background")}
+			if cell.color=="" || cell.glyph==' ' {t.Fatal("fire lost its warm colored glyphs")}
+		}
+	}
+}
