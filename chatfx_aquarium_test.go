@@ -353,6 +353,83 @@ func TestAquariumEelHeadLeadsAndTailFollowsDepthChanges(t *testing.T) {
     if !foundCurve {t.Fatal("eel tail did not curve smoothly along its head's previous path")}
 }
 
+func TestAquariumEelHeadMovesAllThreeGlyphsTogether(t *testing.T) {
+    seed:=uint64(12345)
+    for _,direction:=range []int{-1,1} {
+        fish:=aquariumSwimmer{
+            kind:aquariumEel,length:18,direction:direction,
+            seed:seed,baseY:17,
+        }
+        speed:=aquariumFishSpeed(aquariumEel,seed+1)*3.2
+        fish.route=aquariumMakeRoute(160,aquariumFishWidth(fish),direction,speed,seed,2)
+        sawHeadShift:=false
+        previousHeadY:=-1
+        sawTailLag:=false
+        for frame:=80;frame<1500;frame++ {
+            seconds:=float64(frame)/30
+            if seconds>=fish.route.travel {break}
+            x,heading,active:=aquariumRouteAt(fish.route,seconds)
+            if !active || heading!=direction {continue}
+            fish.x=int(x)
+            fish.direction=direction
+            fish.routePhase=seconds
+            points:=aquariumEelBody(fish,seconds,40)
+            if len(points)<8 {continue}
+            art:=[]rune(aquariumFishArt(fish)[0])
+            start:=len(art)-3
+            if direction<0 {start=0}
+            var head [3]aquariumEelPoint
+            for j:=0;j<3;j++ {
+                found:=false
+                for _,point:=range points {
+                    if point.glyph==art[start+j] && point.x==fish.x+start+j {
+                        head[j]=point
+                        found=true
+                        break
+                    }
+                }
+                if !found {t.Fatalf("direction %d head rune %q missing at column %d",direction,art[start+j],fish.x+start+j)}
+            }
+            if head[0].y!=head[1].y || head[1].y!=head[2].y {
+                t.Fatalf("direction %d eel head split across rows: %+v",direction,head)
+            }
+            if previousHeadY>=0 && previousHeadY!=head[0].y {sawHeadShift=true}
+            previousHeadY=head[0].y
+            for _,point:=range points {
+                if point.glyph=='~' && point.y!=head[0].y {sawTailLag=true}
+            }
+            if sawHeadShift && sawTailLag {break}
+        }
+        if !sawHeadShift {t.Fatalf("direction %d head never changed depth",direction)}
+        if !sawTailLag {t.Fatalf("direction %d tail never followed a different depth",direction)}
+    }
+}
+
+func TestAquariumEelSpeedAndFishDiversity(t *testing.T) {
+    seed:=uint64(211)
+    baseline:=aquariumFishSpeed(aquariumEel,seed+1)*1.5
+    increased:=aquariumFishSpeed(aquariumEel,seed+1)*3.2
+    if increased<2*baseline {t.Fatalf("eel speed %.2f not twice the old %.2f",increased,baseline)}
+    shades:=map[string]bool{}
+    for id:=uint64(1);id<=96;id++ {
+        f:=aquariumSwimmer{kind:aquariumMinnow,seed:chatFXHash(id),direction:1}
+        shade:=aquariumFishGlyphColor(f,0,0,'>')
+        shades[shade]=true
+        if shade!=aquariumFishGlyphColor(f,0,1,'<') {
+            t.Fatal("minnow changed colour between body segments")
+        }
+    }
+    if len(shades)<5 {t.Fatalf("minnow palette lacks individual variation: %d shades",len(shades))}
+    for _,height:=range []int{24,40,70} {
+        for seed:=uint64(0);seed<128;seed++ {
+            f:=aquariumSwimmer{kind:aquariumWalleye,seed:seed,baseY:aquariumFishDepth(aquariumWalleye,seed,height)}
+            if got:=aquariumFishY(f,0,height);got<height*2/3 {
+                t.Fatalf("walleye wandered above lower tank: y %d, height %d",got,height)
+            }
+        }
+    }
+}
+
 func TestAquariumSchoolsOccasionallyCrossWithoutRemainingPermanent(t *testing.T) {
     m:=newMessageInteractionTestModel(130)
     m.fxRoom=chatFXState{name:"aquarium"}
