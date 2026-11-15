@@ -156,7 +156,23 @@ func aquariumSpeciesColor(kind aquariumKind) string {
 // The fish renderer adds no opaque background. A bluegill's gill marking
 // just behind the eye is blue, and its leading lip is pale green. Pike body
 // stripes alternate two greens by position, independently of animation FPS.
+func aquariumMinnowColor(seed uint64) string {
+    // Stable per-fish shades, without animated flicker or extreme brightness.
+    palette:=[...]string{
+        "#96DAD6", // seafoam
+        "#86C6D5", // soft blue
+        "#B6DFCA", // pale mint
+        "#85CAB3", // green-blue
+        "#C2D2E9", // lavender-blue
+        "#A5D3B4", // gentle green
+        "#B6DAE6", // powder blue
+        "#C3DFD1", // silver mint
+    }
+    return palette[int(chatFXHash(seed+0x6d696e6e6f77)%uint64(len(palette)))]
+}
+
 func aquariumFishGlyphColor(f aquariumSwimmer,row,index int,glyph rune) string {
+    if f.kind==aquariumMinnow {return aquariumMinnowColor(f.seed)}
     originalIndex:=index
     if f.direction<0 {originalIndex=aquariumFishWidth(f)-1-index}
     if f.kind==aquariumPike && (glyph=='(' || glyph==')') {
@@ -272,11 +288,11 @@ func aquariumRouteAt(r aquariumRoute,phase float64) (float64,int,bool) {
 func aquariumOtherSpecies(seed uint64) aquariumKind {
     value:=chatFXUnit(seed)
     switch {
-    case value<0.15:return aquariumPike
-    case value<0.34:return aquariumPerch
-    case value<0.60:return aquariumBluegill
-    case value<0.78:return aquariumLargemouth
-    case value<0.91:return aquariumCute
+    case value<0.14:return aquariumPike
+    case value<0.31:return aquariumPerch
+    case value<0.55:return aquariumBluegill
+    case value<0.74:return aquariumLargemouth
+    case value<0.85:return aquariumCute
     default:return aquariumWalleye
     }
 }
@@ -285,7 +301,7 @@ func aquariumFishRest(kind aquariumKind,seed uint64) float64 {
     switch kind {
     case aquariumMinnow:return 3+8*chatFXUnit(seed+33)
     case aquariumPerch:return 22+31*chatFXUnit(seed+33)
-    case aquariumWalleye:return 36+42*chatFXUnit(seed+33)
+    case aquariumWalleye:return 24+32*chatFXUnit(seed+33)
     case aquariumEel:return 220+80*chatFXUnit(seed+33)
     case aquariumMuskie:return 1150+300*chatFXUnit(seed+33)
     default:return 12+25*chatFXUnit(seed+33)
@@ -329,7 +345,7 @@ func aquariumFishY(f aquariumSwimmer,seconds float64,height int) int {
 func aquariumSwimmers(width,height int,seconds float64,salt uint64) []aquariumSwimmer {
     if width<8 || height<3 {return nil}
     minnowCount:=min(46,max(14,width*height/230))
-    otherCount:=min(9,max(3,width*height/1150))
+    otherCount:=min(12,max(4,width*height/850))
     if height<8 {minnowCount=5;otherCount=1}
     swimmers:=make([]aquariumSwimmer,0,minnowCount+otherCount+32)
 
@@ -339,7 +355,7 @@ func aquariumSwimmers(width,height int,seconds float64,salt uint64) []aquariumSw
         length:=3+int(chatFXHash(seed+12)%7)
         if kind==aquariumEel {length=11+int(chatFXHash(seed+12)%11)}
         speed:=aquariumFishSpeed(kind,seed+1)
-        if kind==aquariumEel {speed*=1.5}
+        if kind==aquariumEel {speed*=3.2} // >2x the previous eel speed
         if kind==aquariumMuskie {speed*=3.2}
         if school {speed*=1.2}
         candidate:=aquariumSwimmer{
@@ -539,21 +555,49 @@ func aquariumEelHeadY(f aquariumSwimmer,seconds float64,height int) int {
     return max(1,min(height-2,int(math.Round(depth))))
 }
 
+// The terminal head of the eel is three glyphs, "*'>", not a single
+// character. All three occupy the current head row, while only the "~"
+// body and the leading tail marker sample the head's earlier path.
 func aquariumEelBody(f aquariumSwimmer,seconds float64,height int) []aquariumEelPoint {
     art:=aquariumFishArt(f)
     if len(art)==0 {return nil}
     runes:=[]rune(art[0])
     points:=make([]aquariumEelPoint,0,len(runes))
-    headIndex:=len(runes)-1
-    if f.direction<0 {headIndex=0}
+    n:=len(runes)
+    if n<4 {return nil}
+    headStart,headEnd:=n-3,n-1
+    if f.direction<0 {headStart,headEnd=0,2}
+    headY:=aquariumEelHeadY(f,seconds,height)
+    headX:=float64(f.x)
+    // route position is always the left edge of the fish's bounding box.
+    // A head moving right sits on the rightmost three columns; a head
+    // moving left occupies the leftmost three.
     for index,glyph:=range runes {
-        lag:=math.Abs(float64(index-headIndex))/math.Max(1,f.route.speed)
-        phase:=f.routePhase-lag
-        x,heading,ok:=aquariumRouteAt(f.route,phase)
-        if !ok {continue} // trailing body enters after the head
-        if heading>0 {x+=float64(len(runes)-1)}
-        y:=aquariumEelHeadY(f,seconds-lag,height)
-        points=append(points,aquariumEelPoint{x:int(math.Round(x)),y:y,glyph:glyph})
+        if index>=headStart && index<=headEnd {
+            points=append(points,aquariumEelPoint{
+                x:int(headX)+index,y:headY,glyph:glyph,
+            })
+            continue
+        }
+        gap:=0
+        tailOffset:=0
+        if f.direction>0 {
+            gap=headStart-index
+            tailOffset=headStart
+        } else {
+            gap=index-headEnd
+            tailOffset=headEnd
+        }
+        // One column of the trailing body corresponds to one speed unit of
+        // historical travel. The tail reproduces climbs and descents from
+        // the exact same path rather than using an independent wiggle.
+        lag:=float64(gap)/math.Max(1,f.route.speed)
+        pastX,_,ok:=aquariumRouteAt(f.route,f.routePhase-lag)
+        if !ok {continue} // body appears gradually as the eel enters
+        x:=int(math.Round(pastX))+tailOffset
+        points=append(points,aquariumEelPoint{
+            x:x,y:aquariumEelHeadY(f,seconds-lag,height),glyph:glyph,
+        })
     }
     return points
 }
