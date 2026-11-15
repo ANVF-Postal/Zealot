@@ -596,3 +596,100 @@ func TestOversizedShellRendersNeutralAndBurstsStayInBounds(t *testing.T) {
 		t.Fatalf("oversized shell missing visual stages: launch=%v burst=%v",seenBigShell,seenBigBurst)
 	}
 }
+
+
+func TestSmallSnowDotsFallTwiceAsFast(t *testing.T) {
+	for _, seed := range []uint64{1, 11, 42, 999, 999999} {
+		dot, flake := snowflakeSpeed(seed, '.'), snowflakeSpeed(seed, '*')
+		if math.Abs(dot/flake-2.0) > 1e-12 {
+			t.Fatalf("seed %d: dot speed %.4f; flake speed %.4f", seed, dot, flake)
+		}
+	}
+}
+
+func TestBlizzardWindReversesSmoothly(t *testing.T) {
+	for _, salt := range []uint64{0, 1, 23, 999} {
+		seenLeft, seenRight := false, false
+		lastPosition := blizzardWindOffset(0, salt)
+		for frame := 1; frame <= 180*30; frame++ {
+			seconds := float64(frame)/30
+			position := blizzardWindOffset(seconds, salt)
+			velocity := blizzardWindSpeed(seconds, salt)
+			if velocity < -5 { seenLeft = true }
+			if velocity > 5 { seenRight = true }
+			if math.Abs(position-lastPosition) > 1.0 {
+				t.Fatalf("wind moved discontinuously at %.2fs for salt %d", seconds, salt)
+			}
+			// Analytic displacement must agree with its instantaneous speed.
+			if frame%30==0 {
+				derivative := (blizzardWindOffset(seconds+0.001,salt)-blizzardWindOffset(seconds-0.001,salt))/0.002
+				if math.Abs(velocity-derivative)>0.01 {
+					t.Fatalf("wind speed mismatch: %.3f vs %.3f", velocity, derivative)
+				}
+			}
+			lastPosition=position
+		}
+		if !seenLeft || !seenRight {t.Fatalf("wind never reversed strongly for salt %d",salt)}
+	}
+}
+
+func TestBlizzardIsDenseBoundedAndIndependentOfFPS(t *testing.T) {
+	m:=newMessageInteractionTestModel(100)
+	m.fxRoom=chatFXState{name:"blizzard"}
+	m.fxSalt=73
+	for _, size:=range [][2]int{{1,1},{12,4},{80,24},{140,40}} {
+		width,height:=size[0],size[1]
+		for _,seconds:=range []uint64{0,1,10,28,59,121} {
+			m.fxSimSteps=seconds*30
+			rows:=m.blizzardPositions(width,height)
+			if len(rows)!=height {t.Fatalf("blizzard viewport mismatch %dx%d",width,height)}
+			for y,row:=range rows {
+				for x,cell:=range row {
+					if x<0 || x>=width || y<0 || y>=height || cell.color=="" {t.Fatal("out-of-bounds or colorless snow")}
+				}
+			}
+		}
+	}
+	m.fxSimSteps=300
+	m.fxRenderFPS=1
+	low:=m.blizzardPositions(100,30)
+	m.fxRenderFPS=60
+	high:=m.blizzardPositions(100,30)
+	if !reflect.DeepEqual(low,high) {t.Fatal("render FPS should not change blizzard positions")}
+	snow:=m.snowPositions(100,30)
+	blizzardCount,snowCount:=0,0
+	for _,r:=range high {blizzardCount+=len(r)}
+	for _,r:=range snow {snowCount+=len(r)}
+	if blizzardCount <= snowCount*2 {
+		t.Fatalf("blizzard not sufficiently dense: blizzard %d, snow %d",blizzardCount,snowCount)
+	}
+}
+
+func TestBlizzardCommandRoomSelfAndHandoff(t *testing.T) {
+	m:=newMessageInteractionTestModel(100)
+	m.width=100
+	m.height=32
+	m.room="lobby"
+	m.connected=true
+	var wire bytes.Buffer
+	m.client=&wireClient{enc:json.NewEncoder(&wire)}
+	if m.sendMessage("/BLIZZARD self 20","") {t.Fatal("local blizzard became a chat message")}
+	if wire.Len()!=0 || m.currentChatFX().name!="blizzard" {t.Fatal("self blizzard was not local")}
+	m.chatFXCommand("/stopfx",[]string{"/stopfx","self"})
+	if m.sendMessage("/blizzard 25","") {t.Fatal("room blizzard became chat text")}
+	var packet Packet
+	if err:=json.NewDecoder(&wire).Decode(&packet);err!=nil {t.Fatal(err)}
+	if packet.Type!="fx_start" || packet.FX!="blizzard" || packet.FXSeconds!=25 {
+		t.Fatalf("wrong blizzard room packet: %+v",packet)
+	}
+	m.fxRoom=chatFXState{name:"rain"}
+	m.receiveChatFX(Packet{Type:"fx_state",FX:"blizzard"})
+	if m.currentChatFX().name!="blizzard" || len(m.fxFading)==0 {
+		t.Fatal("blizzard did not replace and phase out the old room weather")
+	}
+	rows:=[]string{"  [19:49] Alice: Hold on to your hats!",strings.Repeat(" ",60),strings.Repeat(" ",60)}
+	m.renderChatFXBackground(rows,60)
+	if !strings.HasPrefix(stripANSISequences(rows[0]),"  [19:49] Alice: Hold on to your hats!") {
+		t.Fatal("blizzard obscured chat text")
+	}
+}
