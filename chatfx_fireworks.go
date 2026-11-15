@@ -27,6 +27,16 @@ func fireworkColor(seed uint64, spark int, age float64, rainbow bool) string {
 	return family[(spark+int(age*2))%len(family)]
 }
 
+// Each shell has a deterministic horizontal burst stretch, compensating for
+// tall/narrow terminal glyphs without changing the shape of their vertical arc.
+// Roughly 1 in 32 shells is a larger, neutral "0" with a spectacular burst.
+func fireworkShellStyle(seed uint64) (glyph rune, widthScale float64, particleScale float64) {
+	if chatFXHash(seed+17)%32 == 0 {
+		return '0', 2.35+0.55*chatFXUnit(seed+19), 1.7
+	}
+	return 'o', 1.05+1.05*chatFXUnit(seed+18), 1
+}
+
 func fireworkShellPosition(x0, vx, curve, launchSpeed, elapsed float64, height int) (float64,float64) {
 	return x0+vx*elapsed+curve*elapsed*elapsed,
 		float64(height-1)-launchSpeed*elapsed+2.6*elapsed*elapsed
@@ -56,6 +66,7 @@ func (m model) fireworkPositions(width,height int) []map[int]chatFXCell {
 		launchAt := float64(i)*0.78
 		if launchAt>=emitUntil || t<launchAt { continue }
 		seed := chatFXHash(uint64(i+1)*0x9e3779b97f4a7c15+m.fxSalt)
+		shellGlyph, burstWidth, particleScale := fireworkShellStyle(seed)
 		x0 := (0.14+0.72*chatFXUnit(seed+1))*float64(width)
 		vx := (chatFXUnit(seed+2)-0.5)*math.Min(12,float64(width)*0.13)
 		curve := (chatFXUnit(seed+3)-0.5)*1.5
@@ -64,7 +75,7 @@ func (m model) fireworkPositions(width,height int) []map[int]chatFXCell {
 		elapsed := t-launchAt
 		if elapsed<burstAt {
 			x,y := fireworkShellPosition(x0,vx,curve,launchSpeed,elapsed,height)
-			set(int(math.Round(x)),int(math.Round(y)),'o',"#ECF1F5")
+			set(int(math.Round(x)),int(math.Round(y)),shellGlyph,"#ECF1F5")
 			for tail:=1;tail<=5;tail++ {
 				past := elapsed-float64(tail)*0.09
 				if past<0 { break }
@@ -82,7 +93,7 @@ func (m model) fireworkPositions(width,height int) []map[int]chatFXCell {
 		bx,by := fireworkShellPosition(x0,vx,curve,launchSpeed,burstAt,height)
 		kind := i%4 // radial, willow, crackle, and peony ring
 		rainbow := i%5==0 || i%7==0
-		pieces := 24+int(chatFXHash(seed+6)%22)
+		pieces := int(float64(24+int(chatFXHash(seed+6)%22))*particleScale)
 		for spark:=0;spark<pieces;spark++ {
 			sp := chatFXHash(seed+uint64(spark+11)*0xbf58476d1ce4e5b9)
 			lifetime := 0.7+2.6*chatFXUnit(sp+1)
@@ -93,7 +104,9 @@ func (m model) fireworkPositions(width,height int) []map[int]chatFXCell {
 			speed := 3.5+7.5*chatFXUnit(sp+3)
 			if kind==1 { speed *= 0.68 }
 			if kind==3 { speed = 8.5+2*chatFXUnit(sp+4) } // peony ring
-			vxSpark,vySpark:=math.Cos(angle)*speed,math.Sin(angle)*speed
+			// Spread horizontally per shell. The vertical motion stays intact,
+			// which reads better in tall fonts such as PxPlus IBM CGA 12y.
+			vxSpark,vySpark:=math.Cos(angle)*speed*burstWidth,math.Sin(angle)*speed
 			x := bx+vxSpark*burstAge
 			y := by+vySpark*burstAge+(1.5+chatFXUnit(sp+5))*burstAge*burstAge
 			progress:=burstAge/lifetime
