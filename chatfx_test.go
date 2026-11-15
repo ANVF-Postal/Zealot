@@ -11,6 +11,43 @@ import (
 	"time"
 )
 
+func TestChatFXLaunchNotices(t *testing.T) {
+    for _,tc:=range []struct {
+        name string
+        seconds int
+        want string
+    }{
+        {"bubbles",0,"Daniel launched bubbles!"},
+        {"rain",0,"Daniel launched rain!"},
+        {"interrogation",0,"Daniel launched interrogation!"},
+        {"fireworks",10,"Daniel launched fireworks! (10s)"},
+        {"confetti",10,"Daniel launched confetti! (10s)"},
+        {"blizzard",25,"Daniel launched blizzard! (25s)"},
+    } {
+        if got:=formatChatFXLaunch("Daniel",tc.name,tc.seconds);got!=tc.want {
+            t.Fatalf("wrong %s notice: got %q, want %q",tc.name,got,tc.want)
+        }
+    }
+}
+
+func TestChatFXFPSNoticeIsConcise(t *testing.T) {
+    m:=newMessageInteractionTestModel(80)
+    m.chatFXCommand("/fxfps",[]string{"/fxfps","60"})
+    if len(m.messages)==0 {t.Fatal("FPS notice missing")}
+    if got:=m.messages[len(m.messages)-1].Text;got!="ChatFX rendering set to 60 FPS" {
+        t.Fatalf("unexpected FPS notice: %q",got)
+    }
+}
+
+func TestChatFXLocalLaunchIsConcise(t *testing.T) {
+    m:=newMessageInteractionTestModel(80)
+    m.chatFXCommand("/bubbles",[]string{"/bubbles","self","12"})
+    if len(m.messages)==0 {t.Fatal("local launch notice missing")}
+    if got:=m.messages[len(m.messages)-1].Text;got!="You launched bubbles! (12s) (local)" {
+        t.Fatalf("unexpected local notice: %q",got)
+    }
+}
+
 func TestChatFXDuration(t *testing.T) {
 	for _, input := range [][]string{nil, {}, {"1"}, {"30"}, {"300"}} {
 		if _, ok := chatFXDuration(input); !ok { t.Fatalf("rejected %v",input) }
