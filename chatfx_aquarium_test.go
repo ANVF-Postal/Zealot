@@ -192,21 +192,86 @@ func TestAquariumRareVisitorsHaveLongAbsences(t *testing.T) {
     }
 }
 
-func TestAquariumPikeStripesOscillateAndLengthsVary(t *testing.T) {
+func TestAquariumFishBandsStayFixedWhileSwimmingAndTurning(t *testing.T) {
     short:=aquariumSwimmer{kind:aquariumPike,direction:1,length:3}
     long:=aquariumSwimmer{kind:aquariumPike,direction:1,length:9}
-    if aquariumFishWidth(long)<=aquariumFishWidth(short) {
-        t.Fatal("pike body lengths don't vary")
-    }
-    short.stripePhase=0
+    if aquariumFishWidth(long)<=aquariumFishWidth(short) {t.Fatal("pike length didn't vary")}
     first:=aquariumFishGlyphColor(short,0,2,'(')
     short.stripePhase=1
-    if aquariumFishGlyphColor(short,0,2,'(')==first {
-        t.Fatal("pike stripe colours never oscillate")
+    if aquariumFishGlyphColor(short,0,2,'(')!=first {
+        t.Fatal("pike stripes should be static, not oscillating")
+    }
+    if aquariumFishGlyphColor(short,0,3,'(')==first {
+        t.Fatal("pike body lacks alternating greens")
+    }
+    short.direction=-1
+    if aquariumFishGlyphColor(short,0,aquariumFishWidth(short)-1-2,')')!=first {
+        t.Fatal("pike stripe pattern reversed incorrectly with the fish")
+    }
+    perch:=aquariumSwimmer{kind:aquariumPerch,direction:1}
+    if aquariumFishGlyphColor(perch,0,2,'(')==aquariumFishGlyphColor(perch,0,3,'(') {
+        t.Fatal("perch orange bands aren't alternating")
+    }
+    for _,phase:=range []int{0,1,5,90} {
+        perch.stripePhase=phase
+        if aquariumFishGlyphColor(perch,0,2,'(')!="#E6AA61" {
+            t.Fatal("perch bands changed with time")
+        }
+    }
+    bass:=aquariumSwimmer{kind:aquariumLargemouth,direction:1}
+    if aquariumFishGlyphColor(bass,0,4,'(')==aquariumSpeciesColor(aquariumLargemouth) {
+        t.Fatal("largemouth second body segment wasn't darkened")
     }
     a:=aquariumSwimmer{kind:aquariumWalleye,direction:1,length:3}
     b:=aquariumSwimmer{kind:aquariumWalleye,direction:1,length:10}
-    if aquariumFishWidth(b)<=aquariumFishWidth(a) {t.Fatal("walleye body lengths don't vary")}
+    if aquariumFishWidth(b)<=aquariumFishWidth(a) {t.Fatal("walleye length didn't vary")}
+}
+
+func TestAquariumMinnowsAreMajority(t *testing.T) {
+    for _,dims:=range [][2]int{{80,25},{128,32},{180,50}} {
+        minnows,others:=0,0
+        for sec:=0;sec<90;sec+=3 {
+            for _,f:=range aquariumSwimmers(dims[0],dims[1],float64(sec),1234) {
+                if f.x>=dims[0] || f.x+aquariumFishWidth(f)<=0 {continue}
+                if f.kind==aquariumMinnow {minnows++} else {others++}
+            }
+        }
+        if minnows<others*2 {
+            t.Fatalf("%v: minnows must dominate, got %d minnows vs %d other fish",dims,minnows,others)
+        }
+    }
+    if art:=aquariumFishArt(aquariumSwimmer{kind:aquariumMinnow,direction:-1});len(art)!=1 || art[0]!="<><" {
+        t.Fatalf("minnow art is wrong: %q",art)
+    }
+}
+
+func TestAquariumFishChangeDirectionAndEventuallyLeave(t *testing.T) {
+    for _,kind:=range []aquariumKind{
+        aquariumMinnow,aquariumPike,aquariumPerch,aquariumBluegill,
+        aquariumLargemouth,aquariumCute,aquariumWalleye,aquariumEel,aquariumMuskie,
+    } {
+        seed:=chatFXHash(uint64(kind)+7123)
+        f:=aquariumSwimmer{kind:kind,length:6,direction:1}
+        width:=aquariumFishWidth(f)
+        speed:=aquariumFishSpeed(kind,seed+1)
+        route:=aquariumMakeRoute(120,width,1,speed,seed,2)
+        firstDirection,lastDirection:=0,0
+        activeCount:=0
+        for i:=0;i<1200;i++ {
+            phase:=route.travel*float64(i)/1199
+            _,heading,active:=aquariumRouteAt(route,phase)
+            if !active {continue}
+            if activeCount==0 {firstDirection=heading}
+            lastDirection=heading
+            activeCount++
+        }
+        if activeCount==0 || firstDirection==lastDirection {
+            t.Fatalf("species %d did not turn during patrol",kind)
+        }
+        if _,_,active:=aquariumRouteAt(route,route.travel+1);active {
+            t.Fatalf("species %d never departed",kind)
+        }
+    }
 }
 
 func TestAquariumEelBendsTailBetweenRows(t *testing.T) {
