@@ -49,6 +49,7 @@ var chatFXConfettiGlyphs = []rune{'*', '%', '.', '/', '\\', '+'}
 type chatFXCell struct {
 	glyph rune
 	color string
+	background string // optional cell background for pixel-based heat FX
 }
 
 func (m model) confettiPositions(width, height int) []map[int]chatFXCell {
@@ -183,10 +184,11 @@ func (m model) renderChatFXBackground(rows []string, width int) {
 			if x>blankStart { tail.WriteString(fill.Render(strings.Repeat(" ",x-blankStart))) }
 			rendered,ok := tokens[cell]
 			if !ok {
-				style,exists := styles[cell.color]
+				style,exists := styles[cell.color+"|"+cell.background]
 				if !exists {
 					style=lipgloss.NewStyle().Foreground(lipgloss.Color(cell.color)).Background(background)
-					styles[cell.color]=style
+					if cell.background!="" {style=style.Background(lipgloss.Color(cell.background))}
+					styles[cell.color+"|"+cell.background]=style
 				}
 				rendered=style.Render(string(cell.glyph))
 				tokens[cell]=rendered
