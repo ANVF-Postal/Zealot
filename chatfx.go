@@ -44,7 +44,7 @@ func chatFXDuration(args []string) (int, bool) {
 // chat/whisper message handling so they can never leak as ordinary messages.
 func isChatFXCommand(command string) bool {
 	switch command {
-	case "/rain", "/snow", "/confetti", "/stop", "/stopfx", "/disablefx", "/fxfps":
+	case "/rain", "/snow", "/confetti", "/fireworks", "/stop", "/stopfx", "/disablefx", "/fxfps":
 		return true
 	}
 	return false
@@ -76,7 +76,7 @@ func (m *model) chatFXCommand(command string, fields []string) {
 		} else {
 			m.chatFXNotice("ChatFX enabled locally.")
 		}
-	case "/rain", "/snow", "/confetti":
+	case "/rain", "/snow", "/confetti", "/fireworks":
 		args := fields[1:]
 		self := len(args)>0 && strings.EqualFold(args[0], "self")
 		if self { args=args[1:] }
@@ -84,10 +84,11 @@ func (m *model) chatFXCommand(command string, fields []string) {
 		if !ok { m.chatFXNotice("Usage: "+command+" [self] [seconds 1-300]"); return }
 		name := strings.TrimPrefix(command, "/")
 		// Confetti is a celebration, unlike persistent room weather.
-		if name == "confetti" && seconds == 0 { seconds = chatFXConfettiDefaultSeconds }
+		if (name == "confetti" || name == "fireworks") && seconds == 0 { seconds = chatFXConfettiDefaultSeconds }
 		until := time.Time{}
 		if seconds > 0 { until = time.Now().Add(time.Duration(seconds)*time.Second) }
 		if self {
+			m.retireChatFX(m.currentChatFX())
 			m.fxLocal = chatFXState{name:name, started:time.Now(), until:until}
 			m.fxLocalOverride = true
 			m.resetChatFXSimulation()
@@ -97,6 +98,7 @@ func (m *model) chatFXCommand(command string, fields []string) {
 		}
 	case "/stop", "/stopfx":
 		if len(fields)==2 && strings.EqualFold(fields[1], "self") {
+			if m.fxLocalOverride { m.retireChatFX(m.fxLocal) }
 			m.fxLocal = chatFXState{}
 			m.fxLocalOverride = false
 			m.chatFXNotice("Local ChatFX stopped.")
@@ -117,7 +119,8 @@ func (m *model) chatFXNotice(text string) {
 func (m *model) receiveChatFX(packet Packet) {
 	switch packet.Type {
 	case "fx_state":
-		if (packet.FX == "rain" || packet.FX == "snow" || packet.FX == "confetti") &&
+		previous := m.currentChatFX()
+		if (packet.FX == "rain" || packet.FX == "snow" || packet.FX == "confetti" || packet.FX == "fireworks") &&
 			(packet.FXUntil.IsZero() || packet.FXUntil.After(time.Now())) {
 			m.fxRoom = chatFXState{name:packet.FX, started:time.Now(), until:packet.FXUntil}
 			if !m.fxLocalOverride { m.resetChatFXSimulation() }
@@ -138,6 +141,7 @@ func (m model) chatFXAlive(fx chatFXState) bool {
 		// Slowest confetti is 2.8 rows/s, plus a few rows above the top.
 		deadline = deadline.Add(time.Duration(math.Ceil(float64(height+14)/2.8)+4)*time.Second)
 	}
+	if fx.name == "fireworks" { deadline = deadline.Add(8*time.Second) }
 	return time.Now().Before(deadline)
 }
 
@@ -163,7 +167,7 @@ func (m model) chatFXFrameInterval() time.Duration {
 }
 
 func (m *model) ensureChatFXTick() tea.Cmd {
-	if m.fxTickPending || m.currentChatFX().name == "" { return nil }
+	if m.fxTickPending || (m.currentChatFX().name == "" && len(m.fxFading)==0) { return nil }
 	m.fxTickPending = true
 	m.fxTickGeneration++
 	generation := m.fxTickGeneration
@@ -205,11 +209,13 @@ func (m *model) advanceChatFXClock(now time.Time) {
 func (m *model) advanceChatFX(msg chatFXTickMsg) tea.Cmd {
 	if msg.generation != m.fxTickGeneration { return nil }
 	m.fxTickPending = false
+	m.trimChatFXFading(time.Now())
+	m.finishExpiredPrimary(time.Now())
 	if m.fxLocalOverride && !m.chatFXAlive(m.fxLocal) {
 		m.fxLocalOverride = false
 		m.fxLocal = chatFXState{}
 	}
-	if m.currentChatFX().name == "" {
+	if m.currentChatFX().name == "" && len(m.fxFading)==0 {
 		m.fxLastTick = time.Time{}
 		return nil
 	}
