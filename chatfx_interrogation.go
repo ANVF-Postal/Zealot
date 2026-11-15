@@ -138,7 +138,7 @@ func (m model) interrogationSpotlightIndex() int {
 }
 
 func (m model) renderInterrogationRows(rows []string, start int) {
-    if m.fxInterrogationAmount<=0 || len(rows)==0 {return}
+    if m.fxDisabled || m.fxInterrogationAmount<=0 || len(rows)==0 {return}
     newest:=m.interrogationSpotlightIndex()
     if newest<0 {return}
     // The cache holds message row ranges, including multiline/wrapped
