@@ -17,7 +17,7 @@ func TestStormSkyGradientScalesToThirtyPercent(t *testing.T) {
         }
         for y:=skyRows;y<height;y++ {
             if got:=stormSkyBlend(height,y);got!=0 {
-                t.Fatalf("height %d: sky extends below top 30% at row %d: %f",height,y,got)
+                t.Fatalf("height %d: sky extends below top 30%% at row %d: %f",height,y,got)
             }
         }
         previous:=1.0
