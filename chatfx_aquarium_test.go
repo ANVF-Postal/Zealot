@@ -140,7 +140,8 @@ func TestAquariumPredationAndChomp(t *testing.T) {
     if state.eaten[prey.id] {t.Fatal("prey's tombstone outlived its crossing")}
     for _,hunter:=range []aquariumKind{aquariumWalleye,aquariumMuskie} {
         s:=newAquariumState()
-        big:=aquariumSwimmer{id:3,kind:hunter,direction:1,x:20,y:8,length:6}
+        big:=aquariumSwimmer{id:3,kind:hunter,direction:1,x:20,y:9,length:6}
+        if hunter==aquariumMuskie {big.y=8} // its multi-row body reaches the prey
         s.resolvePredation([]aquariumSwimmer{big,prey},100)
         if !s.eaten[prey.id] {t.Fatalf("predator %d failed to eat prey",hunter)}
     }
