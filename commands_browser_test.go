@@ -15,10 +15,24 @@ func TestHandbookPublicCategoriesAndSplashButton(t *testing.T) {
 		handbookPages[2].Name != "LAUNCH" {
 		t.Fatalf("incorrect handbook categories: %+v", handbookPages)
 	}
-	if len(handbookPages[0].Entries) != 16 ||
-		len(handbookPages[1].Entries) != 4 ||
-		len(handbookPages[2].Entries) != 2 {
+	// Keep the original public entries covered while allowing new commands
+	// to be added without failing this test for a legitimate feature expansion.
+	if len(handbookPages[0].Entries) < 16 ||
+		len(handbookPages[1].Entries) < 4 ||
+		len(handbookPages[2].Entries) < 2 {
 		t.Fatal("handbook is missing public commands or click behaviors")
+	}
+	chatCommands := make(map[string]bool, len(handbookPages[0].Entries))
+	for _, entry := range handbookPages[0].Entries {
+		chatCommands[entry.Command] = true
+	}
+	for _, command := range []string{
+		"/rain [seconds]", "/rain self [seconds]", "/stop",
+		"/stopfx self", "/disablefx",
+	} {
+		if !chatCommands[command] {
+			t.Fatalf("handbook missing ChatFX command %q", command)
+		}
 	}
 	m := newMessageInteractionTestModel(100)
 	m.splashOpen = true
