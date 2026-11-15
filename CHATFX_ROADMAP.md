@@ -41,6 +41,8 @@ ever cross the Unix socket.
 - Gentle `/snow [self] [seconds]` with variable intensity and slow horizontal drift; tiny dot flakes fall at twice the speed of other flakes
 - `/blizzard [self] [seconds]`: dense sideways snow with 20–120-second sustained gusts, 6–35-second calmer breaks, strong variation in wind speed, and fewer slash glyphs
 - `/embers [self] [seconds]`: rising warm sparks that drift, vary brightness, cool and vanish; no illumination until the future quality-settings phase
+- `/fire [self] [seconds]`: cohesive rising flame tongues, flickering orange-to-yellow gradients, confined to chat background
+- `/matrix [self] [seconds]`: independent green code streams with bright leading glyphs and darker trails
 - Cached terminal glyph styling and capped blizzard particle count reduce large-terminal render costs (benchmark included)
 - Define primary-effect replace semantics across room and local scopes
 - Add consistent adjustable density and appropriate default motion
