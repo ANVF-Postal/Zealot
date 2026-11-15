@@ -197,9 +197,8 @@ func TestAquariumFishBandsStayFixedWhileSwimmingAndTurning(t *testing.T) {
     long:=aquariumSwimmer{kind:aquariumPike,direction:1,length:9}
     if aquariumFishWidth(long)<=aquariumFishWidth(short) {t.Fatal("pike length didn't vary")}
     first:=aquariumFishGlyphColor(short,0,2,'(')
-    short.stripePhase=1
     if aquariumFishGlyphColor(short,0,2,'(')!=first {
-        t.Fatal("pike stripes should be static, not oscillating")
+        t.Fatal("pike stripe colours changed for an unchanged body")
     }
     if aquariumFishGlyphColor(short,0,3,'(')==first {
         t.Fatal("pike body lacks alternating greens")
@@ -212,11 +211,12 @@ func TestAquariumFishBandsStayFixedWhileSwimmingAndTurning(t *testing.T) {
     if aquariumFishGlyphColor(perch,0,2,'(')==aquariumFishGlyphColor(perch,0,3,'(') {
         t.Fatal("perch orange bands aren't alternating")
     }
-    for _,phase:=range []int{0,1,5,90} {
-        perch.stripePhase=phase
-        if aquariumFishGlyphColor(perch,0,2,'(')!="#E6AA61" {
-            t.Fatal("perch bands changed with time")
-        }
+    if aquariumFishGlyphColor(perch,0,2,'(')!="#E6AA61" {
+        t.Fatal("perch band colour should stay a permanent orange")
+    }
+    perch.direction=-1
+    if aquariumFishGlyphColor(perch,0,aquariumFishWidth(perch)-1-2,')' )!="#E6AA61" {
+        t.Fatal("perch stripes must remain fixed to the body after turning")
     }
     bass:=aquariumSwimmer{kind:aquariumLargemouth,direction:1}
     if aquariumFishGlyphColor(bass,0,4,'(')==aquariumSpeciesColor(aquariumLargemouth) {
