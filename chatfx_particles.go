@@ -142,20 +142,14 @@ func (m model) snowPositions(width, height int) []map[int]chatFXCell {
 // It leaves message content, scrollbar, borders, typing line and hitboxes alone.
 func (m model) renderChatFXBackground(rows []string, width int) {
 	fx := m.currentChatFX().name
-	if (fx != "rain" && fx != "snow" && fx != "confetti") || width < 2 || len(rows) == 0 { return }
-	positions := make([]map[int]chatFXCell, len(rows))
-	if fx == "rain" {
-		for y, row := range m.rainPositions(width,len(rows)) {
-			if len(row) == 0 { continue }
-			positions[y] = make(map[int]chatFXCell,len(row))
-			for x, glyph := range row {
-				positions[y][x] = chatFXCell{glyph:glyph,color:"#689CC4"}
-			}
-		}
-	} else if fx == "snow" {
-		positions = m.snowPositions(width,len(rows))
-	} else {
-		positions = m.confettiPositions(width,len(rows))
+	if width < 2 || len(rows) == 0 || (fx == "" && len(m.fxFading)==0) { return }
+	// Outgoing particles are drawn first, the current effect on top.
+	// Only one effect emits, even while the last one finishes falling.
+	positions := m.fadingChatFXPositions(width,len(rows))
+	for y,row := range m.chatFXActivePositions(fx,width,len(rows)) {
+		if len(row)==0 { continue }
+		if positions[y]==nil { positions[y]=make(map[int]chatFXCell,len(row)) }
+		for x,cell:=range row { positions[y][x]=cell }
 	}
 	background := lipgloss.Color(m.cfg.Theme.Background)
 	fill := lipgloss.NewStyle().Background(background)
