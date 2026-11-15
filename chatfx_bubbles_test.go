@@ -147,11 +147,18 @@ func TestBubbleOutlineIsHollowAndHasOneReflection(t *testing.T) {
             if cell.color==[3]int{244,250,255} {highlights++}
         }
     }
-    if highlights<2 || highlights>3 {
-        t.Fatalf("expected one 2-3-cell crescent highlight, got %d cells",highlights)
+    if highlights<2 || highlights>12 {
+        t.Fatalf("expected one compact Braille crescent, got %d cells",highlights)
+    }
+    for _,row:=range grid {
+        for _,cell:=range row {
+            if cell.color==[3]int{244,250,255} && (cell.glyph<'\\u2801' || cell.glyph>'\\u28ff') {
+                t.Fatalf("large-bubble highlight must be Braille, got %U",cell.glyph)
+            }
+        }
     }
     small:=bubble
-    small.radius=3
+    small.radius=2.4
     smallGrid:=(&bubbleState{bubbles:[]bubbleParticle{small}}).raster(80,26)
     countO:=0
     for _,row:=range smallGrid {
@@ -243,7 +250,7 @@ func TestBubbleCollisionAndWallPushLocalRim(t *testing.T) {
     }
 }
 
-func TestBubbleEntrySpeedHasOccasionalFastOutliers(t *testing.T) {
+func TestBubbleEntrySpeedIsVariedButCapped(t *testing.T) {
     slow,fast:=0,0
     for salt:=uint64(0);salt<300;salt++ {
         s:=newBubbleState(160,48,salt)
@@ -251,9 +258,82 @@ func TestBubbleEntrySpeedHasOccasionalFastOutliers(t *testing.T) {
         if len(s.bubbles)==0 {continue}
         speed:=math.Hypot(s.bubbles[0].vx*0.5,s.bubbles[0].vy)
         if speed<5 {slow++}
-        if speed>11 {fast++}
+        if speed>bubbleFastThreshold {fast++}
+        if speed>bubbleMaxSpeed+1e-9 {t.Fatalf("bubble spawned too fast: %.3f",speed)}
     }
-    if slow==0 || fast==0 {t.Fatalf("expected mixed gentle and fast bubbles: slow=%d fast=%d",slow,fast)}
+    if slow==0 || fast==0 {t.Fatalf("expected mixed gentle and faster bubbles: slow=%d fast=%d",slow,fast)}
+}
+
+func TestBubbleSpeedDoesNotEscalateAfterRepeatedCollisions(t *testing.T) {
+    s:=newBubbleState(100,32,9)
+    s.steps=2
+    s.bubbles=[]bubbleParticle{
+        {x:40,y:15,vx:80,vy:22,radius:3,lifetime:100},
+        {x:52,y:15,vx:-90,vy:-18,radius:3,lifetime:100},
+    }
+    for step:=0;step<240;step++ {
+        s.tick()
+        for i,b:=range s.bubbles {
+            if speed:=math.Hypot(b.vx*0.5,b.vy);speed>bubbleMaxSpeed+1e-8 {
+                t.Fatalf("step %d bubble %d escaped speed cap: %.2f",step,i,speed)
+            }
+        }
+    }
+}
+
+func TestBubbleMaximumRadiusTracksViewport(t *testing.T) {
+    for _,dims:=range [][2]int{{50,15},{80,24},{160,48},{400,100}} {
+        s:=newBubbleState(dims[0],dims[1],123)
+        maxRadius:=bubbleMaximumRadius(dims[0],dims[1])
+        if maxRadius>5.2 || maxRadius>float64(dims[1])*0.16+1e-8 {
+            t.Fatalf("invalid size cap for %v: %.2f",dims,maxRadius)
+        }
+        for i:=0;i<80;i++ {s.spawn()}
+        for _,b:=range s.bubbles {
+            if b.radius>maxRadius+1e-8 {
+                t.Fatalf("bubble radius %.2f exceeds viewport limit %.2f",b.radius,maxRadius)
+            }
+        }
+    }
+    small:=newBubbleState(160,48,41)
+    small.spawn()
+    small.resize(50,15)
+    for _,b:=range small.bubbles {
+        if b.radius>bubbleMaximumRadius(50,15)+1e-8 {
+            t.Fatal("resize failed to shrink an existing bubble")
+        }
+    }
+}
+
+func TestBrailleReflectionIsOneContinuousArc(t *testing.T) {
+    b:=bubbleParticle{x:40,y:14,radius:5.2}
+    pixels:=bubbleReflectionPixels(b)
+    if len(pixels)<2 || len(pixels)>12 {
+        t.Fatalf("unexpected Braille highlight size: %d",len(pixels))
+    }
+    for _,p:=range pixels {
+        if p.glyph<'\\u2801' || p.glyph>'\\u28ff' {
+            t.Fatalf("non-Braille highlight %U",p.glyph)
+        }
+    }
+    // The small arc must not have multiple separated eye-like clusters.
+    seen:=make(map[[2]int]bool)
+    for _,p:=range pixels {seen[[2]int{p.x,p.y}]=true}
+    visited:=map[[2]int]bool{}
+    queue:=[][2]int{{pixels[0].x,pixels[0].y}}
+    for len(queue)>0 {
+        point:=queue[0]
+        queue=queue[1:]
+        if visited[point] {continue}
+        visited[point]=true
+        for dy:=-1;dy<=1;dy++ {
+            for dx:=-1;dx<=1;dx++ {
+                neighbor:=[2]int{point[0]+dx,point[1]+dy}
+                if seen[neighbor] && !visited[neighbor] {queue=append(queue,neighbor)}
+            }
+        }
+    }
+    if len(visited)!=len(seen) {t.Fatalf("reflection split into separate highlights: %d of %d connected",len(visited),len(seen))}
 }
 
 func TestBubblePopIsInstantWithASCIIFlash(t *testing.T) {
