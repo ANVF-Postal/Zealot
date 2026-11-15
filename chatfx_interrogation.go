@@ -168,7 +168,8 @@ func (m model) renderInterrogationRows(rows []string, start int) {
     previousRange:=m.interrogationMessageRange(previous)
     flicker:=interrogationLampIntensity(m.fxSimSteps,m.fxSalt)
     for i,row:=range rows {
-        if strings.TrimSpace(stripANSISequences(row))=="" {continue}
+        // Blank rows are still part of the illuminated surface: paint their
+        // backgrounds too, otherwise the vignette exists only behind text.
         absolute:=start+i
         emphasis:=0.0
         if absolute>=latestRange.Start && absolute<latestRange.End {
