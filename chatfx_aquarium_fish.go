@@ -329,7 +329,7 @@ func aquariumSwimmers(width,height int,seconds float64,salt uint64) []aquariumSw
         distance:=phase*speed
         x:=-fw-4+int(math.Floor(distance))
         if direction<0 {x=width+4-int(math.Floor(distance))}
-        fish.id=(uint64(500+kind)<<32)|uint64(cycle+1)
+        fish.id=((uint64(500)+uint64(kind))<<32)|uint64(cycle+1)
         fish.x,fish.y=x,aquariumFishDepth(kind,seed+5,height)
         fish.vx=float64(direction)*speed
         fish.mouthOpen=kind==aquariumMuskie && aquariumCycle(seconds,3.8)<1.8
