@@ -113,7 +113,7 @@ func (m model) confettiPositions(width, height int) []map[int]chatFXCell {
 // other glyphs generated from the same particle seed.
 func snowflakeSpeed(seed uint64, glyph rune) float64 {
 	speed := 1.15+2.2*chatFXUnit(seed+1)
-	if glyph == '.' { speed *= 1.65 }
+	if glyph == '.' { speed *= 2.0 }
 	return speed
 }
 
