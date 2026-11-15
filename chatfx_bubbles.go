@@ -5,6 +5,9 @@ import "math"
 const (
     bubbleMaximum = 32
     bubbleStepSeconds = 1.0 / 30.0
+    // Speeds use physically scaled terminal coordinates (x/2, y).
+    bubbleMaxSpeed = 10.0
+    bubbleFastThreshold = 7.0
 )
 
 type bubbleParticle struct {
@@ -55,7 +58,7 @@ func newBubbleState(width,height int,salt uint64) *bubbleState {
 func (s *bubbleState) resize(width,height int) {
     if s.width==width && s.height==height {return}
     oldW,oldH:=max(1,s.width),max(1,s.height)
-    maxRadius:=math.Min(6.5,math.Min(float64(width)/5,float64(height)/2.8))
+    maxRadius:=bubbleMaximumRadius(width,height)
     kept:=s.bubbles[:0]
     for _,b:=range s.bubbles {
         if maxRadius<2.2 {continue}
@@ -77,7 +80,7 @@ func (s *bubbleState) spawn() {
     if len(s.bubbles)>=bubbleCapacity(s.width,s.height) {return}
     seed:=chatFXHash(s.salt+0x916f6a1d* (s.serial+1))
     s.serial++
-    maxRadius:=math.Min(6.5,math.Min(float64(s.width)/5,float64(s.height)/2.8))
+    maxRadius:=bubbleMaximumRadius(s.width,s.height)
     if maxRadius<2.2 {return}
     radius:=2.2+(maxRadius-2.2)*chatFXUnit(seed+1)
     // Bubbles enter from the lower-right, then carry up-left momentum.
@@ -102,10 +105,11 @@ func (s *bubbleState) spawn() {
         // Most bubbles glide, some race dramatically into the room.
         // Speeds use terminal cells per second, in the same fixed-step
         // simulation so /fxfps cannot alter their trajectories.
-        speed:=1.3+2.5*chatFXUnit(value+5)
-        if chatFXUnit(value+10)>0.81 {speed*=3.1+1.8*chatFXUnit(value+11)}
+        speed:=1.5+2.8*chatFXUnit(value+5)
+        if chatFXUnit(value+10)>0.82 {speed*=1.8+0.45*chatFXUnit(value+11)}
         vx:=-(1.6+1.2*chatFXUnit(value+4))*speed
         vy:=-(0.55+0.8*chatFXUnit(value+9))*speed
+        vx,vy=bubbleCappedVelocity(vx,vy)
         red,green,blue:=hsvToRGB(chatFXUnit(value+6),0.55+0.35*chatFXUnit(value+7),0.90)
         s.bubbles=append(s.bubbles,bubbleParticle{
             x:x,y:y,vx:vx,vy:vy,
@@ -146,6 +150,7 @@ func (s *bubbleState) tick() {
         }
         // Underdamped spring: squash, overshoot, then settle.
         bubble.advanceRim(dt)
+        bubble.vx,bubble.vy=bubbleCappedVelocity(bubble.vx,bubble.vy)
         bubble.x+=bubble.vx*dt
         bubble.y+=bubble.vy*dt
         // Permit the centre to approach a boundary more closely than the
@@ -186,7 +191,9 @@ func (s *bubbleState) tick() {
                 kick:=math.Min(11,2.2+math.Abs(approach)*1.4)
                 a.pressRim(math.Atan2(ny,nx),0.20+0.035*kick)
                 b.pressRim(math.Atan2(-ny,-nx),0.20+0.035*kick)
-                impulse:=-approach*0.97
+                // A forgiving restitution prevents fast newcomers from
+                // injecting ever-increasing kinetic energy into the field.
+                impulse:=-approach*0.78
                 a.vx-=2*impulse*nx
                 a.vy-=impulse*ny
                 b.vx+=2*impulse*nx
@@ -201,6 +208,7 @@ func (s *bubbleState) tick() {
         minY,maxY:=b.radius*0.78,float64(s.height)-b.radius*0.78
         b.x=math.Max(minX,math.Min(maxX,b.x))
         b.y=math.Max(minY,math.Min(maxY,b.y))
+        b.vx,b.vy=bubbleCappedVelocity(b.vx,b.vy)
         b.constrainRimToWalls(s.width,s.height)
     }
     // Gradually populate, then replace popped bubbles without surging.
@@ -289,4 +297,17 @@ func (b *bubbleParticle) constrainRimToWalls(width,height int) {
             if b.rimSpeed[i]>0 {b.rimSpeed[i]*=-0.25}
         }
     }
+}
+
+ // Size is determined by the visible viewport, not a fixed 6.5-row globe.
+ // A large bubble never monopolizes the chat pane on modest terminal sizes.
+func bubbleMaximumRadius(width,height int) float64 {
+    return math.Min(5.2,math.Min(float64(width)/18,float64(height)*0.16))
+}
+
+func bubbleCappedVelocity(vx,vy float64) (float64,float64) {
+    speed:=math.Hypot(vx*0.5,vy)
+    if speed<=bubbleMaxSpeed {return vx,vy}
+    factor:=bubbleMaxSpeed/speed
+    return vx*factor,vy*factor
 }
