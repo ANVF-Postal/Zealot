@@ -18,6 +18,18 @@ func (m *model) advanceInterrogationFade(now time.Time) {
         m.fxInterrogationLast=now
         return
     }
+    if m.currentChatFX().name=="interrogation" {
+        newest:=m.interrogationSpotlightIndex()
+        if !m.fxInterrogationTracked {
+            m.fxInterrogationTracked=true
+            m.fxInterrogationCurrent=newest
+            m.fxInterrogationPrevious=-1
+        } else if newest!=m.fxInterrogationCurrent {
+            m.fxInterrogationPrevious=m.fxInterrogationCurrent
+            m.fxInterrogationCurrent=newest
+            m.fxInterrogationHandoff=now
+        }
+    }
     delta:=now.Sub(m.fxInterrogationLast)
     m.fxInterrogationLast=now
     if delta<0 {delta=0}
@@ -139,31 +151,48 @@ func (m model) interrogationSpotlightIndex() int {
 
 func (m model) renderInterrogationRows(rows []string, start int) {
     if m.fxDisabled || m.fxInterrogationAmount<=0 || len(rows)==0 {return}
-    newest:=m.interrogationSpotlightIndex()
-    if newest<0 {return}
-    // The cache holds message row ranges, including multiline/wrapped
-    // messages. Keep the entire latest message illuminated, not just a row.
-    spotlightStart,spotlightEnd:=-1,-1
-    if len(m.messageRowRanges)==len(m.messages) && newest<len(m.messageRowRanges) {
-        spotlightStart=m.messageRowRanges[newest].Start
-        spotlightEnd=m.messageRowRanges[newest].End
-    } else {
-        spotlightEnd=0
-        for i,msg:=range m.messages {
-            count:=max(1,m.renderPacketLineCount(msg,m.width))
-            if i==newest {
-                spotlightStart=spotlightEnd
-                spotlightEnd+=count
-                break
-            }
-            spotlightEnd+=count
+    width:=chatContentWidth(m.width)
+    if width<1 {return}
+    current:=m.interrogationSpotlightIndex()
+    previous:=-1
+    handoff:=0.0
+    if m.fxInterrogationTracked && m.fxInterrogationCurrent==current {
+        elapsed:=time.Since(m.fxInterrogationHandoff).Seconds()
+        if !m.fxInterrogationHandoff.IsZero() && elapsed>=0 && elapsed<2 {
+            previous=m.fxInterrogationPrevious
+            handoff=1-elapsed/2
         }
     }
-    for i:=range rows {
+    // Resolve the rows occupied by the current and previous messages once.
+    latestRange:=m.interrogationMessageRange(current)
+    previousRange:=m.interrogationMessageRange(previous)
+    flicker:=interrogationLampIntensity(m.fxSimSteps,m.fxSalt)
+    for i,row:=range rows {
+        if strings.TrimSpace(stripANSISequences(row))=="" {continue}
         absolute:=start+i
-        if absolute>=spotlightStart && absolute<spotlightEnd {continue}
-        // Rows beyond history are blank and need no per-frame ANSI work.
-        if strings.TrimSpace(stripANSISequences(rows[i]))=="" {continue}
-        rows[i]=interrogationDimRow(rows[i],m.cfg.Theme.Background,m.cfg.Theme.TextColor,m.fxInterrogationAmount)
+        emphasis:=0.0
+        if absolute>=latestRange.Start && absolute<latestRange.End {
+            emphasis=1
+        } else if previous>=0 && absolute>=previousRange.Start && absolute<previousRange.End {
+            emphasis=handoff
+        }
+        rows[i]=interrogationLightRow(
+            row,m.cfg.Theme.Background,m.cfg.Theme.TextColor,
+            width,len(rows),i,m.fxInterrogationAmount,emphasis,flicker,
+        )
     }
+}
+
+func (m model) interrogationMessageRange(index int) messageRowRange {
+    if index<0 || index>=len(m.messages) {return messageRowRange{Start:-1,End:-1}}
+    if len(m.messageRowRanges)==len(m.messages) {
+        return m.messageRowRanges[index]
+    }
+    row:=0
+    for i,msg:=range m.messages {
+        end:=row+max(1,m.renderPacketLineCount(msg,m.width))
+        if i==index {return messageRowRange{Start:row,End:end}}
+        row=end
+    }
+    return messageRowRange{Start:-1,End:-1}
 }
