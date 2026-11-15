@@ -32,6 +32,7 @@ var handbookPages = []struct {
 		{"/stop", "Stops the current room-wide visual effect."},
 		{"/stopfx self", "Stops your own visual effect without affecting the room."},
 		{"/disablefx", "Toggles all visual effects off or on for your client."},
+		{"/fxfps 1-60", "Sets your local ChatFX rendering frame rate (default 15 FPS). Effect simulation runs independently at 30 Hz."},
 		{"/rainbow", "Toggle: messages you send will be in rainbow colors."},
 		{"/rb", "Sends a single message in rainbow colors."},
 		{"/coinflip", "Sends a special message with the result of a coin flip."},
