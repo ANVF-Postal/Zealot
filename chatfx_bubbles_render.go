@@ -9,40 +9,57 @@ import (
     "charm.land/lipgloss/v2"
 )
 
-// A bubble is a thin ANSI-coloured ASCII outline with a tiny glint. Its
-// interior is genuinely empty: the theme background and chat remain visible.
+// A braille character provides a 2x4 sub-cell grid, turning a curved rim
+// into a much finer outline than ASCII slashes and pipes can achieve.
 type bubblePixel struct {
-    glyph byte
+    glyph rune
     color [3]int
 }
 
-func bubbleGlyphAt(b bubbleParticle,x,y int) byte {
-    dx:=(float64(x)+0.5-b.x)/(2*b.radius)
-    dy:=(float64(y)+0.5-b.y)/b.radius
-    // Tiny damped deformation creates a soft squish after collisions without
-    // compromising the roughly circular Windows screensaver silhouette.
-    dx*=1+b.wobble
-    dy*=1-b.wobble*0.5
-    distance:=math.Hypot(dx,dy)
-    thickness:=math.Max(0.11,0.37/b.radius)
-    if math.Abs(distance-1)<=thickness {
-        switch {
-        case math.Abs(dy)>0.82: return '-'
-        case math.Abs(dx)>0.83: return '|'
-        case dx*dy>0: return '\\'
-        default: return '/'
+var bubbleBrailleDots=[4][2]uint8{
+    {0x01,0x08}, {0x02,0x10}, {0x04,0x20}, {0x40,0x80},
+}
+
+// An elliptical signed-distance outline. The signed spring displacement
+// squashes one axis while stretching the other, preserving approximate area.
+func bubbleBrailleMask(b bubbleParticle,x,y int) uint8 {
+    if b.radius<=0 {return 0}
+    // Terminal cells have approximately twice the height of their width.
+    rx:=2*b.radius*math.Max(0.64,1+b.wobble)
+    ry:=b.radius*math.Max(0.64,1-b.wobble)
+    var mask uint8
+    for subY:=0;subY<4;subY++ {
+        sy:=float64(y)+(float64(subY)+0.5)/4
+        dy:=(sy-b.y)/ry
+        for subX:=0;subX<2;subX++ {
+            sx:=float64(x)+(float64(subX)+0.5)/2
+            dx:=(sx-b.x)/rx
+            // A narrow rim about one braille dot thick.
+            dist:=math.Hypot(dx,dy)
+            thickness:=math.Max(0.028,0.27/b.radius)
+            if math.Abs(dist-1)<=thickness {
+                mask|=bubbleBrailleDots[subY][subX]
+            }
         }
     }
-    // Single round specular reflection in the upper-left quadrant.
-    if math.Abs(dx+0.43)<0.14 && math.Abs(dy+0.48)<0.19 {
+    return mask
+}
+
+func bubbleGlyphAt(b bubbleParticle,x,y int) rune {
+    if b.radius<=0 {return 0}
+    mask:=bubbleBrailleMask(b,x,y)
+    if mask!=0 {return rune(0x2800)+rune(mask)}
+    // Tiny white specular reflection inside the upper-left quarter.
+    dx:=(float64(x)+0.5-b.x)/(2*b.radius)
+    dy:=(float64(y)+0.5-b.y)/b.radius
+    if math.Abs(dx+0.43)<0.105 && math.Abs(dy+0.48)<0.11 {
         return 'o'
     }
     return 0
 }
 
-func bubbleOutlineColor(b bubbleParticle,glyph byte) [3]int {
+func bubbleOutlineColor(b bubbleParticle,glyph rune) [3]int {
     if glyph=='o' {return [3]int{244,250,255}}
-    // A slightly pale, iridescent outline against the normal chat background.
     var color [3]int
     for c:=0;c<3;c++ {
         color[c]=min(255,int(float64(b.color[c])*0.68+85))
@@ -50,18 +67,18 @@ func bubbleOutlineColor(b bubbleParticle,glyph byte) [3]int {
     return color
 }
 
-// Rasterize outlines rather than coloured surfaces. Existing message cells
-// are left intact during painting, so the animation never overwrites chat.
+// Each bubble only visits its bounded rectangle; cost remains proportional
+// to the visible outlines, with a strict 32-bubble population cap.
 func (s *bubbleState) raster(width,height int) [][]bubblePixel {
     grid:=make([][]bubblePixel,height)
-    paint:=func(x,y int,glyph byte,color [3]int) {
+    paint:=func(x,y int,glyph rune,color [3]int) {
         if x<0 || x>=width || y<0 || y>=height || glyph==0 {return}
         if grid[y]==nil {grid[y]=make([]bubblePixel,width)}
         grid[y][x]=bubblePixel{glyph:glyph,color:color}
     }
     for _,b:=range s.bubbles {
-        rx:=2*b.radius*(1+b.wobble)
-        ry:=b.radius*(1+b.wobble)
+        rx:=2*b.radius*math.Max(0.64,1+b.wobble)
+        ry:=b.radius*math.Max(0.64,1-b.wobble)
         startX:=max(0,int(math.Floor(b.x-rx))-1)
         endX:=min(width,int(math.Ceil(b.x+rx))+1)
         startY:=max(0,int(math.Floor(b.y-ry))-1)
@@ -73,10 +90,10 @@ func (s *bubbleState) raster(width,height int) [][]bubblePixel {
             }
         }
     }
+    // The instantaneous ASCII pop animation remains intentionally textual.
     for _,p:=range s.pops {
         cx,cy:=int(math.Round(p.x)),int(math.Round(p.y))
         if p.age<0.42 {
-            // Burst expands briefly while the sphere vanishes immediately.
             spread:=1+int(p.age/0.12)
             paint(cx-2*spread,cy,'*',p.color)
             paint(cx+2*spread,cy,'*',p.color)
@@ -84,7 +101,7 @@ func (s *bubbleState) raster(width,height int) [][]bubblePixel {
             paint(cx,cy+spread,'+',p.color)
         }
         if p.age<0.55 {
-            for i,g:=range []byte("*pop*") {
+            for i,g:=range "*pop*" {
                 paint(cx-2+i,cy,g,p.color)
             }
         }
