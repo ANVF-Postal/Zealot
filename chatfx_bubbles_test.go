@@ -72,7 +72,7 @@ func TestBubbleCollisionsAndWallBounces(t *testing.T) {
         t.Fatalf("colliding bubbles did not rebound: %f %f",s.bubbles[0].vx,s.bubbles[1].vx)
     }
     nearWall:=newBubbleState(100,35,17)
-    nearWall.bubbles=[]bubbleParticle{{x:6,y:18,vx:-4,vy:0,radius:3,lifetime:100}}
+    nearWall.bubbles=[]bubbleParticle{{x:4.68,y:18,vx:-4,vy:0,radius:3,lifetime:100}}
     nearWall.steps=1
     nearWall.tick()
     if nearWall.bubbles[0].vx<=0 {t.Fatal("bubble did not bounce off left boundary")}
@@ -203,6 +203,23 @@ func TestBubbleSoftBodyDeformsLocallyAndRecovers(t *testing.T) {
     for i:=0;i<240;i++ {b.advanceRim(bubbleStepSeconds)}
     for i,r:=range b.rim {
         if math.Abs(r)>0.025 {t.Fatalf("rim point %d didn't settle: %f",i,r)}
+    }
+}
+
+func TestBubbleWallContactFlattensOnlyContactSide(t *testing.T) {
+    b:=bubbleParticle{x:5,y:18,radius:4,lifetime:60}
+    b.constrainRimToWalls(100,35)
+    left:=b.rimRadius(math.Pi)
+    right:=b.rimRadius(0)
+    if !(left<b.radius*0.75 && math.Abs(right-b.radius)<0.001) {
+        t.Fatalf("wall contact didn't locally flatten left side: left=%f right=%f",left,right)
+    }
+    for i:=0;i<30;i++ {
+        b.advanceRim(bubbleStepSeconds)
+        b.constrainRimToWalls(100,35)
+    }
+    if b.rimRadius(math.Pi)>=b.radius {
+        t.Fatal("wall-contact node passed through wall during spring recovery")
     }
 }
 
