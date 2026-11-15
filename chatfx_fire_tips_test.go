@@ -2,6 +2,7 @@ package main
 
 import (
     "reflect"
+    "strconv"
     "strings"
     "testing"
 )
@@ -70,7 +71,7 @@ func TestDoomFireUpperTipsDoNotOverwriteMessages(t *testing.T) {
 
 func BenchmarkDoomFireSparseUpperTips(b *testing.B) {
     for _,width:=range []int{80,160,320} {
-        b.Run(string(rune('A'+width/80)),func(b *testing.B) {
+        b.Run(strconv.Itoa(width)+"_columns",func(b *testing.B) {
             state:=newDoomFireState(width,45,313)
             b.ReportAllocs()
             for i:=0;i<b.N;i++ {
