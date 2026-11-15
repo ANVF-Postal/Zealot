@@ -31,7 +31,7 @@ var handbookPages = []struct {
 		{"/rain self [seconds]", "Starts rain only on your screen. Other users are unaffected. Rain density changes naturally over time."},
 		{"/snow [seconds]", "Starts gentle, drifting snow for the room. Intensity varies over time, like rain."},
 		{"/snow self [seconds]", "Starts gently falling snow only on your client; tiny dot flakes fall fastest."},
-		{"/fireworks [seconds]", "Launches colorful fireworks for the room. Default 10 seconds; shells burst into rainbow, radial, willow and crackle styles."},
+		{"/fireworks [seconds]", "Launches colorful fireworks for the room. Default 10 seconds; varied-width bursts, rare giant 0 shells, and colorful radial, willow and crackle styles."},
 		{"/fireworks self [seconds]", "Runs the fireworks celebration only on your screen."},
 		{"/confetti [seconds]", "Drops vivid candy-colored paper and rare streamers. Stops emitting after 10 seconds by default; remaining pieces fall out."},
 		{"/confetti self [seconds]", "Runs a local-only confetti celebration without affecting the room."},
