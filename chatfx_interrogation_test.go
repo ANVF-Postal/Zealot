@@ -62,20 +62,81 @@ func TestInterrogationSpotlightTracksNewestMultilineMessage(t *testing.T) {
     visible:=append([]string(nil),original...)
     m.renderInterrogationRows(visible,start)
     for i:=range visible {
-        absolute:=start+i
-        if absolute>=span.Start && absolute<span.End {
-            if visible[i]!=original[i] {
-                t.Fatalf("latest message was dimmed at row %d",absolute)
-            }
-        } else if strings.TrimSpace(stripANSISequences(original[i]))!="" && visible[i]==original[i] {
-            t.Fatalf("older message stayed bright at row %d",absolute)
+        if got:=stripANSISequences(visible[i]);got!=stripANSISequences(original[i]) {
+            t.Fatalf("lighting changed message characters on row %d",start+i)
         }
     }
-    // System notices such as 'Local interrogation started' must not steal
-    // the spotlight from the most recent spoken message.
+    // A spotlight boosts the latest message, but remains subject to the
+    // point-light falloff. No row is exempted from the vignette entirely.
+    if visible[len(visible)-1]==original[len(original)-1] {
+        t.Fatal("latest message escaped the point-light treatment")
+    }
     m.messages=append(m.messages,Packet{Type:"system",Text:"Interrogation started"})
     if got:=m.interrogationSpotlightIndex();got!=newest {
         t.Fatalf("system notice stole spotlight: %d",got)
+    }
+}
+
+func TestInterrogationPointLightVignetteAndFlicker(t *testing.T) {
+    const width,height=100,30
+    center:=interrogationLightAt(50,28,width,height,0,1)
+    edge:=interrogationLightAt(0,28,width,height,0,1)
+    top:=interrogationLightAt(50,0,width,height,0,1)
+    corner:=interrogationLightAt(0,0,width,height,0,1)
+    if !(center>edge && center>top && edge>corner) {
+        t.Fatalf("no rounded bottom-centred light: centre=%f edge=%f top=%f corner=%f",center,edge,top,corner)
+    }
+    if corner<0.23 || center>1 {t.Fatal("lighting leaves safe intensity range")}
+    emphasized:=interrogationLightAt(50,28,width,height,1,1)
+    if emphasized<=center {t.Fatal("spotlight doesn't favor recent messages")}
+    if interrogationLightAt(50,28,width,height,0,0.88)>=center {
+        t.Fatal("lamp flicker has no effect")
+    }
+    dips,steady:=0,0
+    for tick:=uint64(0);tick<3900;tick++ {
+        strength:=interrogationLampIntensity(tick,127)
+        if strength<0.85 || strength>1 {t.Fatalf("unsafe flicker strength %f",strength)}
+        if strength<1 {dips++} else {steady++}
+    }
+    if dips==0 || steady<dips*50 {
+        t.Fatalf("flicker too frequent or absent: dips=%d steady=%d",dips,steady)
+    }
+}
+
+func TestInterrogationPerCharacterLightingPreservesMessageAndBackground(t *testing.T) {
+    row:="\\x1b[48;2;17;19;24m\\x1b[38;2;230;230;230mHello "+
+        "\\x1b[38;2;255;20;20mred\\x1b[0m rest"
+    lit:=interrogationLightRow(row,"#111318","#E6E6E6",80,25,22,1,0,1)
+    if stripANSISequences(lit)!=stripANSISequences(row) {
+        t.Fatal("spatial lighting changed visible message text")
+    }
+    if !strings.Contains(lit,"\\x1b[48;2;17;19;24m") {
+        t.Fatal("spatial lighting damaged original background")
+    }
+    if got:=interrogationLightRow(row,"#111318","#E6E6E6",80,25,22,0,0,1);got!=row {
+        t.Fatal("disabled light must preserve original ANSI bytes")
+    }
+    if lit==row {t.Fatal("spatial lighting not applied")}
+}
+
+func TestInterrogationSpotlightHandoffTwoSeconds(t *testing.T) {
+    m:=newRenderCacheTestModel()
+    m.rebuildMessageCache()
+    start:=time.Date(2026,11,15,12,0,0,0,time.UTC)
+    m.fxRoom=chatFXState{name:"interrogation"}
+    m.advanceInterrogationFade(start)
+    m.advanceInterrogationFade(start.Add(time.Second))
+    old:=m.fxInterrogationCurrent
+    m.messages=append(m.messages,Packet{Type:"message",User:User{Name:"Alice"},Text:"new testimony"})
+    m.advanceInterrogationFade(start.Add(1500*time.Millisecond))
+    if m.fxInterrogationCurrent!=old+1 || m.fxInterrogationPrevious!=old {
+        t.Fatalf("spotlight did not hand off: old=%d current=%d previous=%d",
+            old,m.fxInterrogationCurrent,m.fxInterrogationPrevious)
+    }
+    if m.fxInterrogationHandoff.IsZero() {t.Fatal("handoff has no start time")}
+    m.advanceInterrogationFade(start.Add(3500*time.Millisecond))
+    if m.fxInterrogationLast.Sub(m.fxInterrogationHandoff)!=2*time.Second {
+        t.Fatal("handoff has incorrect timing")
     }
 }
 
