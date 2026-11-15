@@ -98,13 +98,16 @@ func bubblePaintRow(row string,pixels []bubblePixel,themeBG string,width int) st
     baseFG:=[3]int{230,230,230}
     currentBG:=baseBG
     currentFG:=baseFG
+    // Never paint inside the occupied message prefix, including spaces
+    // between words. Outlines live in the unused chat background.
+    protectedWidth:=lipgloss.Width(strings.TrimRight(stripANSISequences(row)," "))
     var out strings.Builder
     out.Grow(len(row)+width*9)
     x:=0
     draw:=func(ch string,blank bool) {
         if x>=width {out.WriteString(ch);return}
         pixel:=pixels[x]
-        if blank && pixel.glyph!=0 {
+        if blank && x>=protectedWidth && pixel.glyph!=0 {
             fmt.Fprintf(&out,"\x1b[38;2;%d;%d;%dm%c\x1b[38;2;%d;%d;%dm",
                 pixel.color[0],pixel.color[1],pixel.color[2],pixel.glyph,
                 currentFG[0],currentFG[1],currentFG[2])
