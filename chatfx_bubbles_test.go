@@ -5,6 +5,7 @@ import (
     "strings"
     "testing"
     "time"
+    "unicode/utf8"
 )
 
 func TestBubbleCapacityIsAreaBoundedAndCapped(t *testing.T) {
@@ -112,12 +113,14 @@ func TestBubblePaintingPreservesChatAndANSI(t *testing.T) {
     if !strings.Contains(painted,"\x1b[38;2;240;240;240m") {
         t.Fatal("bubble painting removed foreground ANSI")
     }
-    if len(stripANSISequences(painted))!=80 {t.Fatal("bubble row did not fill chat width")}
+    if utf8.RuneCountInString(stripANSISequences(painted))!=80 {t.Fatal("bubble row did not fill chat width")}
     empty:=bubblePaintRow(strings.Repeat(" ",80),grid[7],"#111318",80)
     visible:=stripANSISequences(empty)
-    if !strings.ContainsAny(visible,"/\\|-o") {
-        t.Fatal("hollow bubble outline wasn't drawn on empty background")
+    foundBraille:=false
+    for _,r:=range visible {
+        if r>='\\u2801' && r<='\\u28ff' {foundBraille=true;break}
     }
+    if !foundBraille {t.Fatal("no braille bubble border drawn on empty background")}
     if !strings.Contains(empty,"\x1b[38;2;") {
         t.Fatal("outline had no coloured foreground")
     }
@@ -149,6 +152,56 @@ func TestBubbleLaunchesFromBottomRightAndMovesUpLeft(t *testing.T) {
     if b.x<float64(s.width)*0.62 || b.y<float64(s.height)*0.58 {
         t.Fatalf("bubble didn't enter from lower-right: %+v",b)
     }
+}
+
+func TestBubbleBrailleOutlineHasSubcellResolution(t *testing.T) {
+    b:=bubbleParticle{x:32,y:10,radius:5,age:1,lifetime:30}
+    if g:=bubbleGlyphAt(b,32,10);g!=0 {t.Fatalf("centre should be empty: %U",g)}
+    masks:=make(map[rune]bool)
+    for y:=3;y<17;y++ {
+        for x:=18;x<46;x++ {
+            glyph:=bubbleGlyphAt(b,x,y)
+            if glyph>='\\u2801' && glyph<='\\u28ff' {masks[glyph]=true}
+        }
+    }
+    if len(masks)<5 {t.Fatalf("braille border lacks curved subcell detail: %d shapes",len(masks))}
+}
+
+func TestBubbleSquishSpringsBackAfterImpact(t *testing.T) {
+    s:=newBubbleState(100,35,3)
+    s.steps=2
+    s.bubbles=[]bubbleParticle{
+        {x:44,y:18,vx:5,vy:0,radius:3,lifetime:100},
+        {x:55,y:18,vx:-5,vy:0,radius:3,lifetime:100},
+    }
+    s.tick()
+    if s.bubbles[0].wobbleVelocity==0 || s.bubbles[1].wobbleVelocity==0 {
+        t.Fatal("collision failed to deform bubble")
+    }
+    peak:=0.0
+    for i:=0;i<90;i++ {
+        s.bubbles[1].x=85 // prevent repeated collision
+        s.bubbles[1].vx=0
+        s.tick()
+        if magnitude:=math.Abs(s.bubbles[0].wobble);magnitude>peak {peak=magnitude}
+    }
+    if peak<0.03 {t.Fatalf("squish too subtle: %f",peak)}
+    if math.Abs(s.bubbles[0].wobble)>0.02 {
+        t.Fatalf("bubble failed to spring back: %f",s.bubbles[0].wobble)
+    }
+}
+
+func TestBubbleEntrySpeedHasOccasionalFastOutliers(t *testing.T) {
+    slow,fast:=0,0
+    for salt:=uint64(0);salt<300;salt++ {
+        s:=newBubbleState(160,48,salt)
+        s.spawn()
+        if len(s.bubbles)==0 {continue}
+        speed:=math.Hypot(s.bubbles[0].vx*0.5,s.bubbles[0].vy)
+        if speed<5 {slow++}
+        if speed>11 {fast++}
+    }
+    if slow==0 || fast==0 {t.Fatalf("expected mixed gentle and fast bubbles: slow=%d fast=%d",slow,fast)}
 }
 
 func TestBubblePopIsInstantWithASCIIFlash(t *testing.T) {
