@@ -345,6 +345,12 @@ func (s *aquariumState) advance(m model,width,height int,seconds float64) {
     salt:=m.fxAquariumSalt
     if salt==0 {salt=m.fxSalt}
     fish:=aquariumSwimmers(width,height,seconds,salt)
+    s.resolvePredation(fish,width)
+
+}
+
+// Resolve visible overlapping predator/prey pairs once per fixed tick.
+func (s *aquariumState) resolvePredation(fish []aquariumSwimmer,width int) {
     current:=make(map[uint64]bool,len(fish))
     for _,swimmer:=range fish {current[swimmer.id]=true}
     for id:=range s.eaten {if !current[id] {delete(s.eaten,id)}}
