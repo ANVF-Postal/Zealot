@@ -40,13 +40,18 @@ func newBubbleState(width,height int,salt uint64) *bubbleState {
 func (s *bubbleState) resize(width,height int) {
     if s.width==width && s.height==height {return}
     oldW,oldH:=max(1,s.width),max(1,s.height)
-    for i:=range s.bubbles {
-        b:=&s.bubbles[i]
+    maxRadius:=math.Min(6.5,math.Min(float64(width)/5,float64(height)/2.8))
+    kept:=s.bubbles[:0]
+    for _,b:=range s.bubbles {
+        if maxRadius<2.2 {continue}
+        b.radius=math.Min(b.radius,maxRadius)
         b.x*=float64(width)/float64(oldW)
         b.y*=float64(height)/float64(oldH)
         b.x=math.Max(b.radius*2,math.Min(float64(width)-b.radius*2,b.x))
         b.y=math.Max(b.radius,math.Min(float64(height)-b.radius,b.y))
+        kept=append(kept,b)
     }
+    s.bubbles=kept
     s.width,s.height=width,height
     capacity:=bubbleCapacity(width,height)
     if len(s.bubbles)>capacity {s.bubbles=s.bubbles[:capacity]}
