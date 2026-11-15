@@ -841,3 +841,107 @@ func BenchmarkBlizzardPositions(b *testing.B) {
 		m.blizzardPositions(160,45)
 	}
 }
+
+
+func TestFireAndMatrixCommandsRoomAndSelf(t *testing.T) {
+	for _, name := range []string{"fire","matrix"} {
+		m:=newMessageInteractionTestModel(95)
+		m.width=95
+		m.height=30
+		m.room="lobby"
+		m.connected=true
+		var wire bytes.Buffer
+		m.client=&wireClient{enc:json.NewEncoder(&wire)}
+		if m.sendMessage("/"+name+" self 20","") {t.Fatalf("%s self sent as a message",name)}
+		if wire.Len()!=0 || m.currentChatFX().name!=name {
+			t.Fatalf("%s self did not stay local",name)
+		}
+		m.chatFXCommand("/stopfx",[]string{"/stopfx","self"})
+		if len(m.fxFading)==0 {t.Fatalf("%s did not phase out when stopped",name)}
+		if m.sendMessage("/"+name+" 25","") {t.Fatalf("%s became chat text",name)}
+		var packet Packet
+		if err:=json.NewDecoder(&wire).Decode(&packet);err!=nil {t.Fatal(err)}
+		if packet.Type!="fx_start" || packet.FX!=name || packet.FXSeconds!=25 {
+			t.Fatalf("%s room packet invalid: %+v",name,packet)
+		}
+		m.receiveChatFX(Packet{Type:"fx_state",FX:name})
+		if m.currentChatFX().name!=name {t.Fatalf("%s room state missing",name)}
+		rows:=[]string{"  [22:55] Alice: These letters stay readable!",strings.Repeat(" ",75),strings.Repeat(" ",75)}
+		m.renderChatFXBackground(rows,75)
+		if !strings.HasPrefix(stripANSISequences(rows[0]),"  [22:55] Alice: These letters stay readable!") {
+			t.Fatalf("%s obscured message content",name)
+		}
+	}
+}
+
+func TestFireFlamesAreWarmConnectedAndAnimated(t *testing.T) {
+	m:=newMessageInteractionTestModel(110)
+	m.fxRoom=chatFXState{name:"fire"}
+	m.fxSalt=313
+	m.fxSimSteps=0
+	first:=m.firePositions(110,34)
+	m.fxSimSteps=180
+	later:=m.firePositions(110,34)
+	if reflect.DeepEqual(first,later) {t.Fatal("flame tongues do not flicker")}
+	colors:=map[string]bool{}
+	flameCells,lowerCells:=0,0
+	for y,row:=range later {
+		for x,cell:=range row {
+			if x<0||x>=110||y<0||y>=34 {t.Fatal("flame outside viewport")}
+			colors[cell.color]=true
+			flameCells++
+			if y>=24 {lowerCells++}
+		}
+	}
+	if flameCells<110 || lowerCells<110 || len(colors)<3 {
+		t.Fatalf("fire is too sparse or monochrome: %d cells, lower=%d, colors=%d",flameCells,lowerCells,len(colors))
+	}
+	m.fxRenderFPS=1
+	low:=m.firePositions(110,34)
+	m.fxRenderFPS=60
+	if !reflect.DeepEqual(low,m.firePositions(110,34)) {t.Fatal("fire speed depends on FPS")}
+}
+
+func TestMatrixFallsWithBrightHeadsAndDarkTrails(t *testing.T) {
+	m:=newMessageInteractionTestModel(110)
+	m.fxRoom=chatFXState{name:"matrix"}
+	m.fxSalt=71
+	m.fxSimSteps=0
+	first:=m.matrixPositions(110,36)
+	m.fxSimSteps=150
+	later:=m.matrixPositions(110,36)
+	if reflect.DeepEqual(first,later) {t.Fatal("Matrix streams do not fall")}
+	colors:=map[string]bool{}
+	glyphs:=map[rune]bool{}
+	cells:=0
+	for y,row:=range later {
+		for x,cell:=range row {
+			if x<0||x>=110||y<0||y>=36 {t.Fatal("Matrix code outside viewport")}
+			colors[cell.color]=true
+			glyphs[cell.glyph]=true
+			cells++
+		}
+	}
+	if cells<20 || len(colors)<3 || len(glyphs)<10 {
+		t.Fatalf("Matrix lacks code variety: %d cells, colors=%d, glyphs=%d",cells,len(colors),len(glyphs))
+	}
+	m.fxRenderFPS=1
+	low:=m.matrixPositions(110,36)
+	m.fxRenderFPS=60
+	if !reflect.DeepEqual(low,m.matrixPositions(110,36)) {t.Fatal("Matrix speed depends on FPS")}
+	for _,size:=range [][2]int{{1,1},{12,4},{80,24}} {
+		rows:=m.matrixPositions(size[0],size[1])
+		if len(rows)!=size[1] {t.Fatal("Matrix viewport wrong height")}
+	}
+}
+
+func BenchmarkFireAndMatrixPositions(b *testing.B) {
+	m:=newMessageInteractionTestModel(160)
+	m.fxSalt=127
+	b.ReportAllocs()
+	for i:=0;i<b.N;i++ {
+		m.fxSimSteps=uint64(i*2)
+		m.firePositions(160,45)
+		m.matrixPositions(160,45)
+	}
+}
