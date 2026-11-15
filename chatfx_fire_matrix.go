@@ -85,19 +85,18 @@ func (f *doomFireState) spread(salt, index uint64) {
 			if depth>13 {decay=2+int(random%4)}
 			heat:=source-decay
 			if heat<=0 {continue}
-			// Always feed the cell directly above: drifting source pixels
-			// alone created holes and made the base look skeletal.
-			if uint8(heat)>f.scratch[x] {f.scratch[x]=uint8(heat)}
-			// Add some weaker heat to a downwind neighbor. The probability
-			// and direction evolve together over many seconds.
+			// Carry heat downwind during a gust, but leave a slightly
+			// weaker vertical feed to keep the base connected and substantial.
+			destX:=x
 			if math.Abs(wind)>0.16 && int((random>>8)%8)<int(2+4*math.Abs(wind)) {
-				destX:=x
 				if wind>0 {destX++} else {destX--}
-				if destX>=0 && destX<w {
-					neighborHeat:=heat-2
-					if neighborHeat>0 && uint8(neighborHeat)>f.scratch[destX] {
-						f.scratch[destX]=uint8(neighborHeat)
-					}
+				if destX<0 || destX>=w {destX=x}
+			}
+			if uint8(heat)>f.scratch[destX] {f.scratch[destX]=uint8(heat)}
+			if destX!=x {
+				verticalHeat:=heat-2
+				if verticalHeat>0 && uint8(verticalHeat)>f.scratch[x] {
+					f.scratch[x]=uint8(verticalHeat)
 				}
 			}
 		}
