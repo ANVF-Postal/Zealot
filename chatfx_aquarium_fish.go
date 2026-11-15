@@ -29,6 +29,7 @@ type aquariumSwimmer struct {
     length int
     mouthOpen bool
     school bool
+    stripePhase int
 }
 
 type aquariumChomp struct {
@@ -145,7 +146,7 @@ func aquariumSpeciesColor(kind aquariumKind) string {
 // stripes alternate two greens by position, independently of animation FPS.
 func aquariumFishGlyphColor(f aquariumSwimmer,row,index int,glyph rune) string {
     if f.kind==aquariumPike && glyph=='(' || f.kind==aquariumPike && glyph==')' {
-        if index%2==0 {return "#A8D990"}
+        if (index+f.stripePhase)%2==0 {return "#A8D990"}
         return "#4B875B"
     }
     if f.kind==aquariumBluegill {
@@ -225,17 +226,35 @@ func aquariumSwimmers(width,height int,seconds float64,salt uint64) []aquariumSw
         span:=float64(width+widthFish+6)
         offset:=chatFXUnit(seed+2)*span
         distance:=aquariumCycle(offset+seconds*speed,span)
+        if kind==aquariumWalleye {
+            // Nocturnal walleye cross quickly, then remain away for a while.
+            travel:=span/speed
+            rest:=10+18*chatFXUnit(seed+14)
+            activeSeconds:=seconds+offset/speed
+            phase:=aquariumCycle(activeSeconds,travel+rest)
+            if phase>=travel {continue}
+            distance=phase*speed
+            candidate.id=(uint64(i+1)<<32)|uint64(math.Floor(activeSeconds/(travel+rest))+1)
+        }
         x:=-widthFish-2+int(math.Floor(distance))
         if direction<0 {x=width+2-int(math.Floor(distance))}
         y:=aquariumFishDepth(kind,seed+3,height)
         if kind!=aquariumLargemouth && kind!=aquariumWalleye {
             y+=int(math.Round(math.Sin(seconds*0.58+chatFXUnit(seed+4)*6.28)*0.8))
         }
+        if kind==aquariumCute {
+            // The cheerful oddball zigzags and briefly darts between plants.
+            x+=int(math.Round(2.8*math.Sin(seconds*1.05+chatFXUnit(seed+9)*6.28)))
+            y+=int(math.Round(1.4*math.Sin(seconds*0.92+chatFXUnit(seed+10)*6.28)))
+        }
         y=max(0,min(height-2,y))
         candidate.x,candidate.y=x,y
+        candidate.stripePhase=int(math.Floor(seconds*1.45))%2
         // Perch frequently inspect passing fish with an open mouth.
         candidate.mouthOpen=kind==aquariumPerch && aquariumCycle(seconds+chatFXUnit(seed+13)*5,5.2)<1.8
-        candidate.id=(uint64(i+1)<<32)|uint64(math.Floor((offset+seconds*speed)/span)+1)
+        if kind!=aquariumWalleye {
+            candidate.id=(uint64(i+1)<<32)|uint64(math.Floor((offset+seconds*speed)/span)+1)
+        }
         swimmers=append(swimmers,candidate)
     }
 
@@ -284,8 +303,8 @@ func aquariumSwimmers(width,height int,seconds float64,salt uint64) []aquariumSw
         rest float64
         seed uint64
     }{
-        {aquariumEel,90,0xe311},
-        {aquariumMuskie,260,0xa115},
+        {aquariumEel,240,0xe311},
+        {aquariumMuskie,1200,0xa115},
     }
     for _,visitor:=range rare {
         if visitor.kind==aquariumMuskie && (width<45 || height<11) {continue}
@@ -298,6 +317,8 @@ func aquariumSwimmers(width,height int,seconds float64,salt uint64) []aquariumSw
         fish:=aquariumSwimmer{kind:kind,direction:direction,length:length}
         fw:=aquariumFishWidth(fish)
         speed:=aquariumFishSpeed(kind,seed+1)
+        if kind==aquariumEel {speed*=1.35}
+        if kind==aquariumMuskie {speed*=3.0}
         travel:=float64(width+fw+8)/speed
         // Offset within the inactive period makes appearance unpredictable,
         // with longer pauses for the unusually large muskie.
@@ -355,10 +376,12 @@ func (s *aquariumState) resolvePredation(fish []aquariumSwimmer,width int) {
     for _,swimmer:=range fish {current[swimmer.id]=true}
     for id:=range s.eaten {if !current[id] {delete(s.eaten,id)}}
     for _,hunter:=range fish {
-        if !aquariumCanEat(hunter) || s.eaten[hunter.id] {continue}
+        if !aquariumCanEat(hunter) || s.eaten[hunter.id] ||
+            hunter.x>=width || hunter.x+aquariumFishWidth(hunter)<=0 {continue}
         for _,prey:=range fish {
             if prey.id==hunter.id || prey.kind==aquariumMuskie ||
-                s.eaten[prey.id] {continue}
+                s.eaten[prey.id] || prey.x>=width ||
+                prey.x+aquariumFishWidth(prey)<=0 {continue}
             }
             if !aquariumSwimmersTouch(hunter,prey) {continue}
             // A caught fish stays away long enough for the predator to pass;
