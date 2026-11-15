@@ -44,7 +44,7 @@ ever cross the Unix socket.
 - Add consistent adjustable density and appropriate default motion
 - Handle terminal resizing, reconnecting and changing rooms
 
-### Stage 3 — Brief celebrations (confetti implemented; fireworks pending)
+### Stage 3 — Brief celebrations (confetti and fireworks implemented, awaiting manual verification)
 
 - `/confetti [self] [seconds]`: 10-second default, saturated candy-colored glyphs, rare 3–7-cell vertical streamers, variable speed and gentle sway; stop emission on timeout and allow airborne pieces to clear the viewport
 - `/fireworks [self] [seconds]` with a 10-second default; neutral rising shells,
