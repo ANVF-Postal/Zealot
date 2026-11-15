@@ -16,6 +16,7 @@ func doomFireTips(state *doomFireState, viewportHeight int, salt uint64) []doomF
 	count := max(2, min(48, state.width/7))
 	tips := make([]doomFireTip, 0, count)
 	tick := state.step / 4 // Same 7.5 Hz clock as the heat propagation.
+	wind := fireWind(tick, salt)
 	for i := 0; i < count; i++ {
 		seed := chatFXHash(salt + uint64(i+1)*0x9e3779b97f4a7c15)
 		lifetime := uint64(30 + chatFXHash(seed+1)%44)
@@ -34,7 +35,7 @@ func doomFireTips(state *doomFireState, viewportHeight int, salt uint64) []doomF
 		}
 		// Slight horizontal drift, shared with the slowly swaying flame.
 		drift := int(age/14)
-		if fireWind(tick, salt) < 0 {
+		if wind < 0 {
 			drift = -drift
 		}
 		x += drift
