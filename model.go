@@ -138,6 +138,7 @@ type model struct {
 	fxFire *doomFireState
 	fxBubbles *bubbleState
 	fxAquariumSalt uint64
+	fxAquarium *aquariumState
 	fxLocalOverride bool
 	fxDisabled bool
 	fxFrame uint64
