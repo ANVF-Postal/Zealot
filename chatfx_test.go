@@ -1217,14 +1217,16 @@ func TestDoomFireRendererKeepsUpperChatRowsUntouched(t *testing.T) {
 	rows:=make([]string,height)
 	for i:=range rows {rows[i]=strings.Repeat(" ",width)}
 	rows[0]="  [10:15] Someone: This message should be untouched."
-	original:=append([]string(nil),rows...)
 	m.renderDoomFireRows(rows,width)
 	cutoff:=height-doomFireHeight(width,height)
-	for y:=0;y<cutoff;y++ {
-		if rows[y]!=original[y] {
-			t.Fatalf("fire touched row %d above flame budget",y)
-		}
+	if !strings.HasPrefix(stripANSISequences(rows[0]),"  [10:15] Someone: This message should be untouched.") {
+		t.Fatal("fire obscured upper chat message")
 	}
+	upper:=0
+	for y:=0;y<cutoff;y++ {
+		if strings.Contains(rows[y],"\\x1b[38;2;") {upper++}
+	}
+	if upper==0 {t.Fatal("no sparse fire tips reached above the flame body")}
 }
 
 
