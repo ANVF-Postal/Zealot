@@ -2,13 +2,14 @@ package main
 
 import (
     "strings"
+    "math"
     "testing"
 )
 
-func TestStormSkyGradientScalesToQuarterViewport(t *testing.T) {
+func TestStormSkyGradientScalesToThirtyPercent(t *testing.T) {
     for _,height:=range []int{8,12,20,31,40,60,100} {
-        skyRows:=(height+3)/4
-        if got:=stormSkyBlend(height,0);got<0.8 || got>0.83 {
+        skyRows:=int(math.Ceil(float64(height)*0.30))
+        if got:=stormSkyBlend(height,0);got<0.87 || got>0.89 {
             t.Fatalf("height %d: missing dark sky at top: %f",height,got)
         }
         if skyRows>1 && stormSkyBlend(height,skyRows-1)!=0 {
@@ -16,7 +17,7 @@ func TestStormSkyGradientScalesToQuarterViewport(t *testing.T) {
         }
         for y:=skyRows;y<height;y++ {
             if got:=stormSkyBlend(height,y);got!=0 {
-                t.Fatalf("height %d: sky extends below top quarter at row %d: %f",height,y,got)
+                t.Fatalf("height %d: sky extends below top 30% at row %d: %f",height,y,got)
             }
         }
         previous:=1.0
@@ -43,8 +44,11 @@ func TestStormSkyOnlyRainAndBlizzard(t *testing.T) {
             if rows[0]==original[0] || !strings.Contains(rows[0],"\x1b[48;2;") {
                 t.Fatalf("%s sky did not shade the top row",name)
             }
-            if rows[7]!=original[7] {
-                t.Fatalf("%s sky leaked beyond top 25%%",name)
+            if rows[9]!=original[9] {
+                t.Fatalf("%s sky leaked beyond top 30%%",name)
+            }
+            if rows[7]==original[7] {
+                t.Fatalf("%s sky ended early before top 30%%",name)
             }
         } else {
             for i:=range rows {
@@ -60,28 +64,50 @@ func TestStormSkyOnlyRainAndBlizzard(t *testing.T) {
     }
 }
 
-func TestStormSkyPreservesTextAndColorsCustomBackground(t *testing.T) {
+func TestStormSkyDarkensBackgroundAndForeground(t *testing.T) {
     row:="\x1b[48;2;70;80;90m\x1b[38;2;255;160;30mHello "+
-        "\x1b[0m\x1b[38;2;100;190;255mworld"
-    sky:=[3]int{8,19,34}
-    got:=stormSkyRow(row,"#111318",sky,0.82,60)
+        "\x1b[0m\x1b[38;2;104;156;196mrain"
+    got:=stormSkyRow(row,"#111318","#E6E6E6",0.88,60)
     if !strings.HasPrefix(stripANSISequences(got),stripANSISequences(row)) {
         t.Fatalf("storm sky changed message: %q",stripANSISequences(got))
     }
-    if !strings.Contains(got,"\x1b[38;2;255;160;30m") || !strings.Contains(got,"\x1b[38;2;100;190;255m") {
-        t.Fatal("storm sky lost message foreground colours")
-    }
-    if !strings.Contains(got,"\x1b[48;2;70;80;90m") {
-        t.Fatal("storm sky removed original background ANSI styling")
+    if !strings.Contains(got,"\x1b[38;2;255;160;30m") {
+        t.Fatal("source foreground ANSI attributes were lost")
     }
     if background:=interrogationBackgroundAt(got,0); background[0]>=70 || background[1]>=80 || background[2]>=90 {
-        t.Fatalf("custom background was not tinted: %v",background)
+        t.Fatalf("custom background was not darkened: %v",background)
     }
     if gotWidth:=len(stripANSISequences(got));gotWidth!=60 {
         t.Fatalf("storm sky did not fill the visible row: got %d want 60",gotWidth)
     }
-    if unchanged:=stormSkyRow(row,"#111318",sky,0,60);unchanged!=row {
+    if unchanged:=stormSkyRow(row,"#111318","#E6E6E6",0,60);unchanged!=row {
         t.Fatal("zero sky tint must preserve the original bytes")
+    }
+    normal:=[3]int{17,19,24}
+    dark:=stormSkyColor(normal,0.88)
+    for c:=0;c<3;c++ {
+        if dark[c]>=normal[c] {t.Fatalf("dark sky made default theme brighter: %v vs %v",dark,normal)}
+    }
+    rain:=[3]int{104,156,196}
+    if !stormSkyParticleColor(rain) {t.Fatal("rain particle palette not recognized")}
+    if !stormSkyParticleColor([3]int{246,252,255}) {t.Fatal("blizzard particle palette not recognized")}
+    if stormSkyParticleColor([3]int{255,160,30}) {t.Fatal("chat text incorrectly treated as rain")}
+}
+
+func TestStormSkyParticleForegroundIsActuallyDarkened(t *testing.T) {
+    for _,code:=range []string{"\x1b[38;2;104;156;196m", "\x1b[38;2;246;252;255m"} {
+        row:="\x1b[48;2;17;19;24m"+code+"*"
+        shaded:=stormSkyRow(row,"#111318","#E6E6E6",0.88,20)
+        if stripANSISequences(shaded)!="*"+strings.Repeat(" ",19) {
+            t.Fatalf("weather glyph replaced: %q",stripANSISequences(shaded))
+        }
+        // A source foreground SGR must be followed by the shaded colour
+        // before the weather glyph is drawn.
+        source:=strings.Index(shaded,code)
+        if source<0 {t.Fatal("source particle colour was lost")}
+        glyph:=strings.Index(shaded,"*")
+        recolor:=strings.LastIndex(shaded[source+len(code):glyph],"\x1b[38;2;")
+        if recolor<0 {t.Fatalf("particle remained full brightness: %q",shaded)}
     }
 }
 
