@@ -28,7 +28,8 @@ ever cross the Unix socket.
 - `/stop`, `/stopfx self`, `/disablefx`
 - Room-wide state broadcast, self-only mode, optional 1–300 second duration,
   expiry, state for new joiners
-- A client-rendered rain effect confined to unoccupied chat cells
+- A client-rendered rain effect confined to unoccupied chat cells, sized to the live viewport from the first render
+- Fixed 30 Hz simulation clock decoupled from client rendering (default 15 FPS, `/fxfps 1-60`)
 - Manual testing on multiple local clients and performance benchmarking
 
 ### Stage 2 — Weather and primary-effect control
