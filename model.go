@@ -134,6 +134,7 @@ type model struct {
 	// Visual effects are an optional, client-rendered chat decoration.
 	fxRoom chatFXState
 	fxLocal chatFXState
+	fxFading []chatFXFading
 	fxLocalOverride bool
 	fxDisabled bool
 	fxFrame uint64
