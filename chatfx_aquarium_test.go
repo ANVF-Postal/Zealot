@@ -123,6 +123,9 @@ func TestAquariumCommandsLocalAndRoom(t *testing.T) {
     if m.currentChatFX().name!="aquarium" || wire.Len()!=0 {
         t.Fatal("local aquarium was not local")
     }
+    if m.fxAquariumSalt==0 {
+        t.Fatal("aquarium did not generate a new layout seed on launch")
+    }
     m.chatFXCommand("/stopfx",[]string{"/stopfx","self"})
     m.chatFXCommand("/aquarium",[]string{"/aquarium","35"})
     var packet Packet
