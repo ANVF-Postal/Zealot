@@ -8,7 +8,6 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 )
 
 // ChatFX deliberately synchronizes intent rather than frames. Only room-wide
@@ -20,6 +19,7 @@ const (
 	chatFXMaxFPS = 60
 	chatFXSimulationStep = time.Second / 30 // fixed 30 Hz, regardless of render FPS
 	chatFXMaxSeconds = 300
+	chatFXConfettiDefaultSeconds = 10
 )
 
 type chatFXTickMsg struct {
@@ -52,6 +52,10 @@ func (m *model) chatFXCommand(command string, fields []string) {
 			return
 		}
 		m.fxRenderFPS = fps
+		// Invalidate any already-scheduled frame so the new interval takes
+		// effect immediately (rather than after an old low-FPS timer).
+		m.fxTickGeneration++
+		m.fxTickPending = false
 		m.chatFXNotice(fmt.Sprintf("ChatFX rendering set to %d FPS (simulation stays at 30 Hz).", fps))
 	case "/disablefx":
 		if len(fields) != 1 { m.chatFXNotice("Usage: /disablefx"); return }
@@ -61,20 +65,24 @@ func (m *model) chatFXCommand(command string, fields []string) {
 		} else {
 			m.chatFXNotice("ChatFX enabled locally.")
 		}
-	case "/rain":
+	case "/rain", "/confetti":
 		args := fields[1:]
 		self := len(args)>0 && strings.EqualFold(args[0], "self")
 		if self { args=args[1:] }
 		seconds, ok := chatFXDuration(args)
-		if !ok { m.chatFXNotice("Usage: /rain [self] [seconds 1-300]"); return }
+		if !ok { m.chatFXNotice("Usage: "+command+" [self] [seconds 1-300]"); return }
+		name := strings.TrimPrefix(command, "/")
+		// Confetti is a celebration, unlike persistent room weather.
+		if name == "confetti" && seconds == 0 { seconds = chatFXConfettiDefaultSeconds }
 		until := time.Time{}
 		if seconds > 0 { until = time.Now().Add(time.Duration(seconds)*time.Second) }
 		if self {
-			m.fxLocal = chatFXState{name:"rain", until:until}
+			m.fxLocal = chatFXState{name:name, until:until}
 			m.fxLocalOverride = true
-			m.chatFXNotice("Local rain started. Use /stopfx self to stop.")
+			m.resetChatFXSimulation()
+			m.chatFXNotice("Local "+name+" started. Use /stopfx self to stop.")
 		} else if m.client != nil && m.connected {
-			_ = m.client.send(Packet{Type:"fx_start", Room:m.room, FX:"rain", FXSeconds:seconds})
+			_ = m.client.send(Packet{Type:"fx_start", Room:m.room, FX:name, FXSeconds:seconds})
 		}
 	case "/stop", "/stopfx":
 		if len(fields)==2 && strings.EqualFold(fields[1], "self") {
@@ -98,8 +106,10 @@ func (m *model) chatFXNotice(text string) {
 func (m *model) receiveChatFX(packet Packet) {
 	switch packet.Type {
 	case "fx_state":
-		if packet.FX == "rain" && (packet.FXUntil.IsZero() || packet.FXUntil.After(time.Now())) {
-			m.fxRoom = chatFXState{name:"rain", until:packet.FXUntil}
+		if (packet.FX == "rain" || packet.FX == "confetti") &&
+			(packet.FXUntil.IsZero() || packet.FXUntil.After(time.Now())) {
+			m.fxRoom = chatFXState{name:packet.FX, until:packet.FXUntil}
+			if !m.fxLocalOverride { m.resetChatFXSimulation() }
 		} else {
 			m.fxRoom = chatFXState{}
 		}
@@ -145,6 +155,14 @@ func (m *model) ensureChatFXTick() tea.Cmd {
 	return tea.Tick(interval, func(t time.Time) tea.Msg {
 		return chatFXTickMsg{generation: generation, at: t}
 	})
+}
+
+// resetChatFXSimulation begins a fresh locally generated effect without
+// changing the room's authoritative state.
+func (m *model) resetChatFXSimulation() {
+	m.fxSimSteps = 0
+	m.fxSimAccumulator = 0
+	m.fxLastTick = time.Time{}
 }
 
 // advanceChatFXClock has no dependency on the presentation frame rate.
@@ -206,7 +224,9 @@ func chatFXUnit(x uint64) float64 {
 func (m model) rainPositions(width, height int) []map[int]rune {
 	if width < 1 || height < 1 { return nil }
 	positions := make([]map[int]rune, height)
-	count := min(320, max(12, width*height/18))
+	count := int(float64(min(320, max(12, width*height/18))) * rainDensityAt(
+		(float64(m.fxSimSteps)+float64(m.fxSimAccumulator)/float64(chatFXSimulationStep))/30, m.fxSalt))
+	count = max(1, count)
 	simTime := (float64(m.fxSimSteps) +
 		float64(m.fxSimAccumulator)/float64(chatFXSimulationStep)) / 30.0
 	for i:=0; i<count; i++ {
@@ -223,44 +243,6 @@ func (m model) rainPositions(width, height int) []map[int]rune {
 		positions[y][x] = glyph
 	}
 	return positions
-}
-
-// renderChatFXBackground paints the whole available chat *background* but only
-// replaces blank cells. Text, buttons, the scrollbar, borders, and the typing
-// row are left entirely to the existing renderer.
-func (m model) renderChatFXBackground(rows []string, width int) {
-	if m.currentChatFX().name != "rain" || width < 2 || len(rows) == 0 { return }
-	positions := m.rainPositions(width, len(rows))
-	color := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#689CC4")).
-		Background(lipgloss.Color(m.cfg.Theme.Background))
-	base := lipgloss.NewStyle().Background(lipgloss.Color(m.cfg.Theme.Background))
-	for row, original := range rows {
-		if len(positions[row]) == 0 { continue }
-		plain := stripANSISequences(original)
-		// Preserve the complete styled message prefix; only the unused
-		// whitespace to its right may be decorated.
-		prefix := lipgloss.Width(strings.TrimRight(plain, " "))
-		if prefix >= width { continue }
-		var tail strings.Builder
-		blankStart := prefix
-		for col:=prefix; col<width; col++ {
-			glyph, exists := positions[row][col]
-			if !exists { continue }
-			if col > blankStart {
-				tail.WriteString(base.Render(strings.Repeat(" ",col-blankStart)))
-			}
-			tail.WriteString(color.Render(string(glyph)))
-			blankStart=col+1
-		}
-		if blankStart == prefix { continue }
-		if blankStart < width {
-			tail.WriteString(base.Render(strings.Repeat(" ",width-blankStart)))
-		}
-		head := ""
-		if prefix > 0 { head=truncateANSI(original, prefix) }
-		rows[row]=head+tail.String()
-	}
 }
 
 func formatChatFXStart(name string, seconds int) string {
