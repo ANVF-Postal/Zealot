@@ -167,7 +167,12 @@ func (m model) chatFXVisible() bool {
 // The physics below always advances in 1/30-second steps.
 func (m model) chatFXFrameInterval() time.Duration {
 	fps := m.fxRenderFPS
-	if fps < 1 || fps > chatFXMaxFPS { fps = chatFXDefaultFPS }
+	if fps < 1 || fps > chatFXMaxFPS {
+		fps = chatFXDefaultFPS
+		// Fire benefits from interpolated frames even though its heat field
+		// only propagates at 7.5 Hz. Leave all other effects at 15 FPS.
+		if m.currentChatFX().name == "fire" { fps = 30 }
+	}
 	return time.Second / time.Duration(fps)
 }
 
