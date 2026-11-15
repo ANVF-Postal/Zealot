@@ -37,6 +37,17 @@ func doomFireGlyph(level uint8, variation uint64) rune {
 	}
 }
 
+// doomFireHeight limits active fire area as the terminal grows wider.
+// A short buffer above the hottest part lets flame tips cool away naturally
+// rather than reaching the top edge as a flat, visibly cropped stripe.
+func doomFireHeight(width, viewportHeight int) int {
+	if width<1 || viewportHeight<1 {return 0}
+	factor:=0.51*math.Sqrt(90/float64(width))
+	if factor>0.68 {factor=0.68}
+	if factor<0.16 {factor=0.16}
+	return min(viewportHeight,max(4,int(math.Round(float64(viewportHeight)*factor))))
+}
+
 type doomFireState struct {
 	width, height int
 	heat []uint8
@@ -46,14 +57,15 @@ type doomFireState struct {
 
 func newDoomFireState(width, height int, salt uint64) *doomFireState {
 	if width<1 || height<1 {return nil}
-	// Simulate the *entire* viewport. The visible tip height is determined
-	// by natural cooling, never by a fixed 70% clipping plane.
+	// Budget both computation and terminal output by limiting flame
+	// height; wider terminals get shorter flames rather than more pixels.
+	flameHeight:=doomFireHeight(width,height)
 	state:=&doomFireState{
-		width:width,height:height,heat:make([]uint8,width*height),
+		width:width,height:flameHeight,heat:make([]uint8,width*flameHeight),
 		scratch:make([]uint8,width),
 	}
-	for x:=0;x<width;x++ {state.heat[(height-1)*width+x]=36}
-	for i:=uint64(0);i<uint64(height+16);i++ {
+	for x:=0;x<width;x++ {state.heat[(flameHeight-1)*width+x]=36}
+	for i:=uint64(0);i<uint64(flameHeight+16);i++ {
 		state.spread(salt,i)
 	}
 	return state
@@ -81,8 +93,10 @@ func (f *doomFireState) spread(salt, index uint64) {
 			// Strong, contiguous fuel near the bottom. Heat thins and cools
 			// progressively as it rises; there is no geometric height cap.
 			decay:=int(random%3)
-			if depth>5 {decay=1+int(random%4)}
-			if depth>13 {decay=2+int(random%4)}
+			if depth>3 {decay=1+int(random%4)}
+			if depth>7 {decay=2+int(random%5)}
+			// Keep tips sparse before they reach the simulation ceiling.
+			if depth>h-5 {decay+=3}
 			heat:=source-decay
 			if heat<=0 {continue}
 			// Carry heat downwind during a gust, but leave a slightly
@@ -123,21 +137,22 @@ func (m model) firePositions(width,height int) []map[int]chatFXCell {
 	if width<1 || height<1 {return nil}
 	rows:=make([]map[int]chatFXCell,height)
 	state:=m.fxFire
-	if state==nil || state.width!=width || state.height!=height ||
+	if state==nil || state.width!=width || state.height!=doomFireHeight(width,height) ||
 		state.step>m.fxSimSteps {
 		state=newDoomFireState(width,height,m.fxSalt)
 	}
 	state.advance(m.fxSimSteps,m.fxSalt)
-	for y:=0;y<height;y++ {
+	for y:=0;y<state.height;y++ {
+		row:=height-state.height+y
 		for x:=0;x<width;x++ {
 			level:=state.heat[y*width+x]
 			// Skip the weakest dying heat: fine punctuation should be rare
 			// near flame tips, not a constant cloud across the viewport.
 			if level<5 {continue}
-			if rows[y]==nil {rows[y]=make(map[int]chatFXCell)}
+			if rows[row]==nil {rows[row]=make(map[int]chatFXCell)}
 			variation:=chatFXHash(m.fxSalt+uint64(x+1)*0x9e3779b97f4a7c15+
 				uint64(y+1)*0xbf58476d1ce4e5b9+state.step/36)
-			rows[y][x]=chatFXCell{
+			rows[row][x]=chatFXCell{
 				glyph:doomFireGlyph(level,variation),
 				color:doomFirePalette[level],
 			}
