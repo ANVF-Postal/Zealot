@@ -13,14 +13,20 @@ type bubbleParticle struct {
     radius float64 // vertical cell radius
     age,lifetime float64
     color [3]int
-    wobble float64 // signed, spring-driven squash/stretch
-    wobbleVelocity float64
+    rim [24]float64 // independent radial soft-body displacement at each border node
+    rimSpeed [24]float64 // spring velocity for each border node
 }
 
 type bubblePop struct {
     x,y float64
     age float64
     color [3]int
+    fragments [12]bubbleFragment
+}
+
+type bubbleFragment struct {
+    x,y,vx,vy float64
+    glyph rune
 }
 
 type bubbleState struct {
@@ -119,6 +125,13 @@ func (s *bubbleState) tick() {
     pops:=s.pops[:0]
     for _,p:=range s.pops {
         p.age+=dt
+        for i:=range p.fragments {
+            part:=&p.fragments[i]
+            part.x+=part.vx*dt
+            part.y+=part.vy*dt
+            part.vx*=0.975
+            part.vy=part.vy*0.975+2.5*dt
+        }
         if p.age<0.65 {pops=append(pops,p)}
     }
     s.pops=pops
@@ -127,22 +140,20 @@ func (s *bubbleState) tick() {
         bubble.age+=dt
         if bubble.age>=bubble.lifetime {
             if len(s.pops)<bubbleMaximum {
-                s.pops=append(s.pops,bubblePop{x:bubble.x,y:bubble.y,color:bubble.color})
+                s.pops=append(s.pops,newBubblePop(bubble,s.salt+s.steps))
             }
             continue // immediate pop: the sphere is gone this frame
         }
         // Underdamped spring: squash, overshoot, then settle.
-        bubble.wobbleVelocity+=(-58*bubble.wobble-9*bubble.wobbleVelocity)*dt
-        bubble.wobble+=bubble.wobbleVelocity*dt
-        bubble.wobble=math.Max(-0.29,math.Min(0.29,bubble.wobble))
+        bubble.advanceRim(dt)
         bubble.x+=bubble.vx*dt
         bubble.y+=bubble.vy*dt
         minX,maxX:=bubble.radius*2,float64(s.width)-bubble.radius*2
         minY,maxY:=bubble.radius,float64(s.height)-bubble.radius
-        if bubble.x<minX {bubble.x=minX;bubble.vx=math.Abs(bubble.vx);bubble.wobbleVelocity-=4.0}
-        if bubble.x>maxX {bubble.x=maxX;bubble.vx=-math.Abs(bubble.vx);bubble.wobbleVelocity+=4.0}
-        if bubble.y<minY {bubble.y=minY;bubble.vy=math.Abs(bubble.vy);bubble.wobbleVelocity+=3.0}
-        if bubble.y>maxY {bubble.y=maxY;bubble.vy=-math.Abs(bubble.vy);bubble.wobbleVelocity-=3.0}
+        if bubble.x<minX {bubble.x=minX;bubble.vx=math.Abs(bubble.vx);bubble.pressRim(math.Pi,0.32+math.Min(0.3,math.Abs(bubble.vx)*0.025))}
+        if bubble.x>maxX {bubble.x=maxX;bubble.vx=-math.Abs(bubble.vx);bubble.pressRim(0,0.32+math.Min(0.3,math.Abs(bubble.vx)*0.025))}
+        if bubble.y<minY {bubble.y=minY;bubble.vy=math.Abs(bubble.vy);bubble.pressRim(-math.Pi/2,0.30+math.Min(0.3,math.Abs(bubble.vy)*0.04))}
+        if bubble.y>maxY {bubble.y=maxY;bubble.vy=-math.Abs(bubble.vy);bubble.pressRim(math.Pi/2,0.30+math.Min(0.3,math.Abs(bubble.vy)*0.04))}
         alive=append(alive,bubble)
     }
     s.bubbles=alive
@@ -168,8 +179,8 @@ func (s *bubbleState) tick() {
             approach:=((b.vx-a.vx)*0.5)*nx+(b.vy-a.vy)*ny
             if approach<0 {
                 kick:=math.Min(11,2.2+math.Abs(approach)*1.4)
-                a.wobbleVelocity+=kick
-                b.wobbleVelocity-=kick
+                a.pressRim(math.Atan2(ny,nx),0.20+0.035*kick)
+                b.pressRim(math.Atan2(-ny,-nx),0.20+0.035*kick)
                 impulse:=-approach*0.97
                 a.vx-=2*impulse*nx
                 a.vy-=impulse*ny
@@ -195,4 +206,60 @@ func (s *bubbleState) tick() {
 func (s *bubbleState) advance(steps uint64,width,height int) {
     s.resize(width,height)
     for i:=uint64(0);i<steps;i++ {s.tick()}
+}
+
+// The soft body is 24 independent radial masses joined in a cyclic ring.
+// Springs to the rest circle and neighboring masses transmit an impact
+// around its perimeter, rather than squashing the entire bubble uniformly.
+func (b *bubbleParticle) advanceRim(dt float64) {
+    var forces [24]float64
+    for i:=range b.rim {
+        left:=(i+len(b.rim)-1)%len(b.rim)
+        right:=(i+1)%len(b.rim)
+        forces[i]=-47*b.rim[i]+26*(b.rim[left]+b.rim[right]-2*b.rim[i])-10*b.rimSpeed[i]
+    }
+    for i:=range b.rim {
+        b.rimSpeed[i]+=forces[i]*dt
+        b.rim[i]+=b.rimSpeed[i]*dt
+        b.rim[i]=math.Max(-0.48,math.Min(0.25,b.rim[i]))
+    }
+}
+
+// Angle is in physically round coordinates (x is half terminal width).
+// Contact compresses the nodes nearest the contact normal. A smooth bell
+// profile leaves the opposite side largely unchanged.
+func (b *bubbleParticle) pressRim(angle,depth float64) {
+    for i:=range b.rim {
+        theta:=2*math.Pi*float64(i)/float64(len(b.rim))
+        delta:=math.Atan2(math.Sin(theta-angle),math.Cos(theta-angle))
+        strength:=math.Exp(-delta*delta/0.22)
+        b.rimSpeed[i]-=depth*strength*22
+    }
+}
+
+func (b bubbleParticle) rimRadius(angle float64) float64 {
+    phase:=math.Mod(angle/(2*math.Pi)+1,1)*float64(len(b.rim))
+    i:=int(math.Floor(phase))
+    t:=phase-float64(i)
+    displacement:=b.rim[i]*(1-t)+b.rim[(i+1)%len(b.rim)]*t
+    return b.radius*(1+displacement)
+}
+
+func newBubblePop(b bubbleParticle,seed uint64) bubblePop {
+    pop:=bubblePop{x:b.x,y:b.y,color:b.color}
+    symbols:=[]rune{'*','+','·','✦','.'}
+    for i:=range pop.fragments {
+        h:=chatFXHash(seed+uint64(i)*0x9e3779b97f4a7c15)
+        angle:=2*math.Pi*(float64(i)+0.5*chatFXUnit(h))/float64(len(pop.fragments))
+        speed:=3+7*chatFXUnit(h+1)
+        distance:=b.radius*(0.45+0.55*chatFXUnit(h+2))
+        pop.fragments[i]=bubbleFragment{
+            x:b.x+2*distance*math.Cos(angle),
+            y:b.y+distance*math.Sin(angle),
+            vx:b.vx*0.20+2*speed*math.Cos(angle),
+            vy:b.vy*0.20+speed*math.Sin(angle),
+            glyph:symbols[int(chatFXHash(h+3)%uint64(len(symbols)))],
+        }
+    }
+    return pop
 }
