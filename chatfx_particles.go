@@ -141,6 +141,7 @@ func (m model) snowPositions(width, height int) []map[int]chatFXCell {
 // renderChatFXBackground decorates only blank cells in the visible chat area.
 // It leaves message content, scrollbar, borders, typing line and hitboxes alone.
 func (m model) renderChatFXBackground(rows []string, width int) {
+	if m.fxDisabled { return }
 	fx := m.currentChatFX().name
 	if width < 2 || len(rows) == 0 || (fx == "" && len(m.fxFading)==0) { return }
 	// Outgoing particles are drawn first, the current effect on top.
