@@ -149,6 +149,18 @@ func TestAquariumPredationAndChomp(t *testing.T) {
     if text!="*chomp*" {t.Fatalf("red chomp text missing: %q",text)}
 }
 
+func TestAquariumMuskieOnlyChompsOnPrintedContact(t *testing.T) {
+    muskie:=aquariumSwimmer{id:10,kind:aquariumMuskie,direction:1,x:20,y:8}
+    prey:=aquariumSwimmer{id:11,kind:aquariumBluegill,direction:1,x:24,y:8}
+    if aquariumSwimmersTouch(muskie,prey) {
+        t.Fatal("muskie ate a fish floating through a blank gap in its upper art")
+    }
+    prey.x,prey.y=20,9
+    if !aquariumSwimmersTouch(muskie,prey) {
+        t.Fatal("muskie failed to register actual ASCII contact")
+    }
+}
+
 func TestAquariumRareVisitorsHaveLongAbsences(t *testing.T) {
     eel,muskie:=0,0
     for sec:=0;sec<1800;sec+=4 {
