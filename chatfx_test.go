@@ -956,8 +956,8 @@ func TestDoomFireUsesHeatPropagationAndASCIIFlames(t *testing.T) {
 	if state==nil || len(state.heat)!=width*state.height {
 		t.Fatal("Doom fire heat grid was not initialized")
 	}
-	if state.height!=height {
-		t.Fatalf("heat simulation must cover full viewport: height %d of %d",state.height,height)
+	if state.height!=doomFireHeight(width,height) {
+		t.Fatalf("fire simulation height %d does not match adaptive height %d",state.height,doomFireHeight(width,height))
 	}
 	for x:=0;x<width;x++ {
 		if state.heat[(state.height-1)*width+x]<32 {
@@ -1035,13 +1035,13 @@ func BenchmarkDoomFireHeatPropagation(b *testing.B) {
 }
 
 
-func TestDoomFlamesNotClampedAtSeventyPercent(t *testing.T) {
+func TestDoomFireUsesResponsiveHeightInsteadOfFlatSeventyPercent(t *testing.T) {
 	for _,height:=range []int{10,22,36,60} {
 		state:=newDoomFireState(100,height,483)
-		if state.height!=height || len(state.heat)!=100*height {
-			t.Fatalf("heat grid clipped at height=%d: grid %dx%d",height,state.width,state.height)
+		if state.height!=doomFireHeight(100,height) || len(state.heat)!=100*state.height {
+			t.Fatalf("fire heat grid sized incorrectly at height=%d: grid %dx%d",height,state.width,state.height)
 		}
-		// Natural cooling, not a geometric cutoff, determines the flame tips.
+		// Natural cooling within the responsive budget determines the flame tips.
 		for i:=uint64(0);i<140;i++ {state.spread(483,i+100)}
 		if state.heat[(height-1)*100+30]==0 {
 			t.Fatal("fire fuel went out during steady burning")
@@ -1118,7 +1118,7 @@ func TestDoomFireBaseIsDenseAndGustsReverse(t *testing.T) {
 	const width,height=100,34
 	state:=newDoomFireState(width,height,719)
 	for i:=uint64(0);i<120;i++ {state.spread(719,i+200)}
-	for y:=height-4;y<height;y++ {
+	for y:=state.height-4;y<state.height;y++ {
 		dense:=0
 		for x:=0;x<width;x++ {
 			if state.heat[y*width+x]>=20 {dense++}
@@ -1179,5 +1179,48 @@ func BenchmarkDoomFireBatchedRenderer(b *testing.B) {
 		m.fxSimSteps=uint64(i)
 		rows:=append([]string(nil),base...)
 		m.renderDoomFireRows(rows,160)
+	}
+}
+
+
+func TestDoomFireHeightShrinksForWideTerminals(t *testing.T) {
+	const viewport=45
+	narrow:=doomFireHeight(80,viewport)
+	medium:=doomFireHeight(160,viewport)
+	wide:=doomFireHeight(320,viewport)
+	if !(narrow>medium && medium>wide && wide>=4) {
+		t.Fatalf("fire height should shrink with width: 80=%d, 160=%d, 320=%d",narrow,medium,wide)
+	}
+	if medium>=viewport/2 {
+		t.Fatalf("normal terminal flames should be shorter than half the chat height: %d of %d",medium,viewport)
+	}
+	for _,size:=range [][2]int{{1,1},{12,4},{100,25},{300,60}} {
+		width,height:=size[0],size[1]
+		state:=newDoomFireState(width,height,17)
+		if state.height!=doomFireHeight(width,height) {
+			t.Fatalf("grid and height diverged at %dx%d",width,height)
+		}
+		if len(state.heat)!=width*state.height {
+			t.Fatal("heat allocation exceeds flame height budget")
+		}
+	}
+}
+
+func TestDoomFireRendererKeepsUpperChatRowsUntouched(t *testing.T) {
+	m:=newMessageInteractionTestModel(240)
+	m.fxRoom=chatFXState{name:"fire"}
+	m.fxSalt=37
+	height,width:=40,240
+	m.fxFire=newDoomFireState(width,height,m.fxSalt)
+	rows:=make([]string,height)
+	for i:=range rows {rows[i]=strings.Repeat(" ",width)}
+	rows[0]="  [10:15] Someone: This message should be untouched."
+	original:=append([]string(nil),rows...)
+	m.renderDoomFireRows(rows,width)
+	cutoff:=height-doomFireHeight(width,height)
+	for y:=0;y<cutoff;y++ {
+		if rows[y]!=original[y] {
+			t.Fatalf("fire touched row %d above flame budget",y)
+		}
 	}
 }
