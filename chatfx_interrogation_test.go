@@ -107,8 +107,12 @@ func TestInterrogationPerCharacterLightingPreservesMessageAndBackground(t *testi
     row:="\x1b[48;2;17;19;24m\x1b[38;2;230;230;230mHello "+
         "\x1b[38;2;255;20;20mred\x1b[0m rest"
     lit:=interrogationLightRow(row,"#111318","#E6E6E6",80,25,22,1,0,1)
-    if stripANSISequences(lit)!=stripANSISequences(row) {
-        t.Fatal("spatial lighting changed visible message text")
+    // The spatial renderer intentionally pads short rows to the complete
+    // chat width so its background vignette reaches the right edge.
+    originalText:=stripANSISequences(row)
+    litText:=stripANSISequences(lit)
+    if litText!=originalText+strings.Repeat(" ",80-len(originalText)) {
+        t.Fatalf("spatial lighting changed content beyond background padding: got %q, original %q",litText,originalText)
     }
     if !strings.Contains(lit,"\x1b[48;2;17;19;24m") {
         t.Fatal("spatial lighting damaged original background")
