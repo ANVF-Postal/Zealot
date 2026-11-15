@@ -147,8 +147,10 @@ func (m model) snowPositions(width, height int) []map[int]chatFXCell {
 	return positions
 }
 
-// renderChatFXBackground decorates only blank cells in the visible chat area.
-// It leaves message content, scrollbar, borders, typing line and hitboxes alone.
+// renderChatFXBackground decorates the visible chat pane without changing
+// message glyphs, scrollbar geometry, borders, typing line or hitboxes.
+// Bubbles are the exception to blank-cell-only painting: their translucent
+// RGB backgrounds can show behind ordinary message foreground text.
 func (m model) renderChatFXBackground(rows []string, width int) {
 	if m.fxDisabled { return }
 	fx := m.currentChatFX().name
