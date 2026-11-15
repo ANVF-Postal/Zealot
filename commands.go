@@ -200,7 +200,7 @@ func (m *model) sendMessage(text string, replyTo string) bool {
 		}
 		_ = m.client.send(packet)
 		return true
-	case "/rain", "/stop", "/stopfx", "/disablefx":
+	case "/rain", "/confetti", "/stop", "/stopfx", "/disablefx", "/fxfps":
 		m.chatFXCommand(strings.ToLower(fields[0]), fields)
 		return false
 	case "/rainbow":
