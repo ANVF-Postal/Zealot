@@ -215,8 +215,7 @@ func (m *model) advanceChatFXClock(now time.Time) {
 	m.fxSimAccumulator -= steps * chatFXSimulationStep
 	if m.currentChatFX().name=="fire" {
 		w,h:=chatContentWidth(m.width),max(1,m.messageHeight()-1)
-		flameHeight:=min(h,max(5,int(math.Ceil(float64(h)*0.70))))
-		if m.fxFire==nil || m.fxFire.width!=w || m.fxFire.height!=flameHeight {
+		if m.fxFire==nil || m.fxFire.width!=w || m.fxFire.height!=h {
 			m.fxFire=newDoomFireState(w,h,m.fxSalt)
 		}
 		m.fxFire.advance(m.fxSimSteps,m.fxSalt)
