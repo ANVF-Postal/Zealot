@@ -144,6 +144,17 @@ func (m model) firePositions(width,height int) []map[int]chatFXCell {
 		state=newDoomFireState(width,height,m.fxSalt)
 	}
 	state.advance(m.fxSimSteps,m.fxSalt)
+	// Sparse wisps can rise above the compact heat simulation without
+	// enlarging its grid or turning the whole viewport into dense fire.
+	for _,tip:=range doomFireTips(state,height,m.fxSalt) {
+		if rows[tip.y]==nil {rows[tip.y]=make(map[int]chatFXCell)}
+		variation:=chatFXHash(m.fxSalt+uint64(tip.x+1)*0x9e3779b97f4a7c15+
+			uint64(tip.y+1)*0xbf58476d1ce4e5b9+state.step/36)
+		rows[tip.y][tip.x]=chatFXCell{
+			glyph:doomFireGlyph(tip.level,variation),
+			color:doomFirePalette[tip.level],
+		}
+	}
 	for y:=0;y<state.height;y++ {
 		row:=height-state.height+y
 		for x:=0;x<width;x++ {
