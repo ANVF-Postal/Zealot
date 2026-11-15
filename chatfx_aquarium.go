@@ -26,6 +26,8 @@ func (m model) aquariumPositions(width,height int) []map[int]chatFXCell {
     if width<2 || height<2 {return nil}
     rows:=make([]map[int]chatFXCell,height)
     seconds:=aquariumTime(m)
+    salt:=m.fxAquariumSalt
+    if salt==0 {salt=m.fxSalt}
     put:=func(x,y int,glyph rune,color string) {
         if x<0 || x>=width || y<0 || y>=height || glyph==' ' {return}
         if rows[y]==nil {rows[y]=make(map[int]chatFXCell)}
@@ -37,7 +39,7 @@ func (m model) aquariumPositions(width,height int) []map[int]chatFXCell {
     // to the bottom row. The small leaf pattern is intentionally / and \\.
     kelpCount:=min(16,max(2,width/19))
     for i:=0;i<kelpCount;i++ {
-        seed:=chatFXHash(m.fxSalt+uint64(i+1)*0x9e3779b97f4a7c15+0xa91a)
+        seed:=chatFXHash(salt+uint64(i+1)*0x9e3779b97f4a7c15+0xa91a)
         anchor:=2+int(chatFXUnit(seed+1)*float64(max(1,width-4)))
         length:=3+int(chatFXUnit(seed+2)*float64(max(1,min(height/2,13)-2)))
         if length>height {length=height}
@@ -59,7 +61,7 @@ func (m model) aquariumPositions(width,height int) []map[int]chatFXCell {
     // clusters, reminiscent of a quiet aquarium aerator.
     bubbleStreams:=min(15,max(3,width/17))
     for stream:=0;stream<bubbleStreams;stream++ {
-        seed:=chatFXHash(m.fxSalt+uint64(stream+1)*0xbf58476d1ce4e5b9+0xbab1e)
+        seed:=chatFXHash(salt+uint64(stream+1)*0xbf58476d1ce4e5b9+0xbab1e)
         source:=int(chatFXUnit(seed+1)*float64(width))
         speed:=1.4+2.2*chatFXUnit(seed+2)
         spacing:=3.6+3.2*chatFXUnit(seed+3)
@@ -92,7 +94,7 @@ func (m model) aquariumPositions(width,height int) []map[int]chatFXCell {
     for i:=0;i<fishCount;i++ {
         school:=i/3
         member:=i%3
-        seed:=chatFXHash(m.fxSalt+uint64(school+1)*0x94d049bb133111eb+0xf15a)
+        seed:=chatFXHash(salt+uint64(school+1)*0x94d049bb133111eb+0xf15a)
         direction:=1
         if school%2==1 {direction=-1}
         speed:=1.2+2.6*chatFXUnit(seed+1)
