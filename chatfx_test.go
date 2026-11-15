@@ -947,7 +947,7 @@ func BenchmarkFireAndMatrixPositions(b *testing.B) {
 }
 
 
-func TestDoomFireUsesHeatPropagationAndColoredCells(t *testing.T) {
+func TestDoomFireUsesHeatPropagationAndASCIIFlames(t *testing.T) {
 	const width,height=90,28
 	m:=newMessageInteractionTestModel(width)
 	m.fxRoom=chatFXState{name:"fire"}
@@ -956,8 +956,8 @@ func TestDoomFireUsesHeatPropagationAndColoredCells(t *testing.T) {
 	if state==nil || len(state.heat)!=width*state.height {
 		t.Fatal("Doom fire heat grid was not initialized")
 	}
-	if state.height>=height || state.height<height/2 {
-		t.Fatalf("flames should live in lower viewport: height %d of %d",state.height,height)
+	if state.height!=height {
+		t.Fatalf("heat simulation must cover full viewport: height %d of %d",state.height,height)
 	}
 	for x:=0;x<width;x++ {
 		if state.heat[(state.height-1)*width+x]<32 {
@@ -968,20 +968,22 @@ func TestDoomFireUsesHeatPropagationAndColoredCells(t *testing.T) {
 	first:=m.firePositions(width,height)
 	colored:=0
 	palette:=map[string]bool{}
+	glyphs:=map[rune]bool{}
 	for y,row:=range first {
 		for x,cell:=range row {
-			if x<0||x>=width||y<height-state.height||y>=height {
-				t.Fatal("Doom fire escaped its lower viewport")
+			if x<0||x>=width||y<0||y>=height {
+				t.Fatal("Doom fire escaped full viewport")
 			}
-			if cell.glyph!=' ' || cell.background=="" || cell.background!=cell.color {
-				t.Fatal("Doom fire must paint colored terminal backgrounds, not ASCII flame tongues")
+			if cell.glyph==' ' || cell.background!="" || cell.color=="" {
+				t.Fatal("Doom fire must use colored foreground ASCII, not background blocks")
 			}
 			colored++
-			palette[cell.background]=true
+			palette[cell.color]=true
+			glyphs[cell.glyph]=true
 		}
 	}
-	if colored<width*3 || len(palette)<8 {
-		t.Fatalf("fire is not a dense heat gradient: cells=%d colors=%d",colored,len(palette))
+	if colored<width*3 || len(palette)<8 || len(glyphs)<5 {
+		t.Fatalf("fire lacks warm gradient and varied glyphs: cells=%d colors=%d glyphs=%d",colored,len(palette),len(glyphs))
 	}
 	m.fxSimSteps=180
 	later:=m.firePositions(width,height)
@@ -1030,4 +1032,39 @@ func BenchmarkDoomFireHeatPropagation(b *testing.B) {
 	state:=newDoomFireState(160,45,197)
 	b.ReportAllocs()
 	for i:=0;i<b.N;i++ {state.spread(197,uint64(i))}
+}
+
+
+func TestDoomFlamesNotClampedAtSeventyPercent(t *testing.T) {
+	for _,height:=range []int{10,22,36,60} {
+		state:=newDoomFireState(100,height,483)
+		if state.height!=height || len(state.heat)!=100*height {
+			t.Fatalf("heat grid clipped at height=%d: grid %dx%d",height,state.width,state.height)
+		}
+		// Natural cooling, not a geometric cutoff, determines the flame tips.
+		for i:=uint64(0);i<140;i++ {state.spread(483,i+100)}
+		if state.heat[(height-1)*100+30]==0 {
+			t.Fatal("fire fuel went out during steady burning")
+		}
+	}
+}
+
+func TestDoomFireHeatMapsToProgressivelyFinerEmbers(t *testing.T) {
+	allowed:=map[rune]bool{'@':true,'#':true,'%':true,'&':true,'*':true,
+		'o':true,'x':true,'+':true,';':true,':':true,'.':true,',':true}
+	for level:=uint8(1);level<=36;level++ {
+		glyph:=doomFireGlyph(level,uint64(level))
+		if !allowed[glyph] {t.Fatalf("unexpected fire glyph %q at heat %d",glyph,level)}
+		if doomFirePalette[level]=="" {t.Fatalf("missing ember palette shade for heat %d",level)}
+	}
+	for _,glyph:=range []rune{'@','#','%','&'} {
+		found:=false
+		for i:=uint64(0);i<24;i++ {if doomFireGlyph(36,i)==glyph {found=true;break}}
+		if !found {t.Fatalf("large hot glyph %q missing",glyph)}
+	}
+	for _,glyph:=range []rune{'.',','} {
+		found:=false
+		for i:=uint64(0);i<24;i++ {if doomFireGlyph(2,i)==glyph {found=true;break}}
+		if !found {t.Fatalf("fine ember glyph %q missing",glyph)}
+	}
 }
