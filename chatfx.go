@@ -76,7 +76,7 @@ func (m *model) chatFXCommand(command string, fields []string) {
 		} else {
 			m.chatFXNotice("ChatFX enabled locally.")
 		}
-	case "/rain", "/snow", "/blizzard", "/embers", "/confetti", "/fireworks":
+	case "/rain", "/snow", "/blizzard", "/embers", "/fire", "/matrix", "/confetti", "/fireworks":
 		args := fields[1:]
 		self := len(args)>0 && strings.EqualFold(args[0], "self")
 		if self { args=args[1:] }
