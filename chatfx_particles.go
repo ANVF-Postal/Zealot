@@ -37,12 +37,12 @@ func rainDensityAt(seconds float64, salt uint64) float64 {
 // Candy shades come in vibrant and pastel variants. Individual confetti
 // flakes slowly flip saturation as they fall, independently of their motion.
 var chatFXCandy = [][2]string{
-	{"#FF5FA2", "#FFC0D9"}, // strawberry
-	{"#5CDEAA", "#B6F3DC"}, // mint
-	{"#69A6FF", "#C1D9FF"}, // blue raspberry
-	{"#B987FF", "#E0CCFF"}, // grape
-	{"#FFBC50", "#FFE5A4"}, // lemon
-	{"#FF806E", "#FFC4B9"}, // peach
+	{"#FF1493", "#FF62B2"}, // hot strawberry pink
+	{"#00E5A0", "#57FFC4"}, // neon mint
+	{"#1683FF", "#55C1FF"}, // electric blue raspberry
+	{"#AA36FF", "#D17AFF"}, // vivid grape
+	{"#FFCD00", "#FFE04C"}, // lemon candy
+	{"#FF572E", "#FF926D"}, // tangerine
 }
 var chatFXConfettiGlyphs = []rune{'*', '%', '.', '/', '\\', '+'}
 
@@ -56,6 +56,12 @@ func (m model) confettiPositions(width, height int) []map[int]chatFXCell {
 	positions := make([]map[int]chatFXCell, height)
 	count := min(360, max(24, width*height/11))
 	t := (float64(m.fxSimSteps)+float64(m.fxSimAccumulator)/float64(chatFXSimulationStep))/30
+	// The event duration controls births, not visibility. After emission
+	// ends, the already-airborne particles finish their current descent.
+	emitUntil := math.Inf(1)
+	if fx := m.currentChatFX(); !fx.until.IsZero() && !fx.started.IsZero() {
+		emitUntil = max(0,fx.until.Sub(fx.started).Seconds())
+	}
 	for i:=0; i<count; i++ {
 		seed := chatFXHash(uint64(i+1)*0x9e3779b97f4a7c15+m.fxSalt)
 		speed := 2.8 + 7.2*chatFXUnit(seed+1)
@@ -66,6 +72,7 @@ func (m model) confettiPositions(width, height int) []map[int]chatFXCell {
 		age := t-start
 		if age < 0 { continue }
 		cycle := math.Floor(age/period)
+		if start+cycle*period >= emitUntil { continue }
 		age -= cycle*period
 		if age < 0 { continue }
 		y := int(math.Floor(age*speed - 1))
@@ -102,11 +109,37 @@ func (m model) confettiPositions(width, height int) []map[int]chatFXCell {
 	return positions
 }
 
+// snowPositions uses the same slowly varying weather cycle as rain,
+ // with lighter particle counts and slower, softly swaying descent.
+func (m model) snowPositions(width, height int) []map[int]chatFXCell {
+	if width < 1 || height < 1 { return nil }
+	positions := make([]map[int]chatFXCell,height)
+	t := (float64(m.fxSimSteps)+float64(m.fxSimAccumulator)/float64(chatFXSimulationStep))/30
+	intensity := rainDensityAt(t,m.fxSalt^0x5eafc0de)
+	count := max(4,int(float64(min(220,max(10,width*height/28)))*intensity))
+	glyphs := []rune{'*','·','✻','+'}
+	for i:=0;i<count;i++ {
+		seed := chatFXHash(uint64(i+1)*0x517cc1b727220a95+m.fxSalt)
+		speed := 0.75+1.9*chatFXUnit(seed+1)
+		startX := chatFXUnit(seed+2)*float64(width)
+		startY := chatFXUnit(seed+3)*float64(height)
+		sway := 0.7+1.3*chatFXUnit(seed+4)
+		frequency := 0.35+0.45*chatFXUnit(seed+5)
+		x := int(math.Floor(math.Mod(startX+sway*math.Sin(t*frequency+chatFXUnit(seed+6)*6.28)+float64(width),float64(width))))
+		y := int(math.Floor(math.Mod(startY+t*speed,float64(height))))
+		if positions[y]==nil { positions[y]=make(map[int]chatFXCell) }
+		glyph := glyphs[int(chatFXHash(seed+7)%uint64(len(glyphs)))]
+		shade := []string{"#DDF4FF","#BCE6FF","#F4FDFF"}[int(chatFXHash(seed+8)%3)]
+		positions[y][x]=chatFXCell{glyph:glyph,color:shade}
+	}
+	return positions
+}
+
 // renderChatFXBackground decorates only blank cells in the visible chat area.
 // It leaves message content, scrollbar, borders, typing line and hitboxes alone.
 func (m model) renderChatFXBackground(rows []string, width int) {
 	fx := m.currentChatFX().name
-	if (fx != "rain" && fx != "confetti") || width < 2 || len(rows) == 0 { return }
+	if (fx != "rain" && fx != "snow" && fx != "confetti") || width < 2 || len(rows) == 0 { return }
 	positions := make([]map[int]chatFXCell, len(rows))
 	if fx == "rain" {
 		for y, row := range m.rainPositions(width,len(rows)) {
@@ -116,6 +149,8 @@ func (m model) renderChatFXBackground(rows []string, width int) {
 				positions[y][x] = chatFXCell{glyph:glyph,color:"#689CC4"}
 			}
 		}
+	} else if fx == "snow" {
+		positions = m.snowPositions(width,len(rows))
 	} else {
 		positions = m.confettiPositions(width,len(rows))
 	}
