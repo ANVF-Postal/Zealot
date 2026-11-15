@@ -89,7 +89,7 @@ func (m model) blizzardPositions(width,height int) []map[int]chatFXCell {
 	// 650 particles caps expensive styling on large SSH terminals.
 	count:=max(24,int(float64(min(650,max(48,width*height/4)))*intensity))
 	wind,windSpeed:=blizzardWindSample(seconds,m.fxSalt)
-	glyphs:=[]rune{'.','.',',',',',','*','+','✻','·'}
+	glyphs:=[]rune{'.', '.', ',', ',', '*', '+', '✻', '·'}
 	colors:=[]string{"#F6FCFF","#C9E8FF","#94CBE8","#E3F4FF"}
 	for i:=0;i<count;i++ {
 		seed:=chatFXHash(uint64(i+1)*0x517cc1b727220a95+m.fxSalt)
