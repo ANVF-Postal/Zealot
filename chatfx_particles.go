@@ -163,6 +163,10 @@ func (m model) renderChatFXBackground(rows []string, width int) {
 	background := lipgloss.Color(m.cfg.Theme.Background)
 	fill := lipgloss.NewStyle().Background(background)
 	styles := make(map[string]lipgloss.Style,16)
+	// Dense blizzards repeatedly draw the same few colored glyphs.
+	// Cache ANSI-rendered tokens once per frame instead of building a style
+	// and invoking lipgloss.Render for every single snowflake.
+	tokens := make(map[chatFXCell]string,32)
 	for y, original := range rows {
 		if len(positions[y]) == 0 { continue }
 		plain := stripANSISequences(original)
@@ -177,12 +181,17 @@ func (m model) renderChatFXBackground(rows []string, width int) {
 			cell,exists := positions[y][x]
 			if !exists { continue }
 			if x>blankStart { tail.WriteString(fill.Render(strings.Repeat(" ",x-blankStart))) }
-			style,ok := styles[cell.color]
+			rendered,ok := tokens[cell]
 			if !ok {
-				style=lipgloss.NewStyle().Foreground(lipgloss.Color(cell.color)).Background(background)
-				styles[cell.color]=style
+				style,exists := styles[cell.color]
+				if !exists {
+					style=lipgloss.NewStyle().Foreground(lipgloss.Color(cell.color)).Background(background)
+					styles[cell.color]=style
+				}
+				rendered=style.Render(string(cell.glyph))
+				tokens[cell]=rendered
 			}
-			tail.WriteString(style.Render(string(cell.glyph)))
+			tail.WriteString(rendered)
 			blankStart=x+1
 		}
 		if blankStart == prefix { continue }
