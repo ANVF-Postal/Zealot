@@ -1,6 +1,10 @@
 package main
 
-import "math"
+import (
+    "fmt"
+    "math"
+    "strconv"
+)
 
 // Doom-style fire based on filipedeschamps/doom-fire-algorithm (MIT).
 // A hot fuel row sends heat upward with lateral drift and cooling. Terminal
@@ -192,6 +196,36 @@ func (m model) firePositions(width,height int) []map[int]chatFXCell {
 	return rows
 }
 
+// A small precomputed truecolour gradient makes Matrix trails fade toward
+// the user's actual theme background. Only 48 RGB strings are constructed per
+// rendered frame, rather than one calculation and allocation per glyph.
+const matrixFadeSteps = 48
+
+func matrixFadePalette(background string) [matrixFadeSteps]string {
+    bg:=[3]int{17,19,24} // default-theme fallback for indexed colours
+    if len(background)==7 && background[0]=='#' {
+        valid:=true
+        for c:=0;c<3;c++ {
+            n,err:=strconv.ParseUint(background[1+2*c:3+2*c],16,8)
+            if err!=nil {valid=false;break}
+            bg[c]=int(n)
+        }
+        if !valid {bg=[3]int{17,19,24}}
+    }
+    green:=[3]int{36,218,99}
+    var colors [matrixFadeSteps]string
+    for i:=0;i<matrixFadeSteps;i++ {
+        // Brighter near the head, almost invisible at the end of the tail.
+        u:=float64(i)/float64(matrixFadeSteps-1)
+        alpha:=0.04+0.96*math.Pow(1-u,1.35)
+        r:=int(math.Round(float64(bg[0])*(1-alpha)+float64(green[0])*alpha))
+        g:=int(math.Round(float64(bg[1])*(1-alpha)+float64(green[1])*alpha))
+        b:=int(math.Round(float64(bg[2])*(1-alpha)+float64(green[2])*alpha))
+        colors[i]=fmt.Sprintf("#%02X%02X%02X",r,g,b)
+    }
+    return colors
+}
+
 // Matrix streams descend in individual columns. The leading glyph is bright,
 // the rest of the stream uses multiple diminishing green intensities. Streams
 // wrap naturally and the symbol at each cell evolves without changing speed.
@@ -200,7 +234,7 @@ func (m model) matrixPositions(width,height int) []map[int]chatFXCell {
 	rows:=make([]map[int]chatFXCell,height)
 	t:=(float64(m.fxSimSteps)+float64(m.fxSimAccumulator)/float64(chatFXSimulationStep))/30
 	alphabet:=[]rune("012345789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
-	colors:=[]string{"#D7FFDE","#6CFF93","#24DA63","#0FA541","#08652C"}
+	colors:=matrixFadePalette(m.cfg.Theme.Background)
 	// A little over half the columns contain streams. This is dense enough
 	// for a code-rain impression but bounded on large terminals.
 	for x:=0;x<width;x++ {
@@ -214,13 +248,16 @@ func (m model) matrixPositions(width,height int) []map[int]chatFXCell {
 		for trail:=0;trail<length;trail++ {
 			y:=head-trail
 			if y<0||y>=height {continue}
-			// Head shines, tail gets darker in several steps.
-			shade:=min(4,int(float64(trail)/float64(max(1,length))*5))
-			if trail==0 {shade=0}
+			// Continuous shading is based on the position in the stream,
+			// never the display FPS. The bright leading character is retained.
+			fade:=float64(trail)/float64(max(1,length-1))
+			shade:=min(matrixFadeSteps-1,int(math.Round(fade*float64(matrixFadeSteps-1))))
+			color:=colors[shade]
+			if trail==0 {color="#D7FFDE"}
 			key:=chatFXHash(seed+uint64(y+1)*0xbf58476d1ce4e5b9+uint64(int(t*9)))
 			glyph:=alphabet[int(key%uint64(len(alphabet)))]
 			if rows[y]==nil {rows[y]=make(map[int]chatFXCell)}
-			rows[y][x]=chatFXCell{glyph:glyph,color:colors[shade]}
+			rows[y][x]=chatFXCell{glyph:glyph,color:color}
 		}
 	}
 	return rows
