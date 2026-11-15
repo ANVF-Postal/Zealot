@@ -24,9 +24,10 @@ var bubbleBrailleDots=[4][2]uint8{
 // squashes one axis while stretching the other, preserving approximate area.
 func bubbleBrailleMask(b bubbleParticle,x,y int) uint8 {
     if b.radius<=0 {return 0}
-    // Terminal cells have approximately twice the height of their width.
-    rx:=2*b.radius*math.Max(0.64,1+b.wobble)
-    ry:=b.radius*math.Max(0.64,1-b.wobble)
+    // Sample the elastic radial border at each Braille subpixel. Terminal
+    // character cells are roughly twice as tall as they are wide.
+    rx:=2*b.radius
+    ry:=b.radius
     var mask uint8
     for subY:=0;subY<4;subY++ {
         sy:=float64(y)+(float64(subY)+0.5)/4
@@ -36,8 +37,10 @@ func bubbleBrailleMask(b bubbleParticle,x,y int) uint8 {
             dx:=(sx-b.x)/rx
             // A narrow rim about one braille dot thick.
             dist:=math.Hypot(dx,dy)
-            thickness:=math.Max(0.028,0.27/b.radius)
-            if math.Abs(dist-1)<=thickness {
+            angle:=math.Atan2(dy,dx)
+            surface:=b.rimRadius(angle)/b.radius
+            thickness:=math.Max(0.028,0.24/b.radius)
+            if math.Abs(dist-surface)<=thickness {
                 mask|=bubbleBrailleDots[subY][subX]
             }
         }
@@ -49,12 +52,8 @@ func bubbleGlyphAt(b bubbleParticle,x,y int) rune {
     if b.radius<=0 {return 0}
     mask:=bubbleBrailleMask(b,x,y)
     if mask!=0 {return rune(0x2800)+rune(mask)}
-    // Tiny white specular reflection inside the upper-left quarter.
-    dx:=(float64(x)+0.5-b.x)/(2*b.radius)
-    dy:=(float64(y)+0.5-b.y)/b.radius
-    if math.Abs(dx+0.43)<0.105 && math.Abs(dy+0.48)<0.11 {
-        return 'o'
-    }
+    // Reflections are painted once per bubble in raster(), not evaluated
+    // independently for every character (which created two little eyes).
     return 0
 }
 
@@ -77,8 +76,8 @@ func (s *bubbleState) raster(width,height int) [][]bubblePixel {
         grid[y][x]=bubblePixel{glyph:glyph,color:color}
     }
     for _,b:=range s.bubbles {
-        rx:=2*b.radius*math.Max(0.64,1+b.wobble)
-        ry:=b.radius*math.Max(0.64,1-b.wobble)
+        rx:=2*b.radius*1.30
+        ry:=b.radius*1.30
         startX:=max(0,int(math.Floor(b.x-rx))-1)
         endX:=min(width,int(math.Ceil(b.x+rx))+1)
         startY:=max(0,int(math.Floor(b.y-ry))-1)
@@ -89,18 +88,28 @@ func (s *bubbleState) raster(width,height int) [][]bubblePixel {
                 if glyph!=0 {paint(x,y,glyph,bubbleOutlineColor(b,glyph))}
             }
         }
+        // Place exactly ONE reflection cluster, attached to the bubble's
+        // upper-left local surface. Large bubbles get a single curved
+        // Braille highlight rather than multiple isolated 'o' glyphs.
+        hx:=int(math.Round(b.x-0.92*b.rimRadius(-2.35)))
+        hy:=int(math.Round(b.y-0.52*b.rimRadius(-2.35)))
+        white:=[3]int{244,250,255}
+        if b.radius<3.8 {
+            paint(hx,hy,'o',white)
+        } else {
+            // A shallow, contiguous crescent; no duplicated eye highlights.
+            paint(hx,hy,'⠐',white)
+            paint(hx+1,hy,'⠒',white)
+            if b.radius>=5.3 {paint(hx+2,hy+1,'⠂',white)}
+        }
     }
-    // The instantaneous ASCII pop animation remains intentionally textual.
+    // Short-lived pop fragments fly outward with independent velocities.
     for _,p:=range s.pops {
         cx,cy:=int(math.Round(p.x)),int(math.Round(p.y))
-        if p.age<0.42 {
-            spread:=1+int(p.age/0.12)
-            paint(cx-2*spread,cy,'*',p.color)
-            paint(cx+2*spread,cy,'*',p.color)
-            paint(cx,cy-spread,'+',p.color)
-            paint(cx,cy+spread,'+',p.color)
+        for _,part:=range p.fragments {
+            paint(int(math.Round(part.x)),int(math.Round(part.y)),part.glyph,p.color)
         }
-        if p.age<0.55 {
+        if p.age<0.27 {
             for i,g:=range "*pop*" {
                 paint(cx-2+i,cy,g,p.color)
             }
