@@ -157,7 +157,7 @@ func (m model) renderInterrogationRows(rows []string, start int) {
     previous:=-1
     handoff:=0.0
     if m.fxInterrogationTracked && m.fxInterrogationCurrent==current {
-        elapsed:=time.Since(m.fxInterrogationHandoff).Seconds()
+        elapsed:=m.fxInterrogationLast.Sub(m.fxInterrogationHandoff).Seconds()
         if !m.fxInterrogationHandoff.IsZero() && elapsed>=0 && elapsed<2 {
             previous=m.fxInterrogationPrevious
             handoff=1-elapsed/2
