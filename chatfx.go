@@ -44,7 +44,7 @@ func chatFXDuration(args []string) (int, bool) {
 // chat/whisper message handling so they can never leak as ordinary messages.
 func isChatFXCommand(command string) bool {
 	switch command {
-	case "/rain", "/snow", "/blizzard", "/embers", "/fire", "/matrix", "/confetti", "/fireworks", "/static", "/glitch", "/interrogation", "/stop", "/stopfx", "/disablefx", "/fxfps":
+	case "/rain", "/snow", "/blizzard", "/embers", "/fire", "/matrix", "/confetti", "/fireworks", "/static", "/glitch", "/interrogation", "/bubbles", "/stop", "/stopfx", "/disablefx", "/fxfps":
 		return true
 	}
 	return false
@@ -76,7 +76,7 @@ func (m *model) chatFXCommand(command string, fields []string) {
 		} else {
 			m.chatFXNotice("ChatFX enabled locally.")
 		}
-	case "/rain", "/snow", "/blizzard", "/embers", "/fire", "/matrix", "/confetti", "/fireworks", "/static", "/glitch", "/interrogation":
+	case "/rain", "/snow", "/blizzard", "/embers", "/fire", "/matrix", "/confetti", "/fireworks", "/static", "/glitch", "/interrogation", "/bubbles":
 		args := fields[1:]
 		self := len(args)>0 && strings.EqualFold(args[0], "self")
 		if self { args=args[1:] }
@@ -125,7 +125,7 @@ func (m *model) receiveChatFX(packet Packet) {
 		if previous.name != "" && !m.fxLocalOverride {
 			m.retireChatFX(previous)
 		}
-		if (packet.FX == "rain" || packet.FX == "snow" || packet.FX == "blizzard" || packet.FX == "embers" || packet.FX == "fire" || packet.FX == "matrix" || packet.FX == "confetti" || packet.FX == "fireworks" || packet.FX == "static" || packet.FX == "glitch" || packet.FX == "interrogation") &&
+		if (packet.FX == "rain" || packet.FX == "snow" || packet.FX == "blizzard" || packet.FX == "embers" || packet.FX == "fire" || packet.FX == "matrix" || packet.FX == "confetti" || packet.FX == "fireworks" || packet.FX == "static" || packet.FX == "glitch" || packet.FX == "interrogation" || packet.FX == "bubbles") &&
 			(packet.FXUntil.IsZero() || packet.FXUntil.After(time.Now())) {
 			m.fxRoom = chatFXState{name:packet.FX, started:time.Now(), until:packet.FXUntil}
 			if !m.fxLocalOverride { m.resetChatFXSimulation() }
@@ -196,6 +196,10 @@ func (m *model) resetChatFXSimulation() {
 	m.fxSimAccumulator = 0
 	m.fxLastTick = time.Time{}
 	m.fxFire=nil
+	m.fxBubbles=nil
+	if m.currentChatFX().name=="bubbles" {
+		m.fxBubbles=newBubbleState(chatContentWidth(m.width),max(1,m.messageHeight()-1),m.fxSalt)
+	}
 	if m.currentChatFX().name=="fire" {
 		m.fxFire=newDoomFireState(chatContentWidth(m.width),max(1,m.messageHeight()-1),m.fxSalt)
 	}
@@ -218,6 +222,11 @@ func (m *model) advanceChatFXClock(now time.Time) {
 	steps := m.fxSimAccumulator / chatFXSimulationStep
 	m.fxSimSteps += uint64(steps)
 	m.fxSimAccumulator -= steps * chatFXSimulationStep
+	if m.currentChatFX().name=="bubbles" {
+		w,h:=chatContentWidth(m.width),max(1,m.messageHeight()-1)
+		if m.fxBubbles==nil {m.fxBubbles=newBubbleState(w,h,m.fxSalt)}
+		m.fxBubbles.advance(uint64(steps),w,h)
+	}
 	if m.currentChatFX().name=="fire" {
 		w,h:=chatContentWidth(m.width),max(1,m.messageHeight()-1)
 		if m.fxFire==nil || m.fxFire.width!=w || m.fxFire.height!=doomFireHeight(w,h) {
