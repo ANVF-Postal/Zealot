@@ -1162,8 +1162,8 @@ func TestDoomFireBatchedRendererPreservesMessages(t *testing.T) {
 	m.fxFire.height=1
 	m.fxFire.heat=m.fxFire.heat[(height-1)*width:]
 	m.renderDoomFireRows(blank,width)
-	if strings.Count(blank[0],"\\x1b[")>=width/4 {
-		t.Fatalf("batched fire emitted too many ANSI fragments: %d",strings.Count(blank[0],"\\x1b["))
+	if strings.Count(blank[0],"\x1b[")>=width/4 {
+		t.Fatalf("batched fire emitted too many ANSI fragments: %d",strings.Count(blank[0],"\x1b["))
 	}
 }
 
