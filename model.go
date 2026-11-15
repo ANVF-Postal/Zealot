@@ -136,6 +136,7 @@ type model struct {
 	fxLocal chatFXState
 	fxFading []chatFXFading
 	fxFire *doomFireState
+	fxBubbles *bubbleState
 	fxLocalOverride bool
 	fxDisabled bool
 	fxFrame uint64
