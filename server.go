@@ -327,14 +327,14 @@ func (s *server) handle(conn net.Conn) {
 
 		switch packet.Type {
 		case "fx_start":
-			if (packet.FX != "rain" && packet.FX != "snow" && packet.FX != "confetti") ||
+			if (packet.FX != "rain" && packet.FX != "snow" && packet.FX != "confetti" && packet.FX != "fireworks") ||
 				packet.FXSeconds < 0 || packet.FXSeconds > chatFXMaxSeconds {
 				client.send(Packet{Type:"system", Room:roomName, Text:"Invalid ChatFX request.", Time:time.Now().UTC()})
 				continue
 			}
 			seconds := packet.FXSeconds
 			// Celebrations may never run forever, even if a client sends zero.
-			if packet.FX == "confetti" && seconds == 0 {
+			if (packet.FX == "confetti" || packet.FX == "fireworks") && seconds == 0 {
 				seconds = chatFXConfettiDefaultSeconds
 			}
 			until := time.Time{}
@@ -348,6 +348,7 @@ func (s *server) handle(conn net.Conn) {
 			label := "Rain"
 			if packet.FX == "snow" { label = "Snow" }
 			if packet.FX == "confetti" { label = "Confetti" }
+			if packet.FX == "fireworks" { label = "Fireworks" }
 			s.systemMessage(roomName, client.user.Name+" invoked "+packet.FX+". "+formatChatFXStart(label,seconds))
 		case "fx_stop":
 			s.mu.Lock()
