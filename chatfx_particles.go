@@ -153,6 +153,12 @@ func (m model) renderChatFXBackground(rows []string, width int) {
 	if m.fxDisabled { return }
 	fx := m.currentChatFX().name
 	if width < 2 || len(rows) == 0 || (fx == "" && len(m.fxFading)==0) { return }
+	if fx=="fire" && len(m.fxFading)==0 {
+		// Dense fire has a dedicated renderer that batches adjacent glyphs
+		// into color runs and avoids hundreds of ANSI fragments per frame.
+		m.renderDoomFireRows(rows,width)
+		return
+	}
 	// Outgoing particles are drawn first, the current effect on top.
 	// Only one effect emits, even while the last one finishes falling.
 	positions := m.fadingChatFXPositions(width,len(rows))
