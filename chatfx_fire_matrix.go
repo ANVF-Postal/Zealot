@@ -243,7 +243,10 @@ func (m model) matrixPositions(width,height int) []map[int]chatFXCell {
 		length:=4+int(chatFXHash(seed+2)%uint64(max(3,min(16,height+3))))
 		speed:=3.6+8.2*chatFXUnit(seed+3)
 		phase:=chatFXUnit(seed+4)*float64(height+length)
-		period:=float64(height+length+7)
+		// Let the entire tail leave the bottom before wrapping. The old
+		// period allowed just seven extra rows, abruptly deleting longer
+		// streams whose dim trailing characters were still on screen.
+		period:=float64(height+2*length+7)
 		head:=int(math.Floor(math.Mod(phase+t*speed,period)))-length
 		for trail:=0;trail<length;trail++ {
 			y:=head-trail
