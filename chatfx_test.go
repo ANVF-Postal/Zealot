@@ -530,3 +530,69 @@ func TestStoppingLocalEffectPreservesFallingParticles(t *testing.T) {
 	m.renderChatFXBackground(rows,40)
 	if !reflect.DeepEqual(rows,before) {t.Fatal("disablefx must hide outgoing particles as well")}
 }
+
+
+func TestFireworkBurstWidthsVaryAndBigShellsAreRare(t *testing.T) {
+	regular := 0
+	big := 0
+	minWidth, maxWidth := 100.0, 0.0
+	for i := 0; i < 1024; i++ {
+		seed := chatFXHash(uint64(i+1)*0x9e3779b97f4a7c15+229)
+		glyph, widthScale, particleScale := fireworkShellStyle(seed)
+		switch glyph {
+		case 'o':
+			regular++
+			if widthScale < 1.05 || widthScale > 2.1 || particleScale != 1 {
+				t.Fatalf("invalid ordinary shell proportions: %f, %f", widthScale, particleScale)
+			}
+			minWidth = min(minWidth, widthScale)
+			maxWidth = max(maxWidth, widthScale)
+		case '0':
+			big++
+			if widthScale < 2.35 || particleScale <= 1 {
+				t.Fatalf("rare shell should be substantially bigger: %f, %f", widthScale, particleScale)
+			}
+		default:
+			t.Fatalf("unexpected shell glyph %q", glyph)
+		}
+	}
+	if big < 5 || big > 90 || regular <= big {
+		t.Fatalf("rare shell distribution: %d big, %d regular", big, regular)
+	}
+	if maxWidth-minWidth < 0.5 {
+		t.Fatalf("ordinary burst width does not vary enough: %.2f..%.2f",minWidth,maxWidth)
+	}
+}
+
+func TestOversizedShellRendersNeutralAndBurstsStayInBounds(t *testing.T) {
+	m := newMessageInteractionTestModel(140)
+	m.fxRoom = chatFXState{name:"fireworks",started:time.Now(),until:time.Now().Add(60*time.Second)}
+	m.fxSalt = 229
+	seenBigShell := false
+	seenBigBurst := false
+	for i:=0; i<78; i++ {
+		seed := chatFXHash(uint64(i+1)*0x9e3779b97f4a7c15+m.fxSalt)
+		glyph,_,_:=fireworkShellStyle(seed)
+		if glyph!='0' { continue }
+		// Look at this rare shell just after takeoff and after detonation.
+		m.fxSimSteps = uint64((float64(i)*0.78+0.15)*30)
+		for y,row:=range m.fireworkPositions(140,38) {
+			for x,cell:=range row {
+				if x<0||x>=140||y<0||y>=38 {t.Fatal("particle outside viewport")}
+				if cell.glyph=='0' {
+					seenBigShell=true
+					if cell.color!="#ECF1F5" {t.Fatal("big shell must be neutral-colored")}
+				}
+			}
+		}
+		m.fxSimSteps=uint64((float64(i)*0.78+2.2)*30)
+		for _,row:=range m.fireworkPositions(140,38) {
+			for _,cell:=range row {
+				if cell.glyph=='*'||cell.glyph=='#'||cell.glyph=='+' {seenBigBurst=true}
+			}
+		}
+	}
+	if !seenBigShell||!seenBigBurst {
+		t.Fatalf("oversized shell missing visual stages: launch=%v burst=%v",seenBigShell,seenBigBurst)
+	}
+}
