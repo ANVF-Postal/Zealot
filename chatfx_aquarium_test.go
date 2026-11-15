@@ -420,6 +420,18 @@ func TestAquariumEelSpeedAndFishDiversity(t *testing.T) {
         }
     }
     if len(shades)<5 {t.Fatalf("minnow palette lacks individual variation: %d shades",len(shades))}
+    schoolShades:=map[string]bool{}
+    for id:=uint64(1);id<=12;id++ {
+        sharedSeed:=uint64(934)
+        fish:=aquariumSwimmer{
+            kind:aquariumMinnow,seed:sharedSeed,
+            colorSeed:chatFXHash(sharedSeed+id*0x9e3779b97f4a7c15),
+        }
+        schoolShades[aquariumFishGlyphColor(fish,0,0,'>')]=true
+    }
+    if len(schoolShades)<3 {
+        t.Fatalf("school members weren't individually shaded: %d colours",len(schoolShades))
+    }
     for _,height:=range []int{24,40,70} {
         for seed:=uint64(0);seed<128;seed++ {
             f:=aquariumSwimmer{kind:aquariumWalleye,seed:seed,baseY:aquariumFishDepth(aquariumWalleye,seed,height)}
