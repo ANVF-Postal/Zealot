@@ -102,7 +102,7 @@ func (m model) fireworkPositions(width,height int) []map[int]chatFXCell {
 			case 1:
 				if progress>0.55 { glyph='.' } else if progress>0.25 { glyph='+' }
 			case 2: // crackle: # > % > x > , > .
-				sequence:=[]rune{'#','%','x',',','.'}
+				sequence:=[]rune{'#','>','%','>','x',',','.'}
 				glyph=sequence[min(len(sequence)-1,int(progress*float64(len(sequence))))]
 			default:
 				if progress>0.8 {glyph='.'} else if progress>0.52 {glyph='+'}
