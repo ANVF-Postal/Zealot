@@ -275,6 +275,47 @@ func TestAquariumFishChangeDirectionAndEventuallyLeave(t *testing.T) {
     }
 }
 
+func TestAquariumVisitingSpeciesAndSchoolsLeaveBetweenAppearances(t *testing.T) {
+    species:=map[aquariumKind]bool{}
+    schoolPresent,schoolAbsent:=false,false
+    for second:=0;second<=1400;second+=13 {
+        swimmers:=aquariumSwimmers(135,36,float64(second),441)
+        visitors:=0
+        for _,fish:=range swimmers {
+            if fish.x>=135 || fish.x+aquariumFishWidth(fish)<=0 {continue}
+            if fish.school {visitors++}
+            if !fish.school && fish.kind!=aquariumMinnow &&
+                fish.kind!=aquariumEel && fish.kind!=aquariumMuskie {
+                species[fish.kind]=true
+            }
+        }
+        if visitors>0 {schoolPresent=true} else {schoolAbsent=true}
+    }
+    if len(species)<4 {
+        t.Fatalf("different species did not replace departed visitors: only %d species",len(species))
+    }
+    if !schoolPresent || !schoolAbsent {
+        t.Fatalf("schools failed to arrive and leave: present=%v absent=%v",schoolPresent,schoolAbsent)
+    }
+}
+
+func TestAquariumMinnowsAvoidHungryPredators(t *testing.T) {
+    fish:=[]aquariumSwimmer{
+        {id:1,kind:aquariumMinnow,x:40,y:12},
+        {id:2,kind:aquariumPerch,x:41,y:13,mouthOpen:true},
+    }
+    aquariumMinnowAvoidance(fish,32)
+    if fish[0].y>=12 {
+        t.Fatalf("minnow didn't steer away from approaching perch: y=%d",fish[0].y)
+    }
+    safe:=[]aquariumSwimmer{
+        {id:1,kind:aquariumMinnow,x:40,y:12},
+        {id:2,kind:aquariumPerch,x:41,y:13,mouthOpen:false},
+    }
+    aquariumMinnowAvoidance(safe,32)
+    if safe[0].y!=12 {t.Fatal("minnow reacted to a harmless closed-mouth perch")}
+}
+
 func TestAquariumEelHeadLeadsAndTailFollowsDepthChanges(t *testing.T) {
     seed:=uint64(12345)
     f:=aquariumSwimmer{
