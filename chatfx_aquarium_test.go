@@ -3,6 +3,7 @@ package main
 import (
     "bytes"
     "encoding/json"
+    "math"
     "reflect"
     "strings"
     "testing"
@@ -146,6 +147,77 @@ func TestAquariumPredationAndChomp(t *testing.T) {
     text:=""
     for x:=27;x<=33;x++ {text+=string(rendered[x])}
     if text!="*chomp*" {t.Fatalf("red chomp text missing: %q",text)}
+}
+
+func TestAquariumRareVisitorsHaveLongAbsences(t *testing.T) {
+    eel,muskie:=0,0
+    for sec:=0;sec<1800;sec+=4 {
+        fish:=aquariumSwimmers(160,35,float64(sec),4242)
+        for _,f:=range fish {
+            if f.x>=160 || f.x+aquariumFishWidth(f)<=0 {continue}
+            if f.kind==aquariumEel {eel++}
+            if f.kind==aquariumMuskie {muskie++}
+        }
+    }
+    if eel==0 || muskie==0 {t.Fatalf("rare visitors never arrived: eel %d muskie %d",eel,muskie)}
+    if muskie>=eel || muskie>35 {
+        t.Fatalf("muskie should be extremely rare: eel %d muskie %d",eel,muskie)
+    }
+}
+
+func TestAquariumPikeStripesOscillateAndLengthsVary(t *testing.T) {
+    short:=aquariumSwimmer{kind:aquariumPike,direction:1,length:3}
+    long:=aquariumSwimmer{kind:aquariumPike,direction:1,length:9}
+    if aquariumFishWidth(long)<=aquariumFishWidth(short) {
+        t.Fatal("pike body lengths don't vary")
+    }
+    short.stripePhase=0
+    first:=aquariumFishGlyphColor(short,0,2,'(')
+    short.stripePhase=1
+    if aquariumFishGlyphColor(short,0,2,'(')==first {
+        t.Fatal("pike stripe colours never oscillate")
+    }
+    a:=aquariumSwimmer{kind:aquariumWalleye,direction:1,length:3}
+    b:=aquariumSwimmer{kind:aquariumWalleye,direction:1,length:10}
+    if aquariumFishWidth(b)<=aquariumFishWidth(a) {t.Fatal("walleye body lengths don't vary")}
+}
+
+func TestAquariumEelBendsTailBetweenRows(t *testing.T) {
+    m:=newMessageInteractionTestModel(100)
+    m.fxSalt=4242
+    found:=false
+    for sec:=0;sec<720;sec++ {
+        fish:=aquariumSwimmers(98,30,float64(sec),4242)
+        eelVisible:=false
+        for _,f:=range fish {
+            if f.kind==aquariumEel && f.x>=0 && f.x+aquariumFishWidth(f)<98 {
+                if math.Abs(math.Sin(float64(sec)*0.9+float64(f.id%17)))>0.65 {
+                    eelVisible=true
+                }
+            }
+        }
+        if !eelVisible {continue}
+        output:=make(map[int]map[int]rune)
+        m.renderAquariumFish(98,30,float64(sec),4242,func(x,y int,glyph rune,color string) {
+            if output[y]==nil {output[y]=map[int]rune{}}
+            output[y][x]=glyph
+        })
+        for _,f:=range fish {
+            if f.kind!=aquariumEel || f.x<0 || f.x+aquariumFishWidth(f)>=98 {continue}
+            tailRows:=map[int]bool{}
+            for y,row:=range output {
+                for x,glyph:=range row {
+                    if x>=f.x+aquariumFishWidth(f)*2/3 && x<f.x+aquariumFishWidth(f) &&
+                        (glyph=='~' || glyph=='*' || glyph=='\\' || glyph=='/') {
+                        tailRows[y]=true
+                    }
+                }
+            }
+            if len(tailRows)>=2 {found=true;break}
+        }
+        if found {break}
+    }
+    if !found {t.Fatal("eel never left a bent tail on a second row")}
 }
 
 func TestAquariumSchoolsOccasionallyCrossWithoutRemainingPermanent(t *testing.T) {
