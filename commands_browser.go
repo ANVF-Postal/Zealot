@@ -37,7 +37,7 @@ var handbookPages = []struct {
 		{"/embers self [seconds]", "Starts a warm ember effect only on your terminal."},
 		{"/fire [seconds]", "Renders shorter, slow-swaying Doom-style ASCII flames; flame height shrinks on wider terminals to keep animations responsive."},
 		{"/fire self [seconds]", "Displays flames locally without changing the room effect."},
-		{"/matrix [seconds]", "Starts falling columns of green code with glowing heads and fading trails."},
+		{"/matrix [seconds]", "Starts falling green code with bright heads and smoothly fading trails that blend into your theme background."},
 		{"/matrix self [seconds]", "Displays Matrix code rain only on your terminal."},
 		{"/static [seconds]", "Unpredictable CRT static bursts (0.1–60 second gaps), with fading dot noise and rare star-like flashes."},
 		{"/static self [seconds]", "Displays intermittent CRT noise and subtle static locally."},
