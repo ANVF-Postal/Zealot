@@ -198,8 +198,10 @@ func (m *model) resetChatFXSimulation() {
 	m.fxFire=nil
 	m.fxBubbles=nil
 	m.fxAquariumSalt=0
+	m.fxAquarium=nil
 	if m.currentChatFX().name=="aquarium" {
 		m.fxAquariumSalt=chatFXHash(m.fxSalt^uint64(time.Now().UnixNano()))
+		m.fxAquarium=newAquariumState()
 	}
 	if m.currentChatFX().name=="bubbles" {
 		m.fxBubbles=newBubbleState(chatContentWidth(m.width),max(1,m.messageHeight()-1),m.fxSalt)
@@ -226,6 +228,14 @@ func (m *model) advanceChatFXClock(now time.Time) {
 	steps := m.fxSimAccumulator / chatFXSimulationStep
 	m.fxSimSteps += uint64(steps)
 	m.fxSimAccumulator -= steps * chatFXSimulationStep
+	if m.currentChatFX().name=="aquarium" {
+		if m.fxAquarium==nil {m.fxAquarium=newAquariumState()}
+		w,h:=chatContentWidth(m.width),max(1,m.messageHeight()-1)
+		for step:=int64(0);step<int64(steps);step++ {
+			second:=float64(m.fxSimSteps-uint64(steps)+uint64(step)+1)/30
+			m.fxAquarium.advance(*m,w,h,second)
+		}
+	}
 	if m.currentChatFX().name=="bubbles" {
 		w,h:=chatContentWidth(m.width),max(1,m.messageHeight()-1)
 		if m.fxBubbles==nil {m.fxBubbles=newBubbleState(w,h,m.fxSalt)}
