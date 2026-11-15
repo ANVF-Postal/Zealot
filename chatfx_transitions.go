@@ -37,6 +37,8 @@ func (m model) chatFXActivePositions(name string,width,height int) []map[int]cha
 		return out
 	case "snow":
 		return m.snowPositions(width,height)
+	case "aquarium":
+		return m.aquariumPositions(width,height)
 	case "blizzard":
 		return m.blizzardPositions(width,height)
 	case "embers":
@@ -58,7 +60,7 @@ func (m model) chatFXActivePositions(name string,width,height int) []map[int]cha
 }
 
 func (m *model) retireChatFX(fx chatFXState) {
-	if fx.name=="" || m.fxDisabled || !m.chatFXVisible() || fx.name=="bubbles" { return }
+	if fx.name=="" || m.fxDisabled || !m.chatFXVisible() || fx.name=="bubbles" || fx.name=="aquarium" { return }
 	// CRT interruptions end instantly; they should not turn into falling particles.
 	if fx.name=="static" || fx.name=="glitch" || fx.name=="interrogation" {return}
 	width,height:=chatContentWidth(m.width),max(1,m.messageHeight()-1)
