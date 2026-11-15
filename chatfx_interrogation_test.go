@@ -104,13 +104,13 @@ func TestInterrogationPointLightVignetteAndFlicker(t *testing.T) {
 }
 
 func TestInterrogationPerCharacterLightingPreservesMessageAndBackground(t *testing.T) {
-    row:="\\x1b[48;2;17;19;24m\\x1b[38;2;230;230;230mHello "+
-        "\\x1b[38;2;255;20;20mred\\x1b[0m rest"
+    row:="\x1b[48;2;17;19;24m\x1b[38;2;230;230;230mHello "+
+        "\x1b[38;2;255;20;20mred\x1b[0m rest"
     lit:=interrogationLightRow(row,"#111318","#E6E6E6",80,25,22,1,0,1)
     if stripANSISequences(lit)!=stripANSISequences(row) {
         t.Fatal("spatial lighting changed visible message text")
     }
-    if !strings.Contains(lit,"\\x1b[48;2;17;19;24m") {
+    if !strings.Contains(lit,"\x1b[48;2;17;19;24m") {
         t.Fatal("spatial lighting damaged original background")
     }
     if got:=interrogationLightRow(row,"#111318","#E6E6E6",80,25,22,0,0,1);got!=row {
