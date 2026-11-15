@@ -91,7 +91,9 @@ func (m model) confettiPositions(width, height int) []map[int]chatFXCell {
 				if positions[row] == nil { positions[row] = make(map[int]chatFXCell) }
 				positions[row][x] = chatFXCell{glyph:glyph,color:color}
 			}
-		} else if y >= 0 {
+		} else if y >= 0 && y < height {
+			// Particles may continue below the viewport before respawning,
+			// but only visible rows can be written to positions.
 			glyph := chatFXConfettiGlyphs[int(chatFXHash(generation+10)%uint64(len(chatFXConfettiGlyphs)))]
 			if positions[y] == nil { positions[y] = make(map[int]chatFXCell) }
 			positions[y][x] = chatFXCell{glyph:glyph,color:color}
