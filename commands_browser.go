@@ -47,7 +47,7 @@ var handbookPages = []struct {
 		{"/interrogation self [seconds]", "Lights only your chat-message pane with the interrogation lamp and fading spotlight."},
 		{"/bubbles [seconds]", "Fills the chat with hollow Braille bubbles featuring simulated soft-body rims, elastic collisions and particle pops (up to 32)."},
 		{"/bubbles self [seconds]", "Blows springy coloured bubbles in from the lower-right with curved reflections and animated pop fragments."},
-		{"/aquarium [seconds]", "A calm ASCII aquarium with six fish species, varied swim speeds, visiting schools, rising bubbles and gently swaying kelp."},
+		{"/aquarium [seconds]", "A calm ASCII aquarium with pike, perch, bluegill, bass, walleye, rare eels and muskies; schooling, predation, bubbles and kelp."},
 		{"/aquarium self [seconds]", "Runs the aquarium only on your terminal, without covering chat messages."},
 		{"/fireworks [seconds]", "Launches colorful fireworks for the room. Default 10 seconds; varied-width bursts, rare giant 0 shells, and colorful radial, willow and crackle styles."},
 		{"/fireworks self [seconds]", "Runs the fireworks celebration only on your screen."},
