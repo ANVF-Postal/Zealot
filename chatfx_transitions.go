@@ -14,6 +14,7 @@ type chatFXFadingParticle struct {
 	vx, vy float64
 	glyph rune
 	color string
+	background string
 	cutoff float64
 }
 
@@ -83,7 +84,7 @@ func (m *model) retireChatFX(fx chatFXState) {
 			case "fireworks": vy=2+4*chatFXUnit(seed+1);vx*=4
 			}
 			fade.particles=append(fade.particles,chatFXFadingParticle{
-				x:float64(x),y:float64(y),vx:vx,vy:vy,glyph:cell.glyph,color:cell.color,
+				x:float64(x),y:float64(y),vx:vx,vy:vy,glyph:cell.glyph,color:cell.color,background:cell.background,
 				cutoff:0.65+0.35*chatFXUnit(seed+3),
 			})
 		}
@@ -115,7 +116,7 @@ func (m model) fadingChatFXPositions(width,height int) []map[int]chatFXCell {
 			y:=int(math.Round(particle.y+particle.vy*elapsed))
 			if x<0||x>=width||y<0||y>=height {continue}
 			if positions[y]==nil { positions[y]=make(map[int]chatFXCell) }
-			positions[y][x]=chatFXCell{glyph:particle.glyph,color:particle.color}
+			positions[y][x]=chatFXCell{glyph:particle.glyph,color:particle.color,background:particle.background}
 		}
 	}
 	return positions
