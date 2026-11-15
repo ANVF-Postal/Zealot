@@ -368,6 +368,7 @@ func aquariumSwimmers(width,height int,seconds float64,salt uint64) []aquariumSw
         if kind==aquariumMuskie {turns=1} // a deliberate sweep and departure
         route:=aquariumMakeRoute(width,fw,direction,speed,seed,turns)
         rest:=aquariumFishRest(kind,seed)
+        if school {rest+=route.travel*0.95+12}
         period:=route.travel+rest
         initialOffset:=chatFXUnit(seed+16)*period
         if school {initialOffset-=float64(member)*float64(fw+3)/speed}
@@ -439,7 +440,27 @@ func aquariumSwimmers(width,height int,seconds float64,salt uint64) []aquariumSw
         seed:=chatFXHash(salt+0xa115)
         add(501,aquariumMuskie,seed,false,0)
     }
+    aquariumMinnowAvoidance(swimmers,height)
     return swimmers
+}
+
+// Minnows notice nearby mouths and steer vertically out of the way.
+// The small distance-weighted movement doesn't teleport them to a new lane;
+// it is recalculated smoothly as a hunter approaches or recedes.
+func aquariumMinnowAvoidance(fish []aquariumSwimmer,height int) {
+    for i:=range fish {
+        if fish[i].kind!=aquariumMinnow {continue}
+        shift:=0.0
+        for j:=range fish {
+            if !aquariumCanEat(fish[j]) {continue}
+            dx:=math.Abs(float64(fish[i].x-fish[j].x))
+            dy:=math.Abs(float64(fish[i].y-fish[j].y))
+            if dx>17 || dy>5 {continue}
+            strength:=(1-dx/17)*(1-dy/5)
+            if fish[i].y<=fish[j].y {shift-=3*strength} else {shift+=3*strength}
+        }
+        fish[i].y=max(0,min(height-2,fish[i].y+int(math.Round(shift))))
+    }
 }
 
 // Predators overlap the visible bounding boxes of other fish, not their
