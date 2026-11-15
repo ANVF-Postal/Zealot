@@ -118,7 +118,7 @@ func TestBubblePaintingPreservesChatAndANSI(t *testing.T) {
     visible:=stripANSISequences(empty)
     foundBraille:=false
     for _,r:=range visible {
-        if r>='\\u2801' && r<='\\u28ff' {foundBraille=true;break}
+        if r>='\u2801' && r<='\u28ff' {foundBraille=true;break}
     }
     if !foundBraille {t.Fatal("no braille bubble border drawn on empty background")}
     if !strings.Contains(empty,"\x1b[38;2;") {
@@ -161,7 +161,7 @@ func TestBubbleBrailleOutlineHasSubcellResolution(t *testing.T) {
     for y:=3;y<17;y++ {
         for x:=18;x<46;x++ {
             glyph:=bubbleGlyphAt(b,x,y)
-            if glyph>='\\u2801' && glyph<='\\u28ff' {masks[glyph]=true}
+            if glyph>='\u2801' && glyph<='\u28ff' {masks[glyph]=true}
         }
     }
     if len(masks)<5 {t.Fatalf("braille border lacks curved subcell detail: %d shapes",len(masks))}
