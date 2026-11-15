@@ -30,7 +30,7 @@ type aquariumSwimmer struct {
     mouthOpen bool
     school bool
     stripePhase int
-}
+    tailBend int
 
 type aquariumChomp struct {
     x,y int
@@ -331,6 +331,15 @@ func aquariumSwimmers(width,height int,seconds float64,salt uint64) []aquariumSw
         if direction<0 {x=width+4-int(math.Floor(distance))}
         fish.id=((uint64(500)+uint64(kind))<<32)|uint64(cycle+1)
         fish.x,fish.y=x,aquariumFishDepth(kind,seed+5,height)
+        if kind==aquariumEel {
+            // The head changes depth; the rear body trails behind the turn.
+            wave:=seconds*0.40+chatFXUnit(seed+6)*2*math.Pi
+            fish.y+=int(math.Round(2.2*math.Sin(wave)))
+            fish.y=max(1,min(height-3,fish.y))
+            vertical:=math.Cos(wave)
+            if vertical>0.2 {fish.tailBend=-1}
+            if vertical< -0.2 {fish.tailBend=1}
+        }
         fish.vx=float64(direction)*speed
         fish.mouthOpen=kind==aquariumMuskie && aquariumCycle(seconds,3.8)<1.8
         swimmers=append(swimmers,fish)
@@ -422,7 +431,7 @@ func (m model) renderAquariumFish(width,height int,seconds float64,salt uint64,p
         if fish.kind==aquariumEel && len(lines)>0 {
             // The eel bends mid-body when changing depth, trailing its tail
             // into a second row rather than rigidly sliding vertically.
-            bend:=int(math.Round(math.Sin(seconds*0.9+float64(fish.id%17))))
+            bend:=fish.tailBend
             if bend!=0 && fish.length>=11 {
                 line:=[]rune(lines[0])
                 kink:=len(line)*2/3
