@@ -327,7 +327,7 @@ func (s *server) handle(conn net.Conn) {
 
 		switch packet.Type {
 		case "fx_start":
-			if (packet.FX != "rain" && packet.FX != "snow" && packet.FX != "blizzard" && packet.FX != "embers" && packet.FX != "fire" && packet.FX != "matrix" && packet.FX != "confetti" && packet.FX != "fireworks") ||
+			if (packet.FX != "rain" && packet.FX != "snow" && packet.FX != "blizzard" && packet.FX != "embers" && packet.FX != "fire" && packet.FX != "matrix" && packet.FX != "confetti" && packet.FX != "fireworks" && packet.FX != "static" && packet.FX != "glitch") ||
 				packet.FXSeconds < 0 || packet.FXSeconds > chatFXMaxSeconds {
 				client.send(Packet{Type:"system", Room:roomName, Text:"Invalid ChatFX request.", Time:time.Now().UTC()})
 				continue
@@ -353,6 +353,8 @@ func (s *server) handle(conn net.Conn) {
 			if packet.FX == "matrix" { label = "Matrix" }
 			if packet.FX == "confetti" { label = "Confetti" }
 			if packet.FX == "fireworks" { label = "Fireworks" }
+			if packet.FX == "static" { label = "Static" }
+			if packet.FX == "glitch" { label = "Glitch" }
 			s.systemMessage(roomName, client.user.Name+" invoked "+packet.FX+". "+formatChatFXStart(label,seconds))
 		case "fx_stop":
 			s.mu.Lock()
