@@ -2,39 +2,58 @@ package main
 
 import "math"
 
-// Doom-style fire adapted for terminal cells, following the heat-propagation
-// algorithm demonstrated by filipedeschamps/doom-fire-algorithm (MIT).
-//
-// Every cell stores a 0..36 heat index. A hot bottom row is the fuel; heat
-// propagates upward with random lateral displacement and cooling. Unlike a
-// collection of independently animated flame glyphs, neighboring hot cells
-// form coherent, churning shapes. Colored *cell backgrounds* produce the
-// original pixel-fire appearance while preserving foreground chat text.
+// Doom-style fire based on filipedeschamps/doom-fire-algorithm (MIT).
+// A hot fuel row sends heat upward with lateral drift and cooling. Terminal
+// glyph size and a warm ember-like foreground palette represent the heat;
+// no solid-colored background cells are used.
 var doomFirePalette = [...]string{
-	"#070707", "#1F0707", "#2F0F07", "#470F07", "#571707", "#671F07",
-	"#771F07", "#8F2707", "#9F2F07", "#AF3F07", "#BF4707", "#C74707",
-	"#DF4F07", "#DF5707", "#DF5707", "#D75F07", "#D75F07", "#D7670F",
-	"#CF6F0F", "#CF770F", "#CF7F0F", "#CF8717", "#C78717", "#C78F17",
-	"#C7971F", "#BF9F1F", "#BF9F1F", "#BFA727", "#BFA727", "#BFAF2F",
-	"#B7AF2F", "#B7B72F", "#B7B737", "#CFCF6F", "#DFDF9F", "#EFEFC7",
-	"#FFFFFF",
+	"#7B231B", "#83271A", "#8C2B19", "#942E19", "#9D3218", "#A53617",
+	"#AA3817", "#AF3B17", "#B43D17", "#B84017", "#BD4217", "#C24517",
+	"#C74717", "#CE4F19", "#D5571B", "#DC5F1C", "#E3671E", "#EA6E20",
+	"#F17622", "#F87E23", "#FF8625", "#FF8D29", "#FF942E", "#FF9B32",
+	"#FFA336", "#FFAA3A", "#FFB13F", "#FFB843", "#FFBF47", "#FFC44F",
+	"#FFC857", "#FFCD5E", "#FFD266", "#FFD66E", "#FFDB76", "#FFDF7D",
+	"#FFE485",
+}
+
+// Larger glyphs represent dense hot fire. Sparse cooler tips dissolve into
+// punctuation-like embers instead of forming an artificial rectangular edge.
+func doomFireGlyph(level uint8, variation uint64) rune {
+	switch {
+	case level >= 32:
+		return []rune{'@','#','%','&'}[int(variation%4)]
+	case level >= 26:
+		return []rune{'#','%','&','@'}[int(variation%4)]
+	case level >= 20:
+		return []rune{'%','&','*','o'}[int(variation%4)]
+	case level >= 14:
+		return []rune{'*','+','o','x'}[int(variation%4)]
+	case level >= 8:
+		return []rune{'+',';',':','*'}[int(variation%4)]
+	case level >= 4:
+		return []rune{'.',',',';',':'}[int(variation%4)]
+	default:
+		return []rune{'.',','}[int(variation%2)]
+	}
 }
 
 type doomFireState struct {
 	width, height int
 	heat []uint8
-	step uint64 // fixed-clock simulation step, not rendered frame count
+	scratch []uint8
+	step uint64
 }
 
 func newDoomFireState(width, height int, salt uint64) *doomFireState {
 	if width<1 || height<1 {return nil}
-	// The fire occupies only the lower viewport; the rest remains clear.
-	flameHeight:=min(height,max(5,int(math.Ceil(float64(height)*0.70))))
-	state:=&doomFireState{width:width,height:flameHeight,heat:make([]uint8,width*flameHeight)}
-	for x:=0;x<width;x++ {state.heat[(flameHeight-1)*width+x]=36}
-	// Begin with an established burn, not an empty row that climbs up
-	// slowly after the command starts.
-	for i:=uint64(0);i<uint64(flameHeight+10);i++ {
+	// Simulate the *entire* viewport. The visible tip height is determined
+	// by natural cooling, never by a fixed 70% clipping plane.
+	state:=&doomFireState{
+		width:width,height:height,heat:make([]uint8,width*height),
+		scratch:make([]uint8,width),
+	}
+	for x:=0;x<width;x++ {state.heat[(height-1)*width+x]=36}
+	for i:=uint64(0);i<uint64(height+16);i++ {
 		state.spread(salt,i)
 	}
 	return state
@@ -43,24 +62,29 @@ func newDoomFireState(width, height int, salt uint64) *doomFireState {
 func (f *doomFireState) spread(salt, index uint64) {
 	w,h:=f.width,f.height
 	if w<1 || h<1 {return}
-	// Read each row below before writing the row above. This in-place
-	// update is a single propagation pass, not an allocation per frame.
 	for y:=0;y<h-1;y++ {
+		// Rebuild this row completely on every propagation, so a heat
+		// value cannot remain frozen in a cell that no source reached.
+		clear(f.scratch)
 		for x:=0;x<w;x++ {
 			source:=int(f.heat[(y+1)*w+x])
+			if source==0 {continue}
 			random:=chatFXHash(salt+index*0x9e3779b97f4a7c15+
 				uint64(y+1)*0xbf58476d1ce4e5b9+uint64(x+1)*0x94d049bb133111eb)
-			decay:=int(random%3)
+			// 0..4 cooling produces a mixture of short flames and high
+			// occasional wisps instead of a flat horizontal ceiling.
+			decay:=int(random%5)
 			destX:=x+1-int((random>>8)%3)
 			if destX<0 {destX=0}
 			if destX>=w {destX=w-1}
 			heat:=source-decay
-			if heat<0 {heat=0}
-			f.heat[y*w+destX]=uint8(heat)
+			if heat>int(f.scratch[destX]) {
+				f.scratch[destX]=uint8(heat)
+			}
 		}
+		copy(f.heat[y*w:(y+1)*w],f.scratch)
 	}
-	// The bottom remains hot, with slight bubbling rather than a solid
-	// white stripe. Fuel is never networked or tied to render FPS.
+	// The base stays vigorous; brighter fuel pulses vary per column.
 	base:=(h-1)*w
 	for x:=0;x<w;x++ {
 		r:=chatFXHash(salt+index*0x517cc1b727220a95+uint64(x)*0x9e3779b97f4a7c15)
@@ -68,8 +92,7 @@ func (f *doomFireState) spread(salt, index uint64) {
 	}
 }
 
-// Step at 15 heat propagations/s on the fixed 30 Hz simulation clock.
-// Increasing presentation FPS never increases the fire's physical speed.
+// The shared ChatFX simulation is 30 Hz; fire propagates at 15 Hz.
 func (f *doomFireState) advance(target uint64,salt uint64) {
 	if f==nil || target<=f.step {return}
 	for tick:=f.step+1;tick<=target;tick++ {
@@ -82,22 +105,22 @@ func (m model) firePositions(width,height int) []map[int]chatFXCell {
 	if width<1 || height<1 {return nil}
 	rows:=make([]map[int]chatFXCell,height)
 	state:=m.fxFire
-	if state==nil || state.width!=width ||
-		state.height!=min(height,max(5,int(math.Ceil(float64(height)*0.70)))) ||
+	if state==nil || state.width!=width || state.height!=height ||
 		state.step>m.fxSimSteps {
-		// Covers resize before the next timer tick, as well as direct tests
-		// that construct a model without using the usual command startup.
 		state=newDoomFireState(width,height,m.fxSalt)
 	}
 	state.advance(m.fxSimSteps,m.fxSalt)
-	for y:=0;y<state.height;y++ {
-		row:=height-state.height+y
+	for y:=0;y<height;y++ {
 		for x:=0;x<width;x++ {
 			level:=state.heat[y*width+x]
-			if level<2 {continue}
-			if rows[row]==nil {rows[row]=make(map[int]chatFXCell)}
-			color:=doomFirePalette[level]
-			rows[row][x]=chatFXCell{glyph:' ',color:color,background:color}
+			if level==0 {continue}
+			if rows[y]==nil {rows[y]=make(map[int]chatFXCell)}
+			variation:=chatFXHash(m.fxSalt+uint64(x+1)*0x9e3779b97f4a7c15+
+				uint64(y+1)*0xbf58476d1ce4e5b9+state.step/4)
+			rows[y][x]=chatFXCell{
+				glyph:doomFireGlyph(level,variation),
+				color:doomFirePalette[level],
+			}
 		}
 	}
 	return rows
