@@ -1,6 +1,7 @@
 package main
 
 import (
+	"reflect"
 	"fmt"
 	"math"
 	"bytes"
@@ -283,4 +284,83 @@ func TestConfettiParticlesStayWithinViewportAtAllAges(t *testing.T) {
 			}
 		}
 	}
+}
+
+
+func TestFXFPSChangesImmediatelyDuringRainAndWhisperReply(t *testing.T) {
+	m := newMessageInteractionTestModel(90)
+	m.fxRoom = chatFXState{name: "rain"}
+	m.fxTickPending = true // simulate a frame already scheduled at the old FPS
+	m.fxTickGeneration = 17
+	m.messageByID = map[string]Packet{"reply": {Type: "whisper_result", User: User{Name: "Bob"}, WhisperTo: "Alice"}}
+	m.user.Name = "Alice"
+	var outgoing bytes.Buffer
+	m.client = &wireClient{enc: json.NewEncoder(&outgoing)}
+	for _, fps := range []int{60, 20, 1, 30} {
+		before := m.fxTickGeneration
+		if m.sendMessage(fmt.Sprintf("/fxfps %d",fps),"reply") {
+			t.Fatal("FX command should never be sent as a chat or whisper message")
+		}
+		if outgoing.Len() != 0 { t.Fatal("/fxfps leaked onto the wire") }
+		if m.fxRenderFPS != fps { t.Fatalf("FPS stayed at %d, want %d",m.fxRenderFPS,fps) }
+		if m.fxTickPending || m.fxTickGeneration != before+1 {
+			t.Fatalf("timer not invalidated at %d FPS",fps)
+		}
+		if m.ensureChatFXTick()==nil { t.Fatalf("timer not restarted at %d FPS",fps) }
+	}
+}
+
+func TestConfettiDrainsAfterEmissionEnds(t *testing.T) {
+	m := newMessageInteractionTestModel(95)
+	now := time.Now()
+	m.fxRoom = chatFXState{
+		name:"confetti", started:now.Add(-11*time.Second),
+		until:now.Add(-time.Second),
+	}
+	m.fxSalt=27
+	m.fxSimSteps=uint64(11*30)
+	if m.currentChatFX().name!="confetti" {
+		t.Fatal("confetti should remain active while particles are falling out")
+	}
+	alive := 0
+	for _,row := range m.confettiPositions(95,26) { alive+=len(row) }
+	if alive==0 { t.Fatal("confetti vanished immediately at emission deadline") }
+	m.fxSimSteps=uint64(60*30)
+	remaining := 0
+	for _,row := range m.confettiPositions(95,26) { remaining+=len(row) }
+	if remaining!=0 { t.Fatalf("confetti kept respawning after emission ended: %d cells",remaining) }
+	m.fxRoom.until=now.Add(-2*time.Minute)
+	if m.currentChatFX().name!="" { t.Fatal("confetti lingered indefinitely") }
+}
+
+func TestSnowIsGentleBoundedAndChangesIntensity(t *testing.T) {
+	m := newMessageInteractionTestModel(95)
+	m.fxRoom = chatFXState{name:"snow"}
+	m.fxSalt=101
+	for _,viewport := range [][2]int{{12,4},{95,26},{180,50}} {
+		width,height:=viewport[0],viewport[1]
+		for _,seconds:=range []uint64{0,1,30,90,180,300} {
+			m.fxSimSteps=seconds*30
+			rows:=m.snowPositions(width,height)
+			if len(rows)!=height { t.Fatal("snow height mismatch") }
+			for y,row:=range rows {
+				for x,particle:=range row {
+					if x<0||x>=width||y<0||y>=height { t.Fatal("snow fell outside viewport") }
+					if particle.color=="" { t.Fatal("uncolored snowflake") }
+				}
+			}
+		}
+	}
+	m.fxSimSteps=0
+	initial:=m.snowPositions(95,26)
+	m.fxSimSteps=5*30
+	later:=m.snowPositions(95,26)
+	if reflect.DeepEqual(initial,later) { t.Fatal("snow is not moving") }
+	minDensity,maxDensity:=1.0,0.0
+	for second:=0;second<1800;second+=30 {
+		d:=rainDensityAt(float64(second),m.fxSalt^0x5eafc0de)
+		minDensity=min(minDensity,d)
+		maxDensity=max(maxDensity,d)
+	}
+	if maxDensity-minDensity<0.05 { t.Fatal("snow intensity did not vary") }
 }
