@@ -7,11 +7,14 @@ package main
 var crtStaticGlyphs = [...]rune{'.', ':', ',', '*', '+', '#', '%', '/', '\\'}
 var crtStaticColors = [...]string{"#66717B", "#87919A", "#A8AFB5", "#D2D6D9", "#F1F1ED"}
 var digitalGlitchGlyphs = [...]rune{'#', '%', '=', '_', '/', '\\', '|', '+', 'x', '0'}
-// Classic PuTTY ANSI colour table: standard and bright entries.
-// Black is deliberately omitted as invisible against dark chat backgrounds.
+// Classic PuTTY ANSI 16-colour palette, including standard and bright
+// variants. Black is retained for completeness but not sampled by the
+// visible glitches: it would disappear on the usual dark chat backgrounds.
 var digitalGlitchColors = [...]string{
-    "#BB0000", "#00BB00", "#BBBB00", "#0000BB", "#BB00BB", "#00BBBB", "#BBBBBB",
-    "#FF5555", "#55FF55", "#FFFF55", "#5555FF", "#FF55FF", "#55FFFF", "#FFFFFF",
+    "#000000", "#BB0000", "#00BB00", "#BBBB00",
+    "#0000BB", "#BB00BB", "#00BBBB", "#BBBBBB",
+    "#555555", "#FF5555", "#55FF55", "#FFFF55",
+    "#5555FF", "#FF55FF", "#55FFFF", "#FFFFFF",
 }
 
 // Major events use an irregular renewal schedule rather than fixed cycles.
@@ -135,14 +138,14 @@ func (m model) glitchPositions(width,height int) []map[int]chatFXCell {
             if rows[y]==nil {rows[y]=make(map[int]chatFXCell)}
             rows[y][x]=chatFXCell{
                 glyph:[]rune{'_',':','|','.'}[int(r>>44)%4],
-                color:digitalGlitchColors[int((r>>48)%uint64(len(digitalGlitchColors)))],
+                color:digitalGlitchColors[int((r>>48)%uint64(len(digitalGlitchColors)-1)+1)],
             }
         }
         if microSeed%3==0 {
             y:=int((microSeed>>18)%uint64(height))
             x:=int((microSeed>>31)%uint64(width))
             span:=min(width-x,max(1,width/12))
-            color:=digitalGlitchColors[int((microSeed>>47)%uint64(len(digitalGlitchColors)))]
+            color:=digitalGlitchColors[int((microSeed>>47)%uint64(len(digitalGlitchColors)-1)+1)]
             if rows[y]==nil {rows[y]=make(map[int]chatFXCell)}
             for dx:=0;dx<span;dx++ {
                 if dx%4==3 {continue}
@@ -169,7 +172,7 @@ func (m model) glitchPositions(width,height int) []map[int]chatFXCell {
         y:=int(r%uint64(height))
         left:=int((r>>15)%uint64(width))
         span:=min(width-left,max(2,width/4+int((r>>28)%uint64(max(1,width/3)))))
-        color:=digitalGlitchColors[(r>>42)%uint64(len(digitalGlitchColors))]
+        color:=digitalGlitchColors[(r>>42)%uint64(len(digitalGlitchColors)-1)+1]
         for x:=left;x<left+span;x++ {
             // Intentional holes make the strips look like torn data.
             h:=chatFXHash(r+uint64(x/3))
@@ -177,7 +180,7 @@ func (m model) glitchPositions(width,height int) []map[int]chatFXCell {
             set(x,y,h+uint64(x),color)
         }
         if y+1<height && (r>>11)%2==0 {
-            alt:=digitalGlitchColors[(r>>47)%uint64(len(digitalGlitchColors))]
+            alt:=digitalGlitchColors[(r>>47)%uint64(len(digitalGlitchColors)-1)+1]
             for x:=left;x<left+span;x+=3 {
                 set(x,y+1,chatFXHash(r+uint64(x)),alt)
             }
@@ -190,7 +193,7 @@ func (m model) glitchPositions(width,height int) []map[int]chatFXCell {
         y:=int((r>>20)%uint64(height))
         bw:=min(width-x,2+int((r>>36)%7))
         bh:=min(height-y,1+int((r>>44)%3))
-        color:=digitalGlitchColors[(r>>51)%uint64(len(digitalGlitchColors))]
+        color:=digitalGlitchColors[(r>>51)%uint64(len(digitalGlitchColors)-1)+1]
         for yy:=y;yy<y+bh;yy++ {
             for xx:=x;xx<x+bw;xx++ {
                 if (xx+yy)%5==0 {continue}
