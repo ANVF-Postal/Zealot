@@ -63,6 +63,9 @@ func interrogationLightRow(row,background,foreground string,width,height,y int,a
     lastFG,lastBG:=[3]int{-1,-1,-1},[3]int{-1,-1,-1}
     emit:=func() {
         sample:=interrogationLightAt(min(width-1,x),y,width,height,emphasis,flicker)
+        // Use 32 light levels to keep wide terminal panes from producing
+        // two truecolour ANSI sequences per cell on every frame.
+        sample=math.Round(sample*32)/32
         // Do not extinguish contrast: old text stays challenging but legible.
         textOpacity:=1-amount*(1-sample)
         // Even the empty background receives the vignette; the lamp is
