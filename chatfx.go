@@ -44,7 +44,7 @@ func chatFXDuration(args []string) (int, bool) {
 // chat/whisper message handling so they can never leak as ordinary messages.
 func isChatFXCommand(command string) bool {
 	switch command {
-	case "/rain", "/snow", "/blizzard", "/embers", "/confetti", "/fireworks", "/stop", "/stopfx", "/disablefx", "/fxfps":
+	case "/rain", "/snow", "/blizzard", "/embers", "/fire", "/matrix", "/confetti", "/fireworks", "/stop", "/stopfx", "/disablefx", "/fxfps":
 		return true
 	}
 	return false
@@ -125,7 +125,7 @@ func (m *model) receiveChatFX(packet Packet) {
 		if previous.name != "" && !m.fxLocalOverride {
 			m.retireChatFX(previous)
 		}
-		if (packet.FX == "rain" || packet.FX == "snow" || packet.FX == "blizzard" || packet.FX == "embers" || packet.FX == "confetti" || packet.FX == "fireworks") &&
+		if (packet.FX == "rain" || packet.FX == "snow" || packet.FX == "blizzard" || packet.FX == "embers" || packet.FX == "fire" || packet.FX == "matrix" || packet.FX == "confetti" || packet.FX == "fireworks") &&
 			(packet.FXUntil.IsZero() || packet.FXUntil.After(time.Now())) {
 			m.fxRoom = chatFXState{name:packet.FX, started:time.Now(), until:packet.FXUntil}
 			if !m.fxLocalOverride { m.resetChatFXSimulation() }
