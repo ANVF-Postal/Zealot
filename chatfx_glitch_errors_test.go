@@ -8,8 +8,8 @@ import (
 
 func TestGlitchUsesClassicPuttyANSIColors(t *testing.T) {
     expected:=[]string{
-        "#BB0000","#00BB00","#BBBB00","#0000BB","#BB00BB","#00BBBB","#BBBBBB",
-        "#FF5555","#55FF55","#FFFF55","#5555FF","#FF55FF","#55FFFF","#FFFFFF",
+        "#000000","#BB0000","#00BB00","#BBBB00","#0000BB","#BB00BB","#00BBBB","#BBBBBB",
+        "#555555","#FF5555","#55FF55","#FFFF55","#5555FF","#FF55FF","#55FFFF","#FFFFFF",
     }
     if !reflect.DeepEqual(digitalGlitchColors[:],expected) {
         t.Fatalf("non-PuTTY digital palette: %v",digitalGlitchColors)
