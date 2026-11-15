@@ -1043,7 +1043,7 @@ func TestDoomFireUsesResponsiveHeightInsteadOfFlatSeventyPercent(t *testing.T) {
 		}
 		// Natural cooling within the responsive budget determines the flame tips.
 		for i:=uint64(0);i<140;i++ {state.spread(483,i+100)}
-		if state.heat[(height-1)*100+30]==0 {
+		if state.heat[(state.height-1)*state.width+30]==0 {
 			t.Fatal("fire fuel went out during steady burning")
 		}
 	}
