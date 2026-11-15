@@ -22,7 +22,7 @@ ever cross the Unix socket.
 
 ## Delivery stages
 
-### Stage 1 — Rain and the FX transport (in progress)
+### Stage 1 — Rain and the FX transport (implemented, awaiting multi-client verification)
 
 - `/rain [seconds]` and `/rain self [seconds]`
 - `/stop`, `/stopfx self`, `/disablefx`
@@ -30,6 +30,7 @@ ever cross the Unix socket.
   expiry, state for new joiners
 - A client-rendered rain effect confined to unoccupied chat cells, sized to the live viewport from the first render
 - Fixed 30 Hz simulation clock decoupled from client rendering (default 15 FPS, `/fxfps 1-60`)
+- Gradually varying rain density: 30–180 second holds and 3–12 second eased transitions
 - Manual testing on multiple local clients and performance benchmarking
 
 ### Stage 2 — Weather and primary-effect control
@@ -39,9 +40,10 @@ ever cross the Unix socket.
 - Add consistent adjustable density and appropriate default motion
 - Handle terminal resizing, reconnecting and changing rooms
 
-### Stage 3 — Brief celebrations
+### Stage 3 — Brief celebrations (confetti implemented; fireworks pending)
 
-- Add `/fireworks` and `/confetti` with short default durations
+- `/confetti [self] [seconds]`: 10-second default, candy-colored glyphs, rare 3–7-cell vertical streamers, variable speed and gentle sway
+- Add `/fireworks` with a short default duration
 - Permit optional durations and cap particle and flash rates
 - Introduce an accessibility-aware reduced-motion behavior
 
