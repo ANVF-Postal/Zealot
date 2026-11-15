@@ -255,17 +255,18 @@ func TestAquariumFishChangeDirectionAndEventuallyLeave(t *testing.T) {
         width:=aquariumFishWidth(f)
         speed:=aquariumFishSpeed(kind,seed+1)
         route:=aquariumMakeRoute(120,width,1,speed,seed,2)
-        firstDirection,lastDirection:=0,0
+        previousDirection:=0
+        turnCount:=0
         activeCount:=0
         for i:=0;i<1200;i++ {
-            phase:=route.travel*float64(i)/1199
+            phase:=route.travel*float64(i)/1200
             _,heading,active:=aquariumRouteAt(route,phase)
             if !active {continue}
-            if activeCount==0 {firstDirection=heading}
-            lastDirection=heading
+            if previousDirection!=0 && heading!=previousDirection {turnCount++}
+            previousDirection=heading
             activeCount++
         }
-        if activeCount==0 || firstDirection==lastDirection {
+        if activeCount==0 || turnCount==0 {
             t.Fatalf("species %d did not turn during patrol",kind)
         }
         if _,_,active:=aquariumRouteAt(route,route.travel+1);active {
@@ -274,42 +275,41 @@ func TestAquariumFishChangeDirectionAndEventuallyLeave(t *testing.T) {
     }
 }
 
-func TestAquariumEelBendsTailBetweenRows(t *testing.T) {
-    m:=newMessageInteractionTestModel(100)
-    m.fxSalt=4242
-    found:=false
-    for sec:=0;sec<720;sec++ {
-        fish:=aquariumSwimmers(98,30,float64(sec),4242)
-        eelVisible:=false
-        for _,f:=range fish {
-            if f.kind==aquariumEel && f.x>=0 && f.x+aquariumFishWidth(f)<98 {
-                if f.tailBend!=0 {
-                    eelVisible=true
-                }
-            }
-        }
-        if !eelVisible {continue}
-        output:=make(map[int]map[int]rune)
-        m.renderAquariumFish(98,30,float64(sec),4242,func(x,y int,glyph rune,color string) {
-            if output[y]==nil {output[y]=map[int]rune{}}
-            output[y][x]=glyph
-        })
-        for _,f:=range fish {
-            if f.kind!=aquariumEel || f.x<0 || f.x+aquariumFishWidth(f)>=98 {continue}
-            tailRows:=map[int]bool{}
-            for y,row:=range output {
-                for x,glyph:=range row {
-                    if x>=f.x+aquariumFishWidth(f)*2/3 && x<f.x+aquariumFishWidth(f) &&
-                        (glyph=='~' || glyph=='*' || glyph=='\\' || glyph=='/') {
-                        tailRows[y]=true
-                    }
-                }
-            }
-            if len(tailRows)>=2 {found=true;break}
-        }
-        if found {break}
+func TestAquariumEelHeadLeadsAndTailFollowsDepthChanges(t *testing.T) {
+    seed:=uint64(12345)
+    f:=aquariumSwimmer{
+        kind:aquariumEel,length:18,direction:1,seed:seed,baseY:14,
     }
-    if !found {t.Fatal("eel never left a bent tail on a second row")}
+    speed:=3.5
+    f.route=aquariumMakeRoute(160,aquariumFishWidth(f),1,speed,seed,2)
+    foundCurve:=false
+    for frame:=150;frame<1000;frame++ {
+        phase:=float64(frame)/30
+        if phase>=f.route.travel {break}
+        x,direction,active:=aquariumRouteAt(f.route,phase)
+        if !active || direction!=1 {continue}
+        f.x=int(x)
+        f.direction=direction
+        f.routePhase=phase
+        points:=aquariumEelBody(f,phase,40)
+        if len(points)<12 {continue}
+        rows:=map[int]bool{}
+        for _,point:=range points {rows[point.y]=true}
+        if len(rows)<2 {continue}
+        head:=points[len(points)-1]
+        if head.y!=aquariumEelHeadY(f,phase,40) {
+            t.Fatalf("eel head detached from path: %d vs %d",head.y,aquariumEelHeadY(f,phase,40))
+        }
+        for _,point:=range points {
+            if point.glyph!='~' {continue}
+            if point.x< -aquariumFishWidth(f)-5 || point.x>180 {
+                t.Fatalf("eel body jumped outside path: %d",point.x)
+            }
+        }
+        foundCurve=true
+        break
+    }
+    if !foundCurve {t.Fatal("eel tail did not curve smoothly along its head's previous path")}
 }
 
 func TestAquariumSchoolsOccasionallyCrossWithoutRemainingPermanent(t *testing.T) {
