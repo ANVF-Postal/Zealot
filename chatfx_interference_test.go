@@ -111,7 +111,10 @@ func TestMinorDigitalCorruptionIsColourfulAndSmall(t *testing.T) {
     visible,quiet:=0,0
     for tick:=uint64(0);tick<1800;tick++ {
         m.fxSimSteps=tick
-        _,major:=interferenceBurst(tick,m.fxSalt^0x6117c4,true)
+        _,textActive:=glitchTextEvent(tick,m.fxSalt)
+        if textActive {continue}
+        distortedTick:=glitchDistortionTick(tick,m.fxSalt)
+        _,major:=interferenceBurst(distortedTick,m.fxSalt^0x6117c4,true)
         if major {continue}
         cells:=0
         for _,row:=range m.glitchPositions(100,30) {
