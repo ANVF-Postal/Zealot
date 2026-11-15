@@ -30,8 +30,6 @@ type aquariumSwimmer struct {
     length int
     mouthOpen bool
     school bool
-    stripePhase int // legacy field; stripes are now permanent
-    tailBend int // retained for compatibility with older aquarium tests
     seed uint64 // individual motion and eel body follow-through
     route aquariumRoute
     routePhase float64
@@ -182,19 +180,6 @@ func aquariumFishGlyphColor(f aquariumSwimmer,row,index int,glyph rune) string {
     if f.kind==aquariumMuskie && (glyph=='O' || glyph=='V') {return "#F2E8BD"}
     if f.kind==aquariumPerch && glyph=='O' {return "#FFF1B8"}
     return aquariumSpeciesColor(f.kind)
-}
-
-func aquariumFishWeight(seed uint64) aquariumKind {
-    value:=chatFXUnit(seed)
-    switch {
-    case value<0.70:return aquariumMinnow
-    case value<0.78:return aquariumPike
-    case value<0.85:return aquariumPerch
-    case value<0.91:return aquariumBluegill
-    case value<0.95:return aquariumLargemouth
-    case value<0.985:return aquariumCute
-    default:return aquariumWalleye
-    }
 }
 
 func aquariumFishSpeed(kind aquariumKind,seed uint64) float64 {
