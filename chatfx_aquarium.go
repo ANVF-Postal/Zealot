@@ -9,6 +9,34 @@ var aquariumFishColors = [...]string{
     "#F5C879", "#85DCE9", "#F1A8C6", "#AAD99C", "#E1BBF6", "#F3D18C",
 }
 
+// Each species has a distinct silhouette and preferred cruising speed.
+// Both directions are authored explicitly so eyes and fins face forward.
+type aquariumFishSpecies struct {
+    left,right string
+    speed float64
+}
+
+var aquariumSpecies = [...]aquariumFishSpecies{
+    {left:"<><", right:"><>", speed:1.0},       // minnow
+    {left:"<(o)", right:"(o)>", speed:0.76},    // round fish
+    {left:"<|=)", right:"(=|>", speed:0.90},   // striped fish
+    {left:"<===", right:"===>", speed:1.45},   // darting needlefish
+    {left:"<:))", right:"((:>", speed:0.68},   // plump fish
+    {left:"<*)", right:"(*>", speed:1.18},     // little tropical fish
+}
+
+func aquariumFishShape(species aquariumFishSpecies,direction int) string {
+    if direction<0 {return species.left}
+    return species.right
+}
+
+// Activity is a finite journey with a quiet interval afterward. All school
+// members share a crossing but enter with slightly staggered spacing.
+func aquariumSchoolPhase(seconds,initialOffset,travel,rest float64) (float64,bool) {
+    phase:=aquariumCycle(seconds+initialOffset,travel+rest)
+    return phase,phase<travel
+}
+
 func aquariumCycle(value, period float64) float64 {
     if period<=0 {return 0}
     return math.Mod(math.Mod(value,period)+period,period)
@@ -87,31 +115,63 @@ func (m model) aquariumPositions(width,height int) []map[int]chatFXCell {
         }
     }
 
-    // Fish swim in both directions. A handful travel in loose schools,
-    // with followers offset in time and height rather than rigidly aligned.
-    fishCount:=min(18,max(3,width*height/210))
-    if height<8 {fishCount=min(fishCount,3)}
-    for i:=0;i<fishCount;i++ {
-        school:=i/3
-        member:=i%3
-        seed:=chatFXHash(salt+uint64(school+1)*0x94d049bb133111eb+0xf15a)
+    // A few individual fish are always cruising. Their species, speeds and
+    // routes differ, so the aquarium doesn't look like a synchronized parade.
+    loneCount:=min(9,max(4,width*height/650))
+    if height<8 {loneCount=2}
+    for i:=0;i<loneCount;i++ {
+        seed:=chatFXHash(salt+uint64(i+1)*0x94d049bb133111eb+0xf15a)
+        species:=aquariumSpecies[int(chatFXHash(seed+7)%uint64(len(aquariumSpecies)))]
         direction:=1
-        if school%2==1 {direction=-1}
-        speed:=1.2+2.6*chatFXUnit(seed+1)
-        span:=float64(width+9)
-        starting:=chatFXUnit(seed+2)*span
-        // Followers are delayed along the swim direction.
-        position:=aquariumCycle(starting+speed*seconds-float64(member)*5,span)
-        x:=-4+int(math.Floor(position))
-        if direction<0 {x=width+1-int(math.Floor(position))}
-        baseY:=1+int(chatFXUnit(seed+3)*float64(max(1,height-3)))
-        y:=baseY+(member-1)*2+
-            int(math.Round(math.Sin(seconds*0.65+chatFXUnit(seed+4)*6+float64(member))*0.7))
+        if chatFXHash(seed+8)%2==0 {direction=-1}
+        shape:=aquariumFishShape(species,direction)
+        speed:=(1.1+2.4*chatFXUnit(seed+1))*species.speed
+        span:=float64(width+len(shape)+6)
+        // Individuals can appear anywhere on the first frame.
+        distance:=aquariumCycle(chatFXUnit(seed+2)*span+seconds*speed,span)
+        x:=-len(shape)-2+int(math.Floor(distance))
+        if direction<0 {x=width+2-int(math.Floor(distance))}
+        y:=int(chatFXUnit(seed+3)*float64(height))+
+            int(math.Round(math.Sin(seconds*0.55+chatFXUnit(seed+4)*6.28)*0.85))
         y=max(0,min(height-1,y))
-        shape:="<><"
-        if direction>0 {shape="><>"}
-        color:=aquariumFishColors[int(chatFXHash(seed+uint64(member)+5)%uint64(len(aquariumFishColors)))]
+        color:=aquariumFishColors[int(chatFXHash(seed+5)%uint64(len(aquariumFishColors)))]
         for j,glyph:=range shape {put(x+j,y,glyph,color)}
+    }
+
+    // Occasional schools enter fully from beyond a screen edge, cross
+    // together, then leave the aquarium empty of that school for a while.
+    // The school is bounded and its schedule comes from the activation salt.
+    schoolCount:=min(4,max(1,width/65))
+    if height<9 || width<25 {schoolCount=0}
+    for school:=0;school<schoolCount;school++ {
+        seed:=chatFXHash(salt+uint64(school+1)*0x517cc1b727220a95+0x5c4001)
+        species:=aquariumSpecies[int(chatFXHash(seed+2)%uint64(len(aquariumSpecies)))]
+        direction:=1
+        if chatFXHash(seed+3)%2==0 {direction=-1}
+        shape:=aquariumFishShape(species,direction)
+        members:=3+int(chatFXHash(seed+4)%3) // 3–5 fish
+        speed:=(1.5+1.6*chatFXUnit(seed+5))*species.speed
+        spacing:=float64(len(shape)+3)
+        // The last fish starts further behind and follows its companions.
+        crossing:=float64(width+2*len(shape)+6)+float64(members-1)*spacing
+        travel:=crossing/speed
+        rest:=14+23*chatFXUnit(seed+6)
+        // Let some schools appear immediately, others much later.
+        initialOffset:=chatFXUnit(seed+7)*(travel+rest)
+        phase,active:=aquariumSchoolPhase(seconds,initialOffset,travel,rest)
+        if !active {continue}
+        baseY:=2+int(chatFXUnit(seed+8)*float64(max(1,height-4)))
+        baseY=min(height-1,baseY)
+        color:=aquariumFishColors[int(chatFXHash(seed+9)%uint64(len(aquariumFishColors)))]
+        for member:=0;member<members;member++ {
+            distance:=phase*speed-float64(member)*spacing
+            x:=-len(shape)-2+int(math.Floor(distance))
+            if direction<0 {x=width+2-int(math.Floor(distance))}
+            y:=baseY+(member%3-1)*2+
+                int(math.Round(math.Sin(seconds*0.75+float64(member)*0.6)*0.9))
+            y=max(0,min(height-1,y))
+            for j,glyph:=range shape {put(x+j,y,glyph,color)}
+        }
     }
     return rows
 }
