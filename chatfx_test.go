@@ -498,3 +498,35 @@ func TestSmallSnowDotsFallFaster(t *testing.T) {
 	}
 	if dots==0 || other==0 {t.Fatalf("snow particle variety missing: dots=%d others=%d",dots,other)}
 }
+
+
+func TestSnowDotsHaveHigherVelocityForSameSeed(t *testing.T) {
+	for _, seed := range []uint64{1, 11, 42, 999, 999999} {
+		dot := snowflakeSpeed(seed,'.')
+		flake := snowflakeSpeed(seed,'*')
+		if dot <= flake || dot < 1.6 {
+			t.Fatalf("seed %d: dot speed %.3f should exceed flake %.3f",seed,dot,flake)
+		}
+	}
+}
+
+func TestStoppingLocalEffectPreservesFallingParticles(t *testing.T) {
+	m:=newMessageInteractionTestModel(100)
+	m.width=100
+	m.height=30
+	m.fxLocal=chatFXState{name:"rain",started:time.Now()}
+	m.fxLocalOverride=true
+	m.fxSalt=19
+	m.chatFXCommand("/stopfx",[]string{"/stopfx","self"})
+	if m.fxLocalOverride || m.currentChatFX().name!="" {
+		t.Fatal("local rain emitter should stop")
+	}
+	if len(m.fxFading)==0 || len(m.fxFading[0].particles)==0 {
+		t.Fatal("local rain should enter a gradual particle fall-out")
+	}
+	m.fxDisabled=true
+	rows:=[]string{strings.Repeat(" ",40),strings.Repeat(" ",40)}
+	before:=append([]string(nil),rows...)
+	m.renderChatFXBackground(rows,40)
+	if !reflect.DeepEqual(rows,before) {t.Fatal("disablefx must hide outgoing particles as well")}
+}
