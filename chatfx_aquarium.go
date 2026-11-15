@@ -2,12 +2,9 @@ package main
 
 import "math"
 
-// Aquarium is deliberately a lightweight, stateless ChatFX scene. Each
-// client uses its usual deterministic salt and 30 Hz animation clock.
-// Nothing additional needs to be sent over the room connection.
-var aquariumFishColors = [...]string{
-    "#F5C879", "#85DCE9", "#F1A8C6", "#AAD99C", "#E1BBF6", "#F3D18C",
-}
+// Aquarium uses deterministic client-local fish journeys and a tiny
+// predation state driven by the existing 30 Hz ChatFX clock.
+// No per-frame animation state crosses the room connection.
 
 func aquariumCycle(value, period float64) float64 {
     if period<=0 {return 0}
