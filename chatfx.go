@@ -44,7 +44,7 @@ func chatFXDuration(args []string) (int, bool) {
 // chat/whisper message handling so they can never leak as ordinary messages.
 func isChatFXCommand(command string) bool {
 	switch command {
-	case "/rain", "/snow", "/blizzard", "/embers", "/fire", "/matrix", "/confetti", "/fireworks", "/static", "/glitch", "/stop", "/stopfx", "/disablefx", "/fxfps":
+	case "/rain", "/snow", "/blizzard", "/embers", "/fire", "/matrix", "/confetti", "/fireworks", "/static", "/glitch", "/interrogation", "/stop", "/stopfx", "/disablefx", "/fxfps":
 		return true
 	}
 	return false
@@ -76,7 +76,7 @@ func (m *model) chatFXCommand(command string, fields []string) {
 		} else {
 			m.chatFXNotice("ChatFX enabled locally.")
 		}
-	case "/rain", "/snow", "/blizzard", "/embers", "/fire", "/matrix", "/confetti", "/fireworks", "/static", "/glitch":
+	case "/rain", "/snow", "/blizzard", "/embers", "/fire", "/matrix", "/confetti", "/fireworks", "/static", "/glitch", "/interrogation":
 		args := fields[1:]
 		self := len(args)>0 && strings.EqualFold(args[0], "self")
 		if self { args=args[1:] }
@@ -125,7 +125,7 @@ func (m *model) receiveChatFX(packet Packet) {
 		if previous.name != "" && !m.fxLocalOverride {
 			m.retireChatFX(previous)
 		}
-		if (packet.FX == "rain" || packet.FX == "snow" || packet.FX == "blizzard" || packet.FX == "embers" || packet.FX == "fire" || packet.FX == "matrix" || packet.FX == "confetti" || packet.FX == "fireworks" || packet.FX == "static" || packet.FX == "glitch") &&
+		if (packet.FX == "rain" || packet.FX == "snow" || packet.FX == "blizzard" || packet.FX == "embers" || packet.FX == "fire" || packet.FX == "matrix" || packet.FX == "confetti" || packet.FX == "fireworks" || packet.FX == "static" || packet.FX == "glitch" || packet.FX == "interrogation") &&
 			(packet.FXUntil.IsZero() || packet.FXUntil.After(time.Now())) {
 			m.fxRoom = chatFXState{name:packet.FX, started:time.Now(), until:packet.FXUntil}
 			if !m.fxLocalOverride { m.resetChatFXSimulation() }
@@ -177,7 +177,7 @@ func (m model) chatFXFrameInterval() time.Duration {
 }
 
 func (m *model) ensureChatFXTick() tea.Cmd {
-	if m.fxTickPending || (m.currentChatFX().name == "" && len(m.fxFading)==0) { return nil }
+	if m.fxTickPending || (m.currentChatFX().name == "" && len(m.fxFading)==0 && m.fxInterrogationAmount<=0) { return nil }
 	m.fxTickPending = true
 	m.fxTickGeneration++
 	generation := m.fxTickGeneration
@@ -230,13 +230,14 @@ func (m *model) advanceChatFXClock(now time.Time) {
 func (m *model) advanceChatFX(msg chatFXTickMsg) tea.Cmd {
 	if msg.generation != m.fxTickGeneration { return nil }
 	m.fxTickPending = false
+	m.advanceInterrogationFade(msg.at)
 	m.trimChatFXFading(time.Now())
 	m.finishExpiredPrimary(time.Now())
 	if m.fxLocalOverride && !m.chatFXAlive(m.fxLocal) {
 		m.fxLocalOverride = false
 		m.fxLocal = chatFXState{}
 	}
-	if m.currentChatFX().name == "" && len(m.fxFading)==0 {
+	if m.currentChatFX().name == "" && len(m.fxFading)==0 && m.fxInterrogationAmount<=0 {
 		m.fxLastTick = time.Time{}
 		return nil
 	}
