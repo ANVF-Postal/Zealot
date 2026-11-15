@@ -148,12 +148,16 @@ func (s *bubbleState) tick() {
         bubble.advanceRim(dt)
         bubble.x+=bubble.vx*dt
         bubble.y+=bubble.vy*dt
-        minX,maxX:=bubble.radius*2,float64(s.width)-bubble.radius*2
-        minY,maxY:=bubble.radius,float64(s.height)-bubble.radius
+        // Permit the centre to approach a boundary more closely than the
+        // resting radius; the border nodes, rather than a rigid circle, then
+        // flatten against the actual wall.
+        minX,maxX:=bubble.radius*2*0.78,float64(s.width)-bubble.radius*2*0.78
+        minY,maxY:=bubble.radius*0.78,float64(s.height)-bubble.radius*0.78
         if bubble.x<minX {bubble.x=minX;bubble.vx=math.Abs(bubble.vx);bubble.pressRim(math.Pi,0.32+math.Min(0.3,math.Abs(bubble.vx)*0.025))}
         if bubble.x>maxX {bubble.x=maxX;bubble.vx=-math.Abs(bubble.vx);bubble.pressRim(0,0.32+math.Min(0.3,math.Abs(bubble.vx)*0.025))}
         if bubble.y<minY {bubble.y=minY;bubble.vy=math.Abs(bubble.vy);bubble.pressRim(-math.Pi/2,0.30+math.Min(0.3,math.Abs(bubble.vy)*0.04))}
         if bubble.y>maxY {bubble.y=maxY;bubble.vy=-math.Abs(bubble.vy);bubble.pressRim(math.Pi/2,0.30+math.Min(0.3,math.Abs(bubble.vy)*0.04))}
+        bubble.constrainRimToWalls(s.width,s.height)
         alive=append(alive,bubble)
     }
     s.bubbles=alive
@@ -166,7 +170,8 @@ func (s *bubbleState) tick() {
             dx:=(b.x-a.x)*0.5
             dy:=b.y-a.y
             dist:=math.Hypot(dx,dy)
-            required:=a.radius+b.radius
+            angle:=math.Atan2(dy,dx)
+            required:=a.rimRadius(angle)+b.rimRadius(angle+math.Pi)
             if dist>=required {continue}
             if dist<0.0001 {dx,dy,dist=1,0,1}
             nx,ny:=dx/dist,dy/dist
@@ -192,10 +197,11 @@ func (s *bubbleState) tick() {
     // Clamp after separation so collisions cannot push spheres offscreen.
     for i:=range s.bubbles {
         b:=&s.bubbles[i]
-        minX,maxX:=b.radius*2,float64(s.width)-b.radius*2
-        minY,maxY:=b.radius,float64(s.height)-b.radius
+        minX,maxX:=b.radius*2*0.78,float64(s.width)-b.radius*2*0.78
+        minY,maxY:=b.radius*0.78,float64(s.height)-b.radius*0.78
         b.x=math.Max(minX,math.Min(maxX,b.x))
         b.y=math.Max(minY,math.Min(maxY,b.y))
+        b.constrainRimToWalls(s.width,s.height)
     }
     // Gradually populate, then replace popped bubbles without surging.
     if s.steps==1 || s.steps%19==0 {
@@ -262,4 +268,25 @@ func newBubblePop(b bubbleParticle,seed uint64) bubblePop {
         }
     }
     return pop
+}
+
+// Each perimeter mass is projected against all four real wall planes.
+// Unlike a rigid-circle collision, only the nodes contacting the wall flatten
+// while tension carries the impact into their neighbors over later steps.
+func (b *bubbleParticle) constrainRimToWalls(width,height int) {
+    if b.radius<=0 {return}
+    for i:=range b.rim {
+        theta:=2*math.Pi*float64(i)/float64(len(b.rim))
+        c,si:=math.Cos(theta),math.Sin(theta)
+        allowed:=b.radius*1.25
+        if c< -0.0001 {allowed=math.Min(allowed,b.x/(-2*c))}
+        if c>0.0001 {allowed=math.Min(allowed,(float64(width)-b.x)/(2*c))}
+        if si< -0.0001 {allowed=math.Min(allowed,b.y/(-si))}
+        if si>0.0001 {allowed=math.Min(allowed,(float64(height)-b.y)/si)}
+        limit:=math.Max(-0.48,allowed/b.radius-1)
+        if b.rim[i]>limit {
+            b.rim[i]=limit
+            if b.rimSpeed[i]>0 {b.rimSpeed[i]*=-0.25}
+        }
+    }
 }
