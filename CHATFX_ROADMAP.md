@@ -48,7 +48,7 @@ ever cross the Unix socket.
 
 - `/confetti [self] [seconds]`: 10-second default, saturated candy-colored glyphs, rare 3–7-cell vertical streamers, variable speed and gentle sway; stop emission on timeout and allow airborne pieces to clear the viewport
 - `/fireworks [self] [seconds]` with a 10-second default; neutral rising shells,
-  directional orange trails, colorful radial/willow/crackle/peony explosions
+  directional orange trails, colorful radial/willow/crackle/peony explosions, per-shell horizontal spread for tall fonts and rare giant 0 shells
 - Permit optional durations and cap particle and flash rates
 - Stop/switch now retires existing particles instead of clearing the chat layer instantly
 - Introduce an accessibility-aware reduced-motion behavior
