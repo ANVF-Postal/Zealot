@@ -46,6 +46,24 @@ func glitchTextEvent(tick, salt uint64) (glitchErrorEvent,bool) {
     return glitchErrorEvent{},false
 }
 
+// Pause the ordinary visual corruption clock whenever text diagnostics own
+// the screen, rather than skipping a scheduled streak behind an error block.
+func glitchDistortionTick(tick, salt uint64) uint64 {
+    next:=uint64(0)
+    paused:=uint64(0)
+    for i:=uint64(0);i<100000;i++ {
+        seed:=chatFXHash(salt^0x7e827aa2+(i+1)*0x9e3779b97f4a7c15)
+        next+=270+(seed>>8)%720
+        if tick<=next {break}
+        duration:=uint64(140+(seed>>25)%125)
+        elapsed:=min(duration,tick-next)
+        paused+=elapsed
+        if tick<next+duration {break}
+        next+=duration
+    }
+    return tick-paused
+}
+
 func glitchErrorLine(seed uint64, line int) string {
     h:=chatFXHash(seed+uint64(line+1)*0xbf58476d1ce4e5b9)
     if line==0 || h%3==0 {
