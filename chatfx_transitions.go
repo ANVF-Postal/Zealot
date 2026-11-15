@@ -60,7 +60,7 @@ func (m model) chatFXActivePositions(name string,width,height int) []map[int]cha
 func (m *model) retireChatFX(fx chatFXState) {
 	if fx.name=="" || m.fxDisabled || !m.chatFXVisible() { return }
 	// CRT interruptions end instantly; they should not turn into falling particles.
-	if fx.name=="static" || fx.name=="glitch" {return}
+	if fx.name=="static" || fx.name=="glitch" || fx.name=="interrogation" {return}
 	width,height:=chatContentWidth(m.width),max(1,m.messageHeight()-1)
 	if width<2 || height<1 { return }
 	rows:=m.chatFXActivePositions(fx.name,width,height)
