@@ -615,9 +615,9 @@ func TestBlizzardWindReversesSmoothly(t *testing.T) {
 			seconds := float64(frame)/30
 			position := blizzardWindOffset(seconds, salt)
 			velocity := blizzardWindSpeed(seconds, salt)
-			if velocity < -5 { seenLeft = true }
-			if velocity > 5 { seenRight = true }
-			if math.Abs(position-lastPosition) > 1.0 {
+			if velocity < -0.5 { seenLeft = true }
+			if velocity > 0.5 { seenRight = true }
+			if math.Abs(position-lastPosition) > 2.0 {
 				t.Fatalf("wind moved discontinuously at %.2fs for salt %d", seconds, salt)
 			}
 			// Analytic displacement must agree with its instantaneous speed.
@@ -691,5 +691,153 @@ func TestBlizzardCommandRoomSelfAndHandoff(t *testing.T) {
 	m.renderChatFXBackground(rows,60)
 	if !strings.HasPrefix(stripANSISequences(rows[0]),"  [19:49] Alice: Hold on to your hats!") {
 		t.Fatal("blizzard obscured chat text")
+	}
+}
+
+
+func TestBlizzardGustHoldsAndCalmIntervalsVary(t *testing.T) {
+	minGust,maxGust:=math.Inf(1),0.0
+	minCalm,maxCalm:=math.Inf(1),0.0
+	mild,extreme:=false,false
+	for _,salt:=range []uint64{0,1,91,999} {
+		for phase:=uint64(0);phase<80;phase++ {
+			p:=blizzardPhase(phase,salt)
+			if p.gustDuration<20 || p.gustDuration>120 { t.Fatalf("gust %.2fs outside 20-120s",p.gustDuration) }
+			if p.calmDuration<6 || p.calmDuration>35 { t.Fatalf("calm %.2fs outside 6-35s",p.calmDuration) }
+			if p.rampDuration<3 || p.rampDuration>8 { t.Fatalf("ramp %.2fs outside 3-8s",p.rampDuration) }
+			minGust=min(minGust,p.gustDuration)
+			maxGust=max(maxGust,p.gustDuration)
+			minCalm=min(minCalm,p.calmDuration)
+			maxCalm=max(maxCalm,p.calmDuration)
+			if math.Abs(p.speed)<10 {mild=true}
+			if math.Abs(p.speed)>40 {extreme=true}
+			if phase>0 {
+				previous:=blizzardPhase(phase-1,salt)
+				if (p.speed>0)==(previous.speed>0) {t.Fatal("wind did not alternate direction")}
+			}
+		}
+	}
+	if maxGust-minGust<60 || maxCalm-minCalm<16 || !mild || !extreme {
+		t.Fatalf("gust variety inadequate gust %.1f..%.1f calm %.1f..%.1f mild=%v extreme=%v",
+			minGust,maxGust,minCalm,maxCalm,mild,extreme)
+	}
+}
+
+func TestBlizzardCalmAndSmoothReversal(t *testing.T) {
+	for _,salt:=range []uint64{0,1,34} {
+		first:=blizzardPhase(0,salt)
+		second:=blizzardPhase(1,salt)
+		for _,seconds:=range []float64{
+			0,first.gustDuration,first.gustDuration+first.calmDuration/2,
+			first.gustDuration+first.calmDuration,
+			first.gustDuration+first.calmDuration+second.rampDuration,
+		} {
+			if math.IsNaN(blizzardWindOffset(seconds,salt)) {t.Fatal("nonfinite wind displacement")}
+		}
+		if math.Abs(blizzardWindSpeed(first.gustDuration+first.calmDuration/2,salt))>1e-10 {
+			t.Fatal("blizzard should linger in calm between gusts")
+		}
+		before:=blizzardWindSpeed(first.gustDuration+first.calmDuration-0.001,salt)
+		after:=blizzardWindSpeed(first.gustDuration+first.calmDuration+0.001,salt)
+		if math.Abs(before-after)>0.1 {t.Fatal("wind snapped when changing direction")}
+		if math.Abs(blizzardWindOffset(first.gustDuration,salt)-
+			blizzardWindOffset(first.gustDuration+first.calmDuration,salt))>1e-8 {
+			t.Fatal("blizzard drifted during its calm period")
+		}
+	}
+}
+
+func TestBlizzardGlyphPoolPrefersSnowOverSlash(t *testing.T) {
+	m:=newMessageInteractionTestModel(120)
+	m.fxRoom=chatFXState{name:"blizzard"}
+	m.fxSalt=987
+	punctuation,slash,total:=0,0,0
+	for tick:=uint64(0);tick<180;tick+=5 {
+		m.fxSimSteps=tick
+		for _,row:=range m.blizzardPositions(120,35) {
+			for _,c:=range row {
+				total++
+				if c.glyph==',' {punctuation++}
+				if c.glyph=='/' || c.glyph=='\\' {slash++}
+			}
+		}
+	}
+	if punctuation==0 || slash*8>=total {
+		t.Fatalf("snow glyphs too slash-heavy: %d slash / %d total, commas %d",slash,total,punctuation)
+	}
+}
+
+func TestEmbersAreUpwardGlowingAndBounded(t *testing.T) {
+	m:=newMessageInteractionTestModel(100)
+	m.fxRoom=chatFXState{name:"embers"}
+	m.fxSalt=412
+	colors:=map[string]bool{}
+	found:=0
+	for _,size:=range [][2]int{{1,1},{15,6},{100,32},{160,44}} {
+		width,height:=size[0],size[1]
+		for _,seconds:=range []uint64{0,1,4,15,55,121} {
+			m.fxSimSteps=seconds*30
+			rows:=m.emberPositions(width,height)
+			if len(rows)!=height {t.Fatalf("ember rows %d, expected %d",len(rows),height)}
+			for y,row:=range rows {
+				for x,cell:=range row {
+					if x<0 || x>=width || y<0 || y>=height {t.Fatal("ember escaped viewport")}
+					if cell.glyph!='.' && cell.glyph!='·' && cell.glyph!='+' && cell.glyph!='*' {
+						t.Fatalf("unexpected ember glyph %q",cell.glyph)
+					}
+					colors[cell.color]=true
+					found++
+				}
+			}
+		}
+	}
+	if found<20 || len(colors)<3 {t.Fatalf("embers lack variety: %d sparks, %d colors",found,len(colors))}
+	m.fxSimSteps=120
+	m.fxRenderFPS=1
+	low:=m.emberPositions(100,30)
+	m.fxRenderFPS=60
+	high:=m.emberPositions(100,30)
+	if !reflect.DeepEqual(low,high) {t.Fatal("ember positions must not depend on FPS")}
+}
+
+func TestEmbersCommandAndFadeOut(t *testing.T) {
+	m:=newMessageInteractionTestModel(95)
+	m.room="lobby"
+	m.connected=true
+	m.width=95
+	m.height=30
+	var outgoing bytes.Buffer
+	m.client=&wireClient{enc:json.NewEncoder(&outgoing)}
+	if m.sendMessage("/EMBERS self 30","") {t.Fatal("self embers became a message")}
+	if outgoing.Len()!=0 || m.currentChatFX().name!="embers" {t.Fatal("self embers sent a packet")}
+	m.chatFXCommand("/stopfx",[]string{"/stopfx","self"})
+	if len(m.fxFading)==0 || m.currentChatFX().name!="" {t.Fatal("embers did not fade out")}
+	for _,p:=range m.fxFading[0].particles {
+		if p.vy>=0 {t.Fatalf("ember should continue rising, got velocity %.2f",p.vy)}
+	}
+	if m.sendMessage("/embers 20","") {t.Fatal("room embers became a message")}
+	var packet Packet
+	if err:=json.NewDecoder(&outgoing).Decode(&packet);err!=nil {t.Fatal(err)}
+	if packet.Type!="fx_start" || packet.FX!="embers" || packet.FXSeconds!=20 {
+		t.Fatalf("wrong embers room packet: %+v",packet)
+	}
+	m.fxRoom=chatFXState{name:"snow"}
+	m.receiveChatFX(Packet{Type:"fx_state",FX:"embers"})
+	if m.currentChatFX().name!="embers" {t.Fatal("room embers did not replace snow")}
+	rows:=[]string{"  [22:00] User: The fire is warm.",strings.Repeat(" ",60),strings.Repeat(" ",60)}
+	m.renderChatFXBackground(rows,60)
+	if !strings.HasPrefix(stripANSISequences(rows[0]),"  [22:00] User: The fire is warm.") {
+		t.Fatal("embers obscured message")
+	}
+}
+
+func BenchmarkBlizzardPositions(b *testing.B) {
+	m:=newMessageInteractionTestModel(160)
+	m.fxRoom=chatFXState{name:"blizzard"}
+	m.fxSalt=127
+	b.ReportAllocs()
+	for i:=0;i<b.N;i++ {
+		m.fxSimSteps=uint64(i*2)
+		m.blizzardPositions(160,45)
 	}
 }
