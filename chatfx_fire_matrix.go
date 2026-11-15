@@ -49,6 +49,7 @@ func doomFireHeight(width, viewportHeight int) int {
 type doomFireState struct {
 	width, height int
 	heat []uint8
+	previous []uint8 // heat before the most recent 7.5 Hz propagation
 	scratch []uint8
 	step uint64
 }
@@ -60,12 +61,13 @@ func newDoomFireState(width, height int, salt uint64) *doomFireState {
 	flameHeight:=doomFireHeight(width,height)
 	state:=&doomFireState{
 		width:width,height:flameHeight,heat:make([]uint8,width*flameHeight),
-		scratch:make([]uint8,width),
+		previous:make([]uint8,width*flameHeight),scratch:make([]uint8,width),
 	}
 	for x:=0;x<width;x++ {state.heat[(flameHeight-1)*width+x]=doomFireFuel(salt,0,x)}
 	for i:=uint64(0);i<uint64(flameHeight+16);i++ {
 		state.spread(salt,i)
 	}
+	copy(state.previous,state.heat)
 	return state
 }
 
@@ -138,9 +140,28 @@ func (f *doomFireState) spread(salt, index uint64) {
 func (f *doomFireState) advance(target uint64,salt uint64) {
 	if f==nil || target<=f.step {return}
 	for tick:=f.step+1;tick<=target;tick++ {
-		if tick%4==0 {f.spread(salt,tick/4)}
+		if tick%4==0 {
+			copy(f.previous,f.heat)
+			f.spread(salt,tick/4)
+		}
 	}
 	f.step=target
+}
+
+// doomFireBlend blends two consecutive Doom heat states without increasing
+// the propagation speed. Phase 0 displays the previous field; the following
+// 30 Hz steps (and fractional /fxfps frames) transition toward the new field.
+// The next propagation begins at exactly the previous target, avoiding jumps.
+func (f *doomFireState) heatLevel(i int, fraction float64) uint8 {
+	if f.step<4 || len(f.previous)!=len(f.heat) {
+		return f.heat[i]
+	}
+	phase:=(float64(f.step%4)+fraction)/4
+	if phase<0 {phase=0}
+	if phase>1 {phase=1}
+	old:=float64(f.previous[i])
+	current:=float64(f.heat[i])
+	return uint8(math.Round(old+(current-old)*phase))
 }
 
 func (m model) firePositions(width,height int) []map[int]chatFXCell {
@@ -152,10 +173,11 @@ func (m model) firePositions(width,height int) []map[int]chatFXCell {
 		state=newDoomFireState(width,height,m.fxSalt)
 	}
 	state.advance(m.fxSimSteps,m.fxSalt)
+	fraction:=float64(m.fxSimAccumulator)/float64(chatFXSimulationStep)
 	for y:=0;y<state.height;y++ {
 		row:=height-state.height+y
 		for x:=0;x<width;x++ {
-			level:=state.heat[y*width+x]
+			level:=state.heatLevel(y*width+x,fraction)
 			// Skip the weakest dying heat: fine punctuation should be rare
 			// near flame tips, not a constant cloud across the viewport.
 			if level<5 {continue}
