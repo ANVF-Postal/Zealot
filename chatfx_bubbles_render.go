@@ -9,99 +9,104 @@ import (
     "charm.land/lipgloss/v2"
 )
 
-type bubbleShade struct {
+// A bubble is a thin ANSI-coloured ASCII outline with a tiny glint. Its
+// interior is genuinely empty: the theme background and chat remain visible.
+type bubblePixel struct {
+    glyph byte
     color [3]int
-    alpha float64
 }
 
-// Rasterize a glossy, subtly transparent, three-dimensional sphere. The
-// terminal's roughly 2:1 character aspect ratio is corrected in the physics
-// and render geometry. Lighting combines a coloured body, a thin bright rim,
-// a soft specular highlight above-left, and a darker bottom-right surface.
-func bubbleShadeAt(b bubbleParticle,x,y int) (bubbleShade,bool) {
-    radius:=b.radius
-    if b.age<0.55 {radius*=0.2+0.8*math.Min(1,b.age/0.55)}
-    if remaining:=b.lifetime-b.age;remaining<0.4 {
-        radius*=math.Max(0,remaining/0.4)
+func bubbleGlyphAt(b bubbleParticle,x,y int) byte {
+    dx:=(float64(x)+0.5-b.x)/(2*b.radius)
+    dy:=(float64(y)+0.5-b.y)/b.radius
+    // Tiny damped deformation creates a soft squish after collisions without
+    // compromising the roughly circular Windows screensaver silhouette.
+    dx*=1+b.wobble
+    dy*=1-b.wobble*0.5
+    distance:=math.Hypot(dx,dy)
+    thickness:=math.Max(0.11,0.37/b.radius)
+    if math.Abs(distance-1)<=thickness {
+        switch {
+        case math.Abs(dy)>0.82: return '-'
+        case math.Abs(dx)>0.83: return '|'
+        case dx*dy>0: return '\\'
+        default: return '/'
+        }
     }
-    if radius<0.08 {return bubbleShade{},false}
-    dx:=(float64(x)+0.5-b.x)/(radius*2)
-    dy:=(float64(y)+0.5-b.y)/radius
-    r2:=dx*dx+dy*dy
-    if r2>=1 {return bubbleShade{},false}
-    distance:=math.Sqrt(r2)
-    rim:=math.Pow(distance,5)
-    highlight:=math.Exp(-((dx+0.34)*(dx+0.34)*28+(dy+0.40)*(dy+0.40)*28))
-    glimmer:=math.Exp(-((dx+0.15)*(dx+0.15)*12+(dy+0.25)*(dy+0.25)*14))
-    shadow:=math.Max(0,dx+dy)*0.25
-    alpha:=0.18+0.39*rim+0.20*glimmer
-    alpha=math.Max(0.12,math.Min(0.87,alpha))
+    // Single round specular reflection in the upper-left quadrant.
+    if math.Abs(dx+0.43)<0.14 && math.Abs(dy+0.48)<0.19 {
+        return 'o'
+    }
+    return 0
+}
+
+func bubbleOutlineColor(b bubbleParticle,glyph byte) [3]int {
+    if glyph=='o' {return [3]int{244,250,255}}
+    // A slightly pale, iridescent outline against the normal chat background.
     var color [3]int
     for c:=0;c<3;c++ {
-        value:=float64(b.color[c])*(1-shadow)+
-            (255-float64(b.color[c]))*(0.70*highlight+0.18*glimmer)
-        color[c]=max(0,min(255,int(math.Round(value))))
+        color[c]=min(255,int(float64(b.color[c])*0.68+85))
     }
-    return bubbleShade{color:color,alpha:alpha},true
+    return color
 }
 
-func bubbleComposite(background [3]int,shade bubbleShade) [3]int {
-    result:=[3]int{}
-    for c:=0;c<3;c++ {
-        result[c]=int(math.Round(float64(background[c])*(1-shade.alpha)+float64(shade.color[c])*shade.alpha))
+// Rasterize outlines rather than coloured surfaces. Existing message cells
+// are left intact during painting, so the animation never overwrites chat.
+func (s *bubbleState) raster(width,height int) [][]bubblePixel {
+    grid:=make([][]bubblePixel,height)
+    paint:=func(x,y int,glyph byte,color [3]int) {
+        if x<0 || x>=width || y<0 || y>=height || glyph==0 {return}
+        if grid[y]==nil {grid[y]=make([]bubblePixel,width)}
+        grid[y][x]=bubblePixel{glyph:glyph,color:color}
     }
-    return result
-}
-
-// Draw the bubbles to a small viewport-sized shade grid first, avoiding
-// a bubble-count scan for every character rendered. Each bubble only visits
-// its own bounding rectangle; the 32-bubble hard cap bounds collisions too.
-func (s *bubbleState) raster(width,height int) [][]bubbleShade {
-    grid:=make([][]bubbleShade,height)
     for _,b:=range s.bubbles {
-        r:=b.radius
-        if b.age<0.55 {r*=0.2+0.8*math.Min(1,b.age/0.55)}
-        if remaining:=b.lifetime-b.age;remaining<0.4 {r*=math.Max(0,remaining/0.4)}
-        startX:=max(0,int(math.Floor(b.x-2*r)))
-        endX:=min(width,int(math.Ceil(b.x+2*r)))
-        startY:=max(0,int(math.Floor(b.y-r)))
-        endY:=min(height,int(math.Ceil(b.y+r)))
+        rx:=2*b.radius*(1+b.wobble)
+        ry:=b.radius*(1+b.wobble)
+        startX:=max(0,int(math.Floor(b.x-rx))-1)
+        endX:=min(width,int(math.Ceil(b.x+rx))+1)
+        startY:=max(0,int(math.Floor(b.y-ry))-1)
+        endY:=min(height,int(math.Ceil(b.y+ry))+1)
         for y:=startY;y<endY;y++ {
-            if grid[y]==nil {grid[y]=make([]bubbleShade,width)}
             for x:=startX;x<endX;x++ {
-                shade,ok:=bubbleShadeAt(b,x,y)
-                if !ok {continue}
-                // Rare overlap from collision separation is composited.
-                previous:=grid[y][x]
-                if previous.alpha>0 {
-                    shade.color=bubbleComposite(previous.color,shade)
-                    shade.alpha=math.Min(1,previous.alpha+shade.alpha*(1-previous.alpha))
-                }
-                grid[y][x]=shade
+                glyph:=bubbleGlyphAt(b,x,y)
+                if glyph!=0 {paint(x,y,glyph,bubbleOutlineColor(b,glyph))}
+            }
+        }
+    }
+    for _,p:=range s.pops {
+        cx,cy:=int(math.Round(p.x)),int(math.Round(p.y))
+        if p.age<0.42 {
+            // Burst expands briefly while the sphere vanishes immediately.
+            spread:=1+int(p.age/0.12)
+            paint(cx-2*spread,cy,'*',p.color)
+            paint(cx+2*spread,cy,'*',p.color)
+            paint(cx,cy-spread,'+',p.color)
+            paint(cx,cy+spread,'+',p.color)
+        }
+        if p.age<0.55 {
+            for i,g:=range []byte("*pop*") {
+                paint(cx-2+i,cy,g,p.color)
             }
         }
     }
     return grid
 }
 
-// Bubble art is a background treatment. Original chat characters and their
-// foreground colours remain intact, including wide runes, mentions and ANSI
-// styling. We only add 24-bit background escape sequences around bubble cells.
-func bubblePaintRow(row string, shades []bubbleShade, themeBG string,width int) string {
-    if len(shades)==0 {return row}
-    originalBG:=interrogationRGB(themeBG,[3]int{17,19,24})
-    currentBG:=originalBG
-    lastBG:=[3]int{-1,-1,-1}
+func bubblePaintRow(row string,pixels []bubblePixel,themeBG string,width int) string {
+    if len(pixels)==0 || width<=0 {return row}
+    baseBG:=interrogationRGB(themeBG,[3]int{17,19,24})
+    currentBG:=baseBG
     var out strings.Builder
-    out.Grow(len(row)+width*14)
+    out.Grow(len(row)+width*9)
     x:=0
-    emit:=func() {
-        if x>=width {return}
-        color:=currentBG
-        if shades[x].alpha>0 {color=bubbleComposite(currentBG,shades[x])}
-        if color!=lastBG {
-            fmt.Fprintf(&out,"\x1b[48;2;%d;%d;%dm",color[0],color[1],color[2])
-            lastBG=color
+    draw:=func(ch string,blank bool) {
+        if x>=width {out.WriteString(ch);return}
+        pixel:=pixels[x]
+        if blank && pixel.glyph!=0 {
+            fmt.Fprintf(&out,"\x1b[38;2;%d;%d;%dm%c\x1b[39m",
+                pixel.color[0],pixel.color[1],pixel.color[2],pixel.glyph)
+        } else {
+            out.WriteString(ch)
         }
     }
     for i:=0;i<len(row); {
@@ -109,8 +114,7 @@ func bubblePaintRow(row string, shades []bubbleShade, themeBG string,width int) 
             end:=ansiSequenceEnd(row,i)
             if end<=i {end=i+1}
             if row[end-1]=='m' && strings.HasPrefix(row[i:end],"\x1b[") {
-                currentBG=interrogationANSIBackground(row[i+2:end-1],currentBG,originalBG)
-                lastBG=[3]int{-1,-1,-1}
+                currentBG=interrogationANSIBackground(row[i+2:end-1],currentBG,baseBG)
             }
             out.WriteString(row[i:end])
             i=end
@@ -118,17 +122,25 @@ func bubblePaintRow(row string, shades []bubbleShade, themeBG string,width int) 
         }
         ch,size:=utf8.DecodeRuneInString(row[i:])
         if size<=0 {break}
-        emit()
-        out.WriteString(row[i:i+size])
-        cellWidth:=lipgloss.Width(string(ch))
-        if cellWidth>0 {x+=cellWidth}
+        w:=lipgloss.Width(string(ch))
+        if w==1 {
+            // Coloured mention backgrounds are respected; only actual blank
+            // cells against the chat background receive the ASCII outlines.
+            blank:=ch==' ' && currentBG==baseBG
+            draw(row[i:i+size],blank)
+            x++
+        } else {
+            out.WriteString(row[i:i+size])
+            if w>0 {x+=w}
+        }
         i+=size
     }
     for x<width {
-        emit()
-        out.WriteByte(' ')
+        draw(" ",true)
         x++
     }
+    // Source styling remains untouched; prevent an outline from spilling
+    // into the scrollbar to the right of the chat-content column.
     out.WriteString("\x1b[0m")
     return out.String()
 }
@@ -136,8 +148,8 @@ func bubblePaintRow(row string, shades []bubbleShade, themeBG string,width int) 
 func (m model) renderBubblesRows(rows []string,width int) {
     if m.fxBubbles==nil || len(rows)==0 || width<=0 {return}
     grid:=m.fxBubbles.raster(width,len(rows))
-    for y,shades:=range grid {
-        if len(shades)==0 {continue}
-        rows[y]=bubblePaintRow(rows[y],shades,m.cfg.Theme.Background,width)
+    for y,pixels:=range grid {
+        if len(pixels)==0 {continue}
+        rows[y]=bubblePaintRow(rows[y],pixels,m.cfg.Theme.Background,width)
     }
 }
