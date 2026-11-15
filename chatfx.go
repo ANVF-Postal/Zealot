@@ -67,7 +67,7 @@ func (m *model) chatFXCommand(command string, fields []string) {
 		// effect immediately (rather than after an old low-FPS timer).
 		m.fxTickGeneration++
 		m.fxTickPending = false
-		m.chatFXNotice(fmt.Sprintf("ChatFX rendering set to %d FPS (simulation stays at 30 Hz).", fps))
+		m.chatFXNotice(fmt.Sprintf("ChatFX rendering set to %d FPS", fps))
 	case "/disablefx":
 		if len(fields) != 1 { m.chatFXNotice("Usage: /disablefx"); return }
 		m.fxDisabled = !m.fxDisabled
@@ -92,7 +92,7 @@ func (m *model) chatFXCommand(command string, fields []string) {
 			m.fxLocal = chatFXState{name:name, started:time.Now(), until:until}
 			m.fxLocalOverride = true
 			m.resetChatFXSimulation()
-			m.chatFXNotice("Local "+name+" started. Use /stopfx self to stop.")
+			m.chatFXNotice(formatChatFXLaunch("You",name,seconds)+" (local)")
 		} else if m.client != nil && m.connected {
 			_ = m.client.send(Packet{Type:"fx_start", Room:m.room, FX:name, FXSeconds:seconds})
 		}
@@ -300,7 +300,9 @@ func (m model) rainPositions(width, height int) []map[int]rune {
 	return positions
 }
 
-func formatChatFXStart(name string, seconds int) string {
-	if seconds == 0 { return fmt.Sprintf("%s started for the room.", name) }
-	return fmt.Sprintf("%s started for the room (%ds).", name, seconds)
+// formatChatFXLaunch gives every effect the same compact launch notice.
+func formatChatFXLaunch(actor,name string, seconds int) string {
+	message:=actor+" launched "+name+"!"
+	if seconds>0 {message+=fmt.Sprintf(" (%ds)",seconds)}
+	return message
 }
