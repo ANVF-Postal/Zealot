@@ -197,6 +197,10 @@ func (m *model) resetChatFXSimulation() {
 	m.fxLastTick = time.Time{}
 	m.fxFire=nil
 	m.fxBubbles=nil
+	m.fxAquariumSalt=0
+	if m.currentChatFX().name=="aquarium" {
+		m.fxAquariumSalt=chatFXHash(m.fxSalt^uint64(time.Now().UnixNano()))
+	}
 	if m.currentChatFX().name=="bubbles" {
 		m.fxBubbles=newBubbleState(chatContentWidth(m.width),max(1,m.messageHeight()-1),m.fxSalt)
 	}
