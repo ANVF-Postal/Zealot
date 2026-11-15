@@ -16,8 +16,8 @@ var doomFirePalette = [...]string{
 	"#FFE485",
 }
 
-// Larger glyphs represent dense hot fire. Sparse cooler tips dissolve into
-// punctuation-like embers instead of forming an artificial rectangular edge.
+// Larger glyphs represent warm, connected flames. Only the occasional cool
+// wisp becomes punctuation so the effect doesn't feel like a spark shower.
 func doomFireGlyph(level uint8, variation uint64) rune {
 	switch {
 	case level >= 32:
@@ -71,10 +71,14 @@ func (f *doomFireState) spread(salt, index uint64) {
 			if source==0 {continue}
 			random:=chatFXHash(salt+index*0x9e3779b97f4a7c15+
 				uint64(y+1)*0xbf58476d1ce4e5b9+uint64(x+1)*0x94d049bb133111eb)
-			// 0..4 cooling produces a mixture of short flames and high
-			// occasional wisps instead of a flat horizontal ceiling.
+			// Gradual 0..4 cooling keeps the silhouette irregular without
+			// introducing large, erratic heat jumps.
 			decay:=int(random%5)
-			destX:=x+1-int((random>>8)%3)
+			// Mostly rise straight upward. Occasional one-cell sideways
+			// movement makes broad, slow tongues instead of turbulence.
+			shift:=int((random>>8)%8)
+			destX:=x
+			if shift==0 {destX--} else if shift==1 {destX++}
 			if destX<0 {destX=0}
 			if destX>=w {destX=w-1}
 			heat:=source-decay
@@ -92,11 +96,12 @@ func (f *doomFireState) spread(salt, index uint64) {
 	}
 }
 
-// The shared ChatFX simulation is 30 Hz; fire propagates at 15 Hz.
+// The shared ChatFX simulation is 30 Hz; fire propagates at 7.5 Hz.
+// This keeps the burn calm without slowing other visual effects.
 func (f *doomFireState) advance(target uint64,salt uint64) {
 	if f==nil || target<=f.step {return}
 	for tick:=f.step+1;tick<=target;tick++ {
-		if tick%2==0 {f.spread(salt,tick/2)}
+		if tick%4==0 {f.spread(salt,tick/4)}
 	}
 	f.step=target
 }
@@ -113,10 +118,12 @@ func (m model) firePositions(width,height int) []map[int]chatFXCell {
 	for y:=0;y<height;y++ {
 		for x:=0;x<width;x++ {
 			level:=state.heat[y*width+x]
-			if level==0 {continue}
+			// Skip the weakest dying heat: fine punctuation should be rare
+			// near flame tips, not a constant cloud across the viewport.
+			if level<5 {continue}
 			if rows[y]==nil {rows[y]=make(map[int]chatFXCell)}
 			variation:=chatFXHash(m.fxSalt+uint64(x+1)*0x9e3779b97f4a7c15+
-				uint64(y+1)*0xbf58476d1ce4e5b9+state.step/4)
+				uint64(y+1)*0xbf58476d1ce4e5b9+state.step/36)
 			rows[y][x]=chatFXCell{
 				glyph:doomFireGlyph(level,variation),
 				color:doomFirePalette[level],
