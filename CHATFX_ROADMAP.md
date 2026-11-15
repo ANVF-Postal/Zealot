@@ -36,11 +36,12 @@ ever cross the Unix socket.
 - FPS changes apply immediately during active effects and never enter chat history
 - Manual testing on multiple local clients and performance benchmarking
 
-### Stage 2 — Weather and primary-effect control (snow and blizzard implemented; embers pending)
+### Stage 2 — Weather and primary-effect control (snow, blizzard, and embers implemented; awaiting terminal verification)
 
 - Gentle `/snow [self] [seconds]` with variable intensity and slow horizontal drift; tiny dot flakes fall at twice the speed of other flakes
-- `/blizzard [self] [seconds]`: dense sideways-driven snow, smoothly reversing wind and gradually changing intensity; 30 Hz simulation independent of render FPS
-- Add `/embers`
+- `/blizzard [self] [seconds]`: dense sideways snow with 20–120-second sustained gusts, 6–35-second calmer breaks, strong variation in wind speed, and fewer slash glyphs
+- `/embers [self] [seconds]`: rising warm sparks that drift, vary brightness, cool and vanish; no illumination until the future quality-settings phase
+- Cached terminal glyph styling and capped blizzard particle count reduce large-terminal render costs (benchmark included)
 - Define primary-effect replace semantics across room and local scopes
 - Add consistent adjustable density and appropriate default motion
 - Handle terminal resizing, reconnecting and changing rooms
