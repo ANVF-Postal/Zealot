@@ -95,7 +95,9 @@ func (s *bubbleState) raster(width,height int) [][]bubblePixel {
 func bubblePaintRow(row string,pixels []bubblePixel,themeBG string,width int) string {
     if len(pixels)==0 || width<=0 {return row}
     baseBG:=interrogationRGB(themeBG,[3]int{17,19,24})
+    baseFG:=[3]int{230,230,230}
     currentBG:=baseBG
+    currentFG:=baseFG
     var out strings.Builder
     out.Grow(len(row)+width*9)
     x:=0
@@ -103,8 +105,9 @@ func bubblePaintRow(row string,pixels []bubblePixel,themeBG string,width int) st
         if x>=width {out.WriteString(ch);return}
         pixel:=pixels[x]
         if blank && pixel.glyph!=0 {
-            fmt.Fprintf(&out,"\x1b[38;2;%d;%d;%dm%c\x1b[39m",
-                pixel.color[0],pixel.color[1],pixel.color[2],pixel.glyph)
+            fmt.Fprintf(&out,"\x1b[38;2;%d;%d;%dm%c\x1b[38;2;%d;%d;%dm",
+                pixel.color[0],pixel.color[1],pixel.color[2],pixel.glyph,
+                currentFG[0],currentFG[1],currentFG[2])
         } else {
             out.WriteString(ch)
         }
@@ -114,7 +117,9 @@ func bubblePaintRow(row string,pixels []bubblePixel,themeBG string,width int) st
             end:=ansiSequenceEnd(row,i)
             if end<=i {end=i+1}
             if row[end-1]=='m' && strings.HasPrefix(row[i:end],"\x1b[") {
-                currentBG=interrogationANSIBackground(row[i+2:end-1],currentBG,baseBG)
+                params:=row[i+2:end-1]
+                currentBG=interrogationANSIBackground(params,currentBG,baseBG)
+                currentFG=interrogationANSIColor(params,currentFG,baseFG)
             }
             out.WriteString(row[i:end])
             i=end
