@@ -86,6 +86,14 @@ func TestAquariumSpeciesUseRequestedASCII(t *testing.T) {
         if !strings.Contains(lines[2],"--O-") {t.Fatal("muskie lost its eye")}
         if mouth && !strings.Contains(lines[1]," V") {t.Fatal("open muskie pose missing")}
         if !mouth && !strings.Contains(lines[1]," ^") {t.Fatal("closed muskie pose missing")}
+        f.direction=-1
+        mirrored:=aquariumFishArt(f)
+        if len(mirrored[0])!=len(mirrored[4]) || len(mirrored[1])!=len(mirrored[4]) {
+            t.Fatal("left-facing muskie fin rows weren't padded to body width")
+        }
+        if strings.TrimSpace(mirrored[4])=="" {
+            t.Fatal("left-facing muskie lost its lower tail fin")
+        }
     }
 }
 
