@@ -152,7 +152,7 @@ func TestBubbleOutlineIsHollowAndHasOneReflection(t *testing.T) {
     }
     for _,row:=range grid {
         for _,cell:=range row {
-            if cell.color==[3]int{244,250,255} && (cell.glyph<'\\u2801' || cell.glyph>'\\u28ff') {
+            if cell.color==[3]int{244,250,255} && (cell.glyph<'\u2801' || cell.glyph>'\u28ff') {
                 t.Fatalf("large-bubble highlight must be Braille, got %U",cell.glyph)
             }
         }
@@ -312,7 +312,7 @@ func TestBrailleReflectionIsOneContinuousArc(t *testing.T) {
         t.Fatalf("unexpected Braille highlight size: %d",len(pixels))
     }
     for _,p:=range pixels {
-        if p.glyph<'\\u2801' || p.glyph>'\\u28ff' {
+        if p.glyph<'\u2801' || p.glyph>'\u28ff' {
             t.Fatalf("non-Braille highlight %U",p.glyph)
         }
     }
