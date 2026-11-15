@@ -43,6 +43,8 @@ var handbookPages = []struct {
 		{"/static self [seconds]", "Displays intermittent CRT noise and subtle static locally."},
 		{"/glitch [seconds]", "PuTTY ANSI-coloured tears alternate with muted fake terminal errors that type themselves out and fade."},
 		{"/glitch self [seconds]", "Shows coloured glitches and animated hexadecimal error blocks locally."},
+		{"/interrogation [seconds]", "Dims older chat messages over five seconds, leaving the latest message in the spotlight; fades back when stopped."},
+		{"/interrogation self [seconds]", "Activates the five-second interrogation spotlight on your own screen."},
 		{"/fireworks [seconds]", "Launches colorful fireworks for the room. Default 10 seconds; varied-width bursts, rare giant 0 shells, and colorful radial, willow and crackle styles."},
 		{"/fireworks self [seconds]", "Runs the fireworks celebration only on your screen."},
 		{"/confetti [seconds]", "Drops vivid candy-colored paper and rare streamers. Stops emitting after 10 seconds by default; remaining pieces fall out."},
