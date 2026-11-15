@@ -11,22 +11,46 @@ var digitalGlitchColors = [...]string{
     "#00F5FF", "#FF38C8", "#A85CFF", "#40FF8A", "#FFDB4A", "#3D8FFF",
 }
 
-// Interference timing is made of long quiet cycles and short, uneven
-// disturbances. Sampling the same tick always produces the same result,
-// including after terminal resizing.
-func interferenceBurst(tick uint64, salt uint64, glitch bool) (uint64, bool) {
-    var cycle uint64 = 150 // 5-second static cycle
-    if glitch {cycle=240} // digital errors are less frequent
-    block:=tick/cycle
-    frame:=tick%cycle
-    seed:=chatFXHash(salt+block*0x9e3779b97f4a7c15)
-    start:=uint64(8+seed%70)
-    length:=uint64(4+(seed>>8)%9)
+// Major events use an irregular renewal schedule rather than fixed cycles.
+// The gap is measured AFTER each burst: CRT has a 3..1800 tick (0.1..60s)
+// range. Most gaps are short, but occasional long outages remain possible.
+// The schedule is a pure function of the simulation tick and client salt.
+func interferenceGap(seed uint64, glitch bool) uint64 {
+    r:=chatFXHash(seed+1)
     if glitch {
-        start=uint64(10+seed%115)
-        length=uint64(5+(seed>>8)%12)
+        if r%4==0 {return 20+(r>>12)%880}
+        return 10+(r>>12)%220
     }
-    return seed,frame>=start && frame<start+length
+    if r%4==0 {return 3+(r>>12)%1798}
+    return 3+(r>>12)%240
+}
+
+func interferenceBurst(tick uint64, salt uint64, glitch bool) (uint64,bool) {
+    next:=uint64(0)
+    for event:=uint64(0);event<100000;event++ {
+        seed:=chatFXHash(salt+(event+1)*0x9e3779b97f4a7c15)
+        next+=interferenceGap(seed,glitch)
+        length:=uint64(3+(seed>>24)%10)
+        if glitch {length=uint64(4+(seed>>24)%13)}
+        if tick<next {return seed,false}
+        if tick<next+length {return seed,true}
+        next+=length
+    }
+    return 0,false
+}
+
+// A soft triangular envelope allows quiet minor faults to appear and fade
+// rather than switching permanently between full noise and an empty screen.
+func interferencePulse(tick, salt, cycle uint64) float64 {
+    period:=tick/cycle
+    seed:=chatFXHash(salt+period*0xbf58476d1ce4e5b9)
+    offset:=uint64(2+seed%max(uint64(1),cycle/4))
+    length:=uint64(12+(seed>>12)%max(uint64(1),cycle/2))
+    pos:=tick%cycle
+    if pos<offset || pos>=offset+length {return 0}
+    progress:=float64(pos-offset)/float64(length)
+    if progress<0.5 {return progress*2}
+    return (1-progress)*2
 }
 
 func (m model) staticPositions(width,height int) []map[int]chatFXCell {
@@ -34,6 +58,27 @@ func (m model) staticPositions(width,height int) []map[int]chatFXCell {
     rows:=make([]map[int]chatFXCell,height)
     tick:=m.fxSimSteps
     seed,active:=interferenceBurst(tick,m.fxSalt^0x57a71c,false)
+    // Minor CRT instability continues between large interruptions: dim
+    // point noise fades softly, and occasional single-frame stars pop up.
+    // Only major bursts use the dense mixed-glyph screen static below.
+    minor:=interferencePulse(tick,m.fxSalt^0x527a71,72)
+    minorSeed:=chatFXHash(m.fxSalt+tick*0x517cc1b727220a95)
+    dots:=min(85,int(float64(width*height)*0.012*minor))
+    for i:=0;i<dots;i++ {
+        r:=chatFXHash(minorSeed+uint64(i+1)*0x9e3779b97f4a7c15)
+        x:=int(r%uint64(width))
+        y:=int((r>>21)%uint64(height))
+        if rows[y]==nil {rows[y]=make(map[int]chatFXCell)}
+        shade:=crtStaticColors[int((r>>45)%3)]
+        rows[y][x]=chatFXCell{glyph:'.',color:shade}
+    }
+    // Star-like noise is occasional and separate from the dot pulse.
+    if minorSeed%17==0 {
+        x:=int((minorSeed>>8)%uint64(width))
+        y:=int((minorSeed>>30)%uint64(height))
+        if rows[y]==nil {rows[y]=make(map[int]chatFXCell)}
+        rows[y][x]=chatFXCell{glyph:'*',color:"#C3CACF"}
+    }
     if !active {return rows}
     // A few interrupted scanlines plus random grain. Keep the count bounded
     // for large SSH sessions, and vary individual noise every 30 Hz tick.
@@ -70,6 +115,34 @@ func (m model) glitchPositions(width,height int) []map[int]chatFXCell {
     rows:=make([]map[int]chatFXCell,height)
     tick:=m.fxSimSteps
     seed,active:=interferenceBurst(tick,m.fxSalt^0x6117c4,true)
+    // Minor faults: short-lived chromatic ghosts and an occasional tiny
+    // tracking tear. Never a permanent full-screen colourful noise field.
+    minor:=interferencePulse(tick,m.fxSalt^0x91ac71,53)
+    microSeed:=chatFXHash(m.fxSalt+(tick/2)*0x517cc1b727220a95)
+    speckles:=min(20,int(1+float64(width*height)*0.003*minor))
+    if minor>0 {
+        for i:=0;i<speckles;i++ {
+            r:=chatFXHash(microSeed+uint64(i+1)*0x9e3779b97f4a7c15)
+            x:=int(r%uint64(width))
+            y:=int((r>>25)%uint64(height))
+            if rows[y]==nil {rows[y]=make(map[int]chatFXCell)}
+            rows[y][x]=chatFXCell{
+                glyph:[]rune{'_',':','|','.'}[int(r>>44)%4],
+                color:digitalGlitchColors[int((r>>48)%uint64(len(digitalGlitchColors)))],
+            }
+        }
+        if microSeed%3==0 {
+            y:=int((microSeed>>18)%uint64(height))
+            x:=int((microSeed>>31)%uint64(width))
+            span:=min(width-x,max(1,width/12))
+            color:=digitalGlitchColors[int((microSeed>>47)%uint64(len(digitalGlitchColors)))]
+            if rows[y]==nil {rows[y]=make(map[int]chatFXCell)}
+            for dx:=0;dx<span;dx++ {
+                if dx%4==3 {continue}
+                rows[y][x+dx]=chatFXCell{glyph:'_',color:color}
+            }
+        }
+    }
     if !active {return rows}
     // Horizontal torn strips and little rectangular data blocks. Stable
     // for two physics ticks to look like a damaged video frame, not rain.
