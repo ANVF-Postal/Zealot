@@ -364,3 +364,41 @@ func TestSnowIsGentleBoundedAndChangesIntensity(t *testing.T) {
 	}
 	if maxDensity-minDensity<0.05 { t.Fatal("snow intensity did not vary") }
 }
+
+
+func TestSnowCommandRoomAndSelf(t *testing.T) {
+	m:=newMessageInteractionTestModel(80)
+	m.room="lobby"
+	m.connected=true
+	var outgoing bytes.Buffer
+	m.client=&wireClient{enc:json.NewEncoder(&outgoing)}
+	if m.sendMessage("/SnOw self 20","") { t.Fatal("local snow became chat text") }
+	if m.currentChatFX().name!="snow" || outgoing.Len()!=0 {
+		t.Fatal("self snow must only affect this client")
+	}
+	m.chatFXCommand("/stopfx",[]string{"/stopfx","self"})
+	if m.sendMessage("/snow 15","") { t.Fatal("room snow became chat text") }
+	var packet Packet
+	if err:=json.NewDecoder(&outgoing).Decode(&packet);err!=nil { t.Fatal(err) }
+	if packet.Type!="fx_start" || packet.FX!="snow" || packet.FXSeconds!=15 {
+		t.Fatalf("invalid room snow request: %+v",packet)
+	}
+}
+
+func TestSnowLeavesMessageGlyphsUntouched(t *testing.T) {
+	m:=newMessageInteractionTestModel(90)
+	m.fxRoom=chatFXState{name:"snow"}
+	m.fxSalt=19
+	m.fxSimSteps=300
+	original:=[]string{
+		"  [17:10] Alice: Quiet snow tonight.           ",
+		strings.Repeat(" ",60),
+		strings.Repeat(" ",60),
+		strings.Repeat(" ",60),
+	}
+	rows:=append([]string(nil),original...)
+	m.renderChatFXBackground(rows,60)
+	if !strings.HasPrefix(stripANSISequences(rows[0]),strings.TrimRight(original[0]," ")) {
+		t.Fatal("snow obscured chat text")
+	}
+}
