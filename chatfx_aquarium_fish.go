@@ -411,7 +411,10 @@ func (m model) renderAquariumFish(width,height int,seconds float64,salt uint64,p
                     for i,glyph:=range line {
                         localY:=0
                         if i>kink {localY=bend}
-                        if i==kink {glyph='\\';if bend<0 {glyph='/'}}
+                        if i==kink || i==kink+1 {
+                            glyph='\\'
+                            if bend<0 {glyph='/'}
+                        }
                         put(fish.x+i,fish.y+localY,glyph,aquariumFishGlyphColor(fish,0,i,glyph))
                     }
                     continue
