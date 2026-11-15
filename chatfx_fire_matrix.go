@@ -37,15 +37,13 @@ func doomFireGlyph(level uint8, variation uint64) rune {
 	}
 }
 
-// doomFireHeight limits active fire area as the terminal grows wider.
-// A short buffer above the hottest part lets flame tips cool away naturally
-// rather than reaching the top edge as a flat, visibly cropped stripe.
+// The heat grid reaches the entire chat area. Visible flames still burn out
+// well below its top because each propagation step loses heat. An unbounded
+// simulation ceiling is cheaper than hiding a second, artificial cutoff:
+// a 320x45 viewport is only 14,400 single-byte heat cells.
 func doomFireHeight(width, viewportHeight int) int {
-	if width<1 || viewportHeight<1 {return 0}
-	factor:=0.51*math.Sqrt(90/float64(width))
-	if factor>0.68 {factor=0.68}
-	if factor<0.16 {factor=0.16}
-	return min(viewportHeight,max(4,int(math.Round(float64(viewportHeight)*factor))))
+	if width < 1 || viewportHeight < 1 { return 0 }
+	return viewportHeight
 }
 
 type doomFireState struct {
@@ -57,18 +55,30 @@ type doomFireState struct {
 
 func newDoomFireState(width, height int, salt uint64) *doomFireState {
 	if width<1 || height<1 {return nil}
-	// Budget both computation and terminal output by limiting flame
-	// height; wider terminals get shorter flames rather than more pixels.
+	// Allocate one byte per viewport cell; empty upper rows are skipped
+	// by the ANSI renderer, not simulated as independent particles.
 	flameHeight:=doomFireHeight(width,height)
 	state:=&doomFireState{
 		width:width,height:flameHeight,heat:make([]uint8,width*flameHeight),
 		scratch:make([]uint8,width),
 	}
-	for x:=0;x<width;x++ {state.heat[(flameHeight-1)*width+x]=36}
+	for x:=0;x<width;x++ {state.heat[(flameHeight-1)*width+x]=doomFireFuel(salt,0,x)}
 	for i:=uint64(0);i<uint64(flameHeight+16);i++ {
 		state.spread(salt,i)
 	}
 	return state
+}
+
+// Give neighboring columns similar but not identical fuel strengths.
+ // Long-lived patches make the flame front uneven without isolated sparks.
+func doomFireFuel(salt, index uint64, x int) uint8 {
+	patch:=x/5
+	phase:=index/12
+	a:=chatFXHash(salt+uint64(patch+1)*0x9e3779b97f4a7c15+phase*0xbf58476d1ce4e5b9)
+	b:=chatFXHash(salt+uint64(patch+2)*0x9e3779b97f4a7c15+phase*0xbf58476d1ce4e5b9)
+	blend:=float64(x%5)/5
+	strength:=(1-blend)*float64(a%15)+blend*float64(b%15)
+	return uint8(22+int(strength))
 }
 
 // fireWind returns a slowly reversing current. All cells in a frame share
@@ -92,13 +102,12 @@ func (f *doomFireState) spread(salt, index uint64) {
 			if source==0 {continue}
 			random:=chatFXHash(salt+index*0x9e3779b97f4a7c15+
 				uint64(y+1)*0xbf58476d1ce4e5b9+uint64(x+1)*0x94d049bb133111eb)
-			// Strong, contiguous fuel near the bottom. Heat thins and cools
-			// progressively as it rises within the width-aware flame height.
-			decay:=int(random%3)
-			if depth>3 {decay=1+int(random%4)}
-			if depth>7 {decay=2+int(random%5)}
-			// Keep tips sparse before they reach the simulation ceiling.
-			if depth>h-5 {decay+=3}
+			// Classic Doom-style cooling with a low, continuous loss.
+			// Varying fuel strength creates tall tongues beside shorter ones;
+			// no hard height threshold and no artificial ceiling cooling.
+			decay:=int(random%3) // 0..2 heat near the fuel
+			if depth>2 {decay=1+int(random%3)} // 1..3 higher up
+			if source<17 {decay++} // fine tips burn out instead of hanging in place
 			heat:=source-decay
 			if heat<=0 {continue}
 			// Carry heat downwind during a gust, but leave a slightly
@@ -110,7 +119,7 @@ func (f *doomFireState) spread(salt, index uint64) {
 			}
 			if uint8(heat)>f.scratch[destX] {f.scratch[destX]=uint8(heat)}
 			if destX!=x {
-				verticalHeat:=heat-2
+				verticalHeat:=heat-3
 				if verticalHeat>0 && uint8(verticalHeat)>f.scratch[x] {
 					f.scratch[x]=uint8(verticalHeat)
 				}
@@ -120,8 +129,7 @@ func (f *doomFireState) spread(salt, index uint64) {
 	}
 	base:=(h-1)*w
 	for x:=0;x<w;x++ {
-		r:=chatFXHash(salt+index*0x517cc1b727220a95+uint64(x)*0x9e3779b97f4a7c15)
-		f.heat[base+x]=uint8(34+r%3)
+		f.heat[base+x]=doomFireFuel(salt,index,x)
 	}
 }
 
@@ -144,17 +152,6 @@ func (m model) firePositions(width,height int) []map[int]chatFXCell {
 		state=newDoomFireState(width,height,m.fxSalt)
 	}
 	state.advance(m.fxSimSteps,m.fxSalt)
-	// Sparse wisps can rise above the compact heat simulation without
-	// enlarging its grid or turning the whole viewport into dense fire.
-	for _,tip:=range doomFireTips(state,height,m.fxSalt) {
-		if rows[tip.y]==nil {rows[tip.y]=make(map[int]chatFXCell)}
-		variation:=chatFXHash(m.fxSalt+uint64(tip.x+1)*0x9e3779b97f4a7c15+
-			uint64(tip.y+1)*0xbf58476d1ce4e5b9+state.step/36)
-		rows[tip.y][tip.x]=chatFXCell{
-			glyph:doomFireGlyph(tip.level,variation),
-			color:doomFirePalette[tip.level],
-		}
-	}
 	for y:=0;y<state.height;y++ {
 		row:=height-state.height+y
 		for x:=0;x<width;x++ {
