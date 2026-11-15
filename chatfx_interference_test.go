@@ -42,18 +42,90 @@ func TestInterferenceCommandsUseExistingRoomAndSelfProtocol(t *testing.T) {
     }
 }
 
-func TestInterferenceBurstsAreShortAndIntermittent(t *testing.T) {
+func TestMajorInterferenceHasIrregularLongAndShortGaps(t *testing.T) {
     for _,glitch:=range []bool{false,true} {
-        active,quiet,longest:=0,0,0
-        consecutive:=0
-        for tick:=uint64(0);tick<1200;tick++ {
+        shortest,longest:=uint64(2000),uint64(0)
+        distinct:=map[uint64]bool{}
+        active,quiet,run:=0,0,0
+        for event:=uint64(0);event<600;event++ {
+            seed:=chatFXHash(173+(event+1)*0x9e3779b97f4a7c15)
+            gap:=interferenceGap(seed,glitch)
+            if glitch {
+                if gap<10 || gap>899 {t.Fatalf("digital gap out of range: %d",gap)}
+            } else if gap<3 || gap>1800 {
+                t.Fatalf("CRT gap out of range: %d",gap)
+            }
+            shortest=min(shortest,gap)
+            longest=max(longest,gap)
+            distinct[gap]=true
+        }
+        if len(distinct)<60 || shortest>30 || longest<500 {
+            t.Fatalf("major timing too predictable: glitch=%v min=%d max=%d distinct=%d",
+                glitch,shortest,longest,len(distinct))
+        }
+        for tick:=uint64(0);tick<1800;tick++ {
             _,on:=interferenceBurst(tick,173,glitch)
-            if on {active++;consecutive++;if consecutive>longest {longest=consecutive}
-            } else {quiet++;consecutive=0}
+            if on {active++;run++;if run>16 {t.Fatal("major burst too long")}
+            } else {quiet++;run=0}
         }
-        if active<16 || quiet<active*4 || longest>17 {
-            t.Fatalf("unconvincing interference timing: glitch=%v active=%d quiet=%d longest=%d",glitch,active,quiet,longest)
+        if active==0 || quiet<active*4 {
+            t.Fatalf("major disturbances are too persistent: glitch=%v active=%d quiet=%d",glitch,active,quiet)
         }
+    }
+}
+
+func TestMinorCRTInterferenceHasDotFadesAndRareStars(t *testing.T) {
+    const width,height=100,30
+    m:=newMessageInteractionTestModel(width)
+    m.fxSalt=73
+    dots,stars,quiet:=0,0,0
+    varying:=map[int]bool{}
+    for tick:=uint64(0);tick<1800;tick++ {
+        m.fxSimSteps=tick
+        _,major:=interferenceBurst(tick,m.fxSalt^0x57a71c,false)
+        if major {continue}
+        rows:=m.staticPositions(width,height)
+        n:=0
+        for _,row:=range rows {
+            for _,cell:=range row {
+                switch cell.glyph {
+                case '.': dots++;n++
+                case '*': stars++;n++
+                default: t.Fatalf("minor static emitted major glyph %q",cell.glyph)
+                }
+            }
+        }
+        varying[n]=true
+        if n==0 {quiet++}
+    }
+    if dots<100 || stars==0 || quiet==0 || len(varying)<5 {
+        t.Fatalf("minor CRT effects not varied: dots=%d stars=%d quiet=%d densities=%d",
+            dots,stars,quiet,len(varying))
+    }
+}
+
+func TestMinorDigitalCorruptionIsColourfulAndSmall(t *testing.T) {
+    m:=newMessageInteractionTestModel(100)
+    m.fxSalt=73
+    colorSet:=map[string]bool{}
+    visible,quiet:=0,0
+    for tick:=uint64(0);tick<1800;tick++ {
+        m.fxSimSteps=tick
+        _,major:=interferenceBurst(tick,m.fxSalt^0x6117c4,true)
+        if major {continue}
+        cells:=0
+        for _,row:=range m.glitchPositions(100,30) {
+            for _,cell:=range row {
+                cells++
+                colorSet[cell.color]=true
+            }
+        }
+        if cells>0 {visible++} else {quiet++}
+        if cells>50 {t.Fatalf("minor digital fault too large: %d cells",cells)}
+    }
+    if visible==0 || quiet==0 || len(colorSet)<3 {
+        t.Fatalf("minor glitches insufficient: visible=%d quiet=%d colors=%d",
+            visible,quiet,len(colorSet))
     }
 }
 
