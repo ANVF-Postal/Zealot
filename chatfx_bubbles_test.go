@@ -243,7 +243,9 @@ func TestBubbleCollisionAndWallPushLocalRim(t *testing.T) {
     }
     wall:=newBubbleState(100,35,4)
     wall.steps=2
-    wall.bubbles=[]bubbleParticle{{x:6,y:18,vx:-5,radius:3,lifetime:100}}
+    // Begin at the actual soft-body wall boundary (0.78 * 2 * radius).
+    // At x=6, one 30 Hz step of vx=-5 does not reach that boundary.
+    wall.bubbles=[]bubbleParticle{{x:4.68,y:18,vx:-5,radius:3,lifetime:100}}
     wall.tick()
     if wall.bubbles[0].rimSpeed[12]==0 {
         t.Fatal("wall impact didn't deform the left edge of the bubble")
