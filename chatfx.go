@@ -159,7 +159,7 @@ func (m *model) advanceChatFXClock(now time.Time) {
 	delta := now.Sub(m.fxLastTick)
 	m.fxLastTick = now
 	if delta < 0 { delta = 0 }
-	if delta > 250*time.Millisecond { delta = 250*time.Millisecond }
+	if delta > 2*time.Second { delta = 2*time.Second }
 	m.fxSimAccumulator += delta
 	steps := m.fxSimAccumulator / chatFXSimulationStep
 	m.fxSimSteps += uint64(steps)
