@@ -112,10 +112,75 @@ func TestBubblePaintingPreservesChatAndANSI(t *testing.T) {
     if !strings.Contains(painted,"\x1b[38;2;240;240;240m") {
         t.Fatal("bubble painting removed foreground ANSI")
     }
-    if !strings.Contains(painted,"\x1b[48;2;") {t.Fatal("bubble had no coloured background")}
     if len(stripANSISequences(painted))!=80 {t.Fatal("bubble row did not fill chat width")}
     empty:=bubblePaintRow(strings.Repeat(" ",80),grid[7],"#111318",80)
-    if stripANSISequences(empty)!=strings.Repeat(" ",80) {t.Fatal("bubble added visible glyphs")}
+    visible:=stripANSISequences(empty)
+    if !strings.ContainsAny(visible,"/\\|-o") {
+        t.Fatal("hollow bubble outline wasn't drawn on empty background")
+    }
+    if !strings.Contains(empty,"\x1b[38;2;") {
+        t.Fatal("outline had no coloured foreground")
+    }
+}
+
+func TestBubbleOutlineIsHollowAndHasReflection(t *testing.T) {
+    bubble:=bubbleParticle{x:30,y:10,radius:5,color:[3]int{70,180,255},age:1,lifetime:30}
+    if glyph:=bubbleGlyphAt(bubble,30,10);glyph!=0 {
+        t.Fatalf("bubble centre should be empty, got %q",glyph)
+    }
+    outline,reflection:=0,0
+    for y:=4;y<16;y++ {
+        for x:=17;x<43;x++ {
+            glyph:=bubbleGlyphAt(bubble,x,y)
+            if glyph!=0 {outline++}
+            if glyph=='o' {reflection++}
+        }
+    }
+    if outline<20 || outline>140 {t.Fatalf("unexpected outline density: %d",outline)}
+    if reflection==0 {t.Fatal("bubble has no small reflected glint")}
+}
+
+func TestBubbleLaunchesFromBottomRightAndMovesUpLeft(t *testing.T) {
+    s:=newBubbleState(160,48,51)
+    s.advance(1,160,48)
+    if len(s.bubbles)!=1 {t.Fatal("first bubble never spawned")}
+    b:=s.bubbles[0]
+    if b.vx>=0 || b.vy>=0 {t.Fatalf("bubble wasn't blown up-left: %+v",b)}
+    if b.x<float64(s.width)*0.62 || b.y<float64(s.height)*0.58 {
+        t.Fatalf("bubble didn't enter from lower-right: %+v",b)
+    }
+}
+
+func TestBubblePopIsInstantWithASCIIFlash(t *testing.T) {
+    s:=newBubbleState(90,30,8)
+    s.steps=2
+    s.bubbles=[]bubbleParticle{{
+        x:45,y:15,radius:4,age:9.99,lifetime:10,color:[3]int{120,240,140},
+    }}
+    s.tick()
+    if len(s.bubbles)!=0 {t.Fatal("expired bubble lingered or shrank instead of popping")}
+    if len(s.pops)!=1 {t.Fatal("pop did not create an ASCII burst")}
+    grid:=s.raster(90,30)
+    line:=bubblePaintRow(strings.Repeat(" ",90),grid[15],"#111318",90)
+    if !strings.Contains(stripANSISequences(line),"*pop*") {
+        t.Fatal("bubble pop burst has no *pop* lettering")
+    }
+    for i:=0;i<25;i++ {s.tick()}
+    if len(s.pops)!=0 {t.Fatal("pop burst did not disappear promptly")}
+}
+
+func TestBubbleRenderingProtectsWordsAndColours(t *testing.T) {
+    s:=newBubbleState(90,30,4)
+    s.bubbles=[]bubbleParticle{{x:22,y:10,radius:5,color:[3]int{255,50,90},age:1,lifetime:30}}
+    row:="\x1b[38;2;60;200;100mMessage with spaces"
+    grid:=s.raster(90,30)
+    rendered:=bubblePaintRow(row,grid[10],"#111318",90)
+    if !strings.HasPrefix(stripANSISequences(rendered),"Message with spaces") {
+        t.Fatalf("bubble altered text: %q",stripANSISequences(rendered))
+    }
+    if !strings.Contains(rendered,"\x1b[38;2;60;200;100m") {
+        t.Fatal("bubble drawing lost chat foreground style")
+    }
 }
 
 func TestBubblesCommandScopesAndStop(t *testing.T) {
