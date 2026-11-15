@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -14,10 +15,17 @@ import (
 // requests cross the Unix socket; each client renders its own particles.
 // Future primary effects replace rain; secondary overlays will have a separate
 // slot so two competing weather systems never stack.
-const chatFXFrameTime = 100 * time.Millisecond
-const chatFXMaxSeconds = 300
+const (
+	chatFXDefaultFPS = 15
+	chatFXMaxFPS = 60
+	chatFXSimulationStep = time.Second / 30 // fixed 30 Hz, regardless of render FPS
+	chatFXMaxSeconds = 300
+)
 
-type chatFXTickMsg struct{ generation int }
+type chatFXTickMsg struct {
+	generation int
+	at time.Time
+}
 
 type chatFXState struct {
 	name string
@@ -33,6 +41,18 @@ func chatFXDuration(args []string) (int, bool) {
 
 func (m *model) chatFXCommand(command string, fields []string) {
 	switch command {
+	case "/fxfps":
+		if len(fields) != 2 {
+			m.chatFXNotice("Usage: /fxfps 1-60")
+			return
+		}
+		fps, err := strconv.Atoi(fields[1])
+		if err != nil || fps < 1 || fps > chatFXMaxFPS {
+			m.chatFXNotice("Usage: /fxfps 1-60")
+			return
+		}
+		m.fxRenderFPS = fps
+		m.chatFXNotice(fmt.Sprintf("ChatFX rendering set to %d FPS (simulation stays at 30 Hz).", fps))
 	case "/disablefx":
 		if len(fields) != 1 { m.chatFXNotice("Usage: /disablefx"); return }
 		m.fxDisabled = !m.fxDisabled
@@ -106,15 +126,44 @@ func (m model) chatFXVisible() bool {
 	return !m.splashOpen && !m.usersOpen && !m.themesOpen && !m.commandsOpen && m.longReader == nil
 }
 
+// chatFXFrameInterval controls only how often a new frame is presented.
+// The physics below always advances in 1/30-second steps.
+func (m model) chatFXFrameInterval() time.Duration {
+	fps := m.fxRenderFPS
+	if fps < 1 || fps > chatFXMaxFPS { fps = chatFXDefaultFPS }
+	return time.Second / time.Duration(fps)
+}
+
 func (m *model) ensureChatFXTick() tea.Cmd {
 	if m.fxTickPending || m.currentChatFX().name == "" { return nil }
 	m.fxTickPending = true
 	m.fxTickGeneration++
 	generation := m.fxTickGeneration
-	interval := chatFXFrameTime
-	// Keep the effect alive while a panel is open, but poll far less often.
+	interval := m.chatFXFrameInterval()
+	// Alternate panels never need full-rate ChatFX repaints.
 	if !m.chatFXVisible() { interval = time.Second }
-	return tea.Tick(interval, func(time.Time) tea.Msg { return chatFXTickMsg{generation:generation} })
+	return tea.Tick(interval, func(t time.Time) tea.Msg {
+		return chatFXTickMsg{generation: generation, at: t}
+	})
+}
+
+// advanceChatFXClock has no dependency on the presentation frame rate.
+// The accumulator advances a fixed-step simulation clock, with a remainder
+// used for smooth interpolation on faster displays.
+func (m *model) advanceChatFXClock(now time.Time) {
+	if now.IsZero() { now = time.Now() }
+	if m.fxLastTick.IsZero() {
+		m.fxLastTick = now
+		return
+	}
+	delta := now.Sub(m.fxLastTick)
+	m.fxLastTick = now
+	if delta < 0 { delta = 0 }
+	if delta > 250*time.Millisecond { delta = 250*time.Millisecond }
+	m.fxSimAccumulator += delta
+	steps := m.fxSimAccumulator / chatFXSimulationStep
+	m.fxSimSteps += uint64(steps)
+	m.fxSimAccumulator -= steps * chatFXSimulationStep
 }
 
 func (m *model) advanceChatFX(msg chatFXTickMsg) tea.Cmd {
@@ -124,37 +173,73 @@ func (m *model) advanceChatFX(msg chatFXTickMsg) tea.Cmd {
 		m.fxLocalOverride = false
 		m.fxLocal = chatFXState{}
 	}
-	if m.currentChatFX().name == "" { return nil }
-	if m.chatFXVisible() { m.fxFrame++ }
+	if m.currentChatFX().name == "" {
+		m.fxLastTick = time.Time{}
+		return nil
+	}
+	if m.chatFXVisible() {
+		m.advanceChatFXClock(msg.at)
+		m.fxFrame++
+	} else {
+		// Don't simulate unseen FX or catch up a long panel pause.
+		m.fxLastTick = time.Time{}
+	}
 	return m.ensureChatFXTick()
 }
 
-// renderChatFXBackground paints only whitespace cells of the chat viewport.
-// Never modify the scrollbar, chat borders, typing row or any input hitboxes.
+// chatFXHash produces a reproducible per-client particle distribution without
+// global random state or viewport-dependent initialization.
+func chatFXHash(x uint64) uint64 {
+	x += 0x9e3779b97f4a7c15
+	x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9
+	x = (x ^ (x >> 27)) * 0x94d049bb133111eb
+	return x ^ (x >> 31)
+}
+
+func chatFXUnit(x uint64) float64 {
+	return float64(chatFXHash(x)>>11) / float64(uint64(1)<<53)
+}
+
+// rainPositions recomputes its distribution for the *current* visible width
+// and height on every render, including the very first one. Resizing is never
+// required to initialize or extend the effect to the viewport boundaries.
+func (m model) rainPositions(width, height int) []map[int]rune {
+	if width < 1 || height < 1 { return nil }
+	positions := make([]map[int]rune, height)
+	count := min(320, max(12, width*height/18))
+	simTime := (float64(m.fxSimSteps) +
+		float64(m.fxSimAccumulator)/float64(chatFXSimulationStep)) / 30.0
+	for i:=0; i<count; i++ {
+		seed := uint64(i+1)*0x9e3779b97f4a7c15 + m.fxSalt
+		x0 := chatFXUnit(seed)
+		y0 := chatFXUnit(seed+1)
+		speed := 7 + 9*chatFXUnit(seed+2)
+		drift := 0.4 + 0.7*chatFXUnit(seed+3)
+		x := int(math.Floor(math.Mod(x0*float64(width)+simTime*drift,float64(width))))
+		y := int(math.Floor(math.Mod(y0*float64(height)+simTime*speed,float64(height))))
+		if positions[y] == nil { positions[y] = make(map[int]rune) }
+		glyph := '·'
+		if chatFXHash(seed+4)%3 == 0 { glyph='│' }
+		positions[y][x] = glyph
+	}
+	return positions
+}
+
+// renderChatFXBackground paints the whole available chat *background* but only
+// replaces blank cells. Text, buttons, the scrollbar, borders, and the typing
+// row are left entirely to the existing renderer.
 func (m model) renderChatFXBackground(rows []string, width int) {
 	if m.currentChatFX().name != "rain" || width < 2 || len(rows) == 0 { return }
+	positions := m.rainPositions(width, len(rows))
 	color := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#689CC4")).
 		Background(lipgloss.Color(m.cfg.Theme.Background))
 	base := lipgloss.NewStyle().Background(lipgloss.Color(m.cfg.Theme.Background))
-	frame := int(m.fxFrame)
-	salt := int(m.fxSalt % 997)
-	// Generate client-local particle positions once per frame, not for
-	// every cell. A small fixed maximum keeps render cost bounded.
-	positions := make([]map[int]rune, len(rows))
-	for particle:=0; particle<min(120,max(5,width/6)); particle++ {
-		x := (particle*47+salt+particle*particle*7)%width
-		y := (particle*19+salt/7+frame*(1+particle%3))%len(rows)
-		if positions[y] == nil { positions[y] = make(map[int]rune) }
-		glyph := '·'
-		if particleGlyph(y,x,frame,salt) { glyph='│' }
-		positions[y][x]=glyph
-	}
 	for row, original := range rows {
 		if len(positions[row]) == 0 { continue }
 		plain := stripANSISequences(original)
-		// The overlay starts strictly after the last non-whitespace cell,
-		// so message text, replies, icons, and click targets stay untouched.
+		// Preserve the complete styled message prefix; only the unused
+		// whitespace to its right may be decorated.
 		prefix := lipgloss.Width(strings.TrimRight(plain, " "))
 		if prefix >= width { continue }
 		var tail strings.Builder
@@ -176,10 +261,6 @@ func (m model) renderChatFXBackground(rows []string, width int) {
 		if prefix > 0 { head=truncateANSI(original, prefix) }
 		rows[row]=head+tail.String()
 	}
-}
-
-func particleGlyph(row, col, frame, salt int) bool {
-	return (row*13+col*7+frame+salt)%4 == 0
 }
 
 func formatChatFXStart(name string, seconds int) string {
