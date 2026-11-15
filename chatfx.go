@@ -120,6 +120,11 @@ func (m *model) receiveChatFX(packet Packet) {
 	switch packet.Type {
 	case "fx_state":
 		previous := m.currentChatFX()
+		// Preserve the visible room effect as outgoing particles before
+		// replacing/stopping its authoritative state.
+		if previous.name != "" && !m.fxLocalOverride {
+			m.retireChatFX(previous)
+		}
 		if (packet.FX == "rain" || packet.FX == "snow" || packet.FX == "confetti" || packet.FX == "fireworks") &&
 			(packet.FXUntil.IsZero() || packet.FXUntil.After(time.Now())) {
 			m.fxRoom = chatFXState{name:packet.FX, started:time.Now(), until:packet.FXUntil}
