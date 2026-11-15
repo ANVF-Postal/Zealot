@@ -327,7 +327,7 @@ func (s *server) handle(conn net.Conn) {
 
 		switch packet.Type {
 		case "fx_start":
-			if (packet.FX != "rain" && packet.FX != "snow" && packet.FX != "blizzard" && packet.FX != "embers" && packet.FX != "fire" && packet.FX != "matrix" && packet.FX != "confetti" && packet.FX != "fireworks" && packet.FX != "static" && packet.FX != "glitch" && packet.FX != "interrogation" && packet.FX != "bubbles") ||
+			if (packet.FX != "rain" && packet.FX != "snow" && packet.FX != "blizzard" && packet.FX != "embers" && packet.FX != "fire" && packet.FX != "matrix" && packet.FX != "confetti" && packet.FX != "fireworks" && packet.FX != "static" && packet.FX != "glitch" && packet.FX != "interrogation" && packet.FX != "bubbles" && packet.FX != "aquarium") ||
 				packet.FXSeconds < 0 || packet.FXSeconds > chatFXMaxSeconds {
 				client.send(Packet{Type:"system", Room:roomName, Text:"Invalid ChatFX request.", Time:time.Now().UTC()})
 				continue
