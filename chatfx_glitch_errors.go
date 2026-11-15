@@ -36,7 +36,7 @@ func glitchTextEvent(tick, salt uint64) (glitchErrorEvent,bool) {
     for i:=uint64(0);i<100000;i++ {
         seed:=chatFXHash(salt^0x7e827aa2+(i+1)*0x9e3779b97f4a7c15)
         next+=270+(seed>>8)%720
-        duration:=uint64(140+(seed>>25)%125) // 4.7..8.8 seconds
+        duration:=glitchErrorDuration(seed) // writing, brief hold, fade
         if tick<next {return glitchErrorEvent{},false}
         if tick<next+duration {
             return glitchErrorEvent{start:next,duration:duration,seed:seed},true
@@ -55,13 +55,23 @@ func glitchDistortionTick(tick, salt uint64) uint64 {
         seed:=chatFXHash(salt^0x7e827aa2+(i+1)*0x9e3779b97f4a7c15)
         next+=270+(seed>>8)%720
         if tick<=next {break}
-        duration:=uint64(140+(seed>>25)%125)
+        duration:=glitchErrorDuration(seed)
         elapsed:=min(duration,tick-next)
         paused+=elapsed
         if tick<next+duration {break}
         next+=duration
     }
     return tick-paused
+}
+
+func glitchErrorDuration(seed uint64) uint64 {
+    lines:=2+int((seed>>43)%5)
+    speed:=uint64(1+(seed>>51)%2)
+    writing:=uint64(0)
+    for i:=0;i<lines;i++ {
+        writing+=uint64(len(glitchErrorLine(seed,i)))*speed+7
+    }
+    return writing+45+32 // all lines complete, linger, then fade
 }
 
 func glitchErrorLine(seed uint64, line int) string {
@@ -118,7 +128,7 @@ func (m model) glitchErrorPositions(width,height int) ([]map[int]chatFXCell,bool
     x0:=0
     if width>32 {x0=2+int((event.seed>>9)%uint64(max(1,width-30)))}
     y0:=int((event.seed>>17)%uint64(max(1,height-lines+1)))
-    speed:=uint64(1+(event.seed>>51)%3) // 10-30 chars per second
+    speed:=uint64(1+(event.seed>>51)%2) // 15-30 chars per second
     cursor:='▌'
     // A short fade at the end is reserved so no other glitches appear while
     // terminal error text is still disappearing.
@@ -152,7 +162,7 @@ func (m model) glitchErrorPositions(width,height int) ([]map[int]chatFXCell,bool
         }
         // Active line shows a blinking terminal cursor; it stops when the
         // line finishes or the block enters its fade-out.
-        if count<len(message) && age<event.duration-fadeTicks && (m.fxSimSteps/7)%2==0 {
+        if count<len(message) && age<event.duration-fadeTicks && (age/7)%2==0 {
             put(x0+count,cursor)
         }
     }
