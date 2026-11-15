@@ -88,19 +88,20 @@ func (s *bubbleState) raster(width,height int) [][]bubblePixel {
                 if glyph!=0 {paint(x,y,glyph,bubbleOutlineColor(b,glyph))}
             }
         }
-        // Place exactly ONE reflection cluster, attached to the bubble's
-        // upper-left local surface. Large bubbles get a single curved
-        // Braille highlight rather than multiple isolated 'o' glyphs.
-        hx:=int(math.Round(b.x-0.92*b.rimRadius(-2.35)))
-        hy:=int(math.Round(b.y-0.52*b.rimRadius(-2.35)))
+        // A single Braille-only crescent, tracked relative to the same
+        // deformed surface as the outline. Only truly tiny bubbles use 'o'.
+        // Paint the reflection as one connected sub-cell curve so movement
+        // cannot temporarily split it into multiple eye-like glints.
         white:=[3]int{244,250,255}
-        if b.radius<3.8 {
+        if b.radius<2.75 {
+            theta:=-2.35
+            hx:=int(math.Floor(b.x+2*0.68*b.rimRadius(theta)*math.Cos(theta)))
+            hy:=int(math.Floor(b.y+0.68*b.rimRadius(theta)*math.Sin(theta)))
             paint(hx,hy,'o',white)
         } else {
-            // A shallow, contiguous crescent; no duplicated eye highlights.
-            paint(hx,hy,'⠐',white)
-            paint(hx+1,hy,'⠒',white)
-            if b.radius>=5.3 {paint(hx+2,hy+1,'⠂',white)}
+            for _,highlight:=range bubbleReflectionPixels(b) {
+                paint(highlight.x,highlight.y,highlight.glyph,white)
+            }
         }
     }
     // Short-lived pop fragments fly outward with independent velocities.
@@ -116,6 +117,37 @@ func (s *bubbleState) raster(width,height int) [][]bubblePixel {
         }
     }
     return grid
+}
+
+// A high-resolution specular crescent sampled in the 2x4 Braille grid.
+// Its points are a single arc, rather than separate o-shaped dots.
+type bubbleReflectionPixel struct {
+    x,y int
+    glyph rune
+}
+
+func bubbleReflectionPixels(b bubbleParticle) []bubbleReflectionPixel {
+    type keyed struct {x,y int}
+    masks:=make(map[keyed]uint8,6)
+    // The arc hugs the upper-left of the bubble and scales with radius.
+    // Use the same radial spring field so it follows local deformation.
+    for step:=0;step<=26;step++ {
+        theta:=-2.55+0.52*float64(step)/26
+        radius:=b.rimRadius(theta)*0.77
+        px:=b.x+2*radius*math.Cos(theta)
+        py:=b.y+radius*math.Sin(theta)
+        x,y:=int(math.Floor(px)),int(math.Floor(py))
+        subX:=max(0,min(1,int(math.Floor((px-float64(x))*2))))
+        subY:=max(0,min(3,int(math.Floor((py-float64(y))*4))))
+        masks[keyed{x,y}]|=bubbleBrailleDots[subY][subX]
+    }
+    pixels:=make([]bubbleReflectionPixel,0,len(masks))
+    for pos,mask:=range masks {
+        pixels=append(pixels,bubbleReflectionPixel{
+            x:pos.x,y:pos.y,glyph:rune(0x2800)+rune(mask),
+        })
+    }
+    return pixels
 }
 
 func bubblePaintRow(row string,pixels []bubblePixel,themeBG string,width int) string {
