@@ -49,7 +49,7 @@ var handbookPages = []struct {
 		{"/bubbles self [seconds]", "Blows springy coloured bubbles in from the lower-right with curved reflections and animated pop fragments."},
 		{"/aquarium [seconds]", "Individually coloured minnows, visiting larger fish, bottom-dwelling walleye, a speedy snake-like eel and rare muskie; fish roam, hunt and turn among swaying kelp and bubbles."},
 		{"/aquarium self [seconds]", "Runs the aquarium only on your terminal, without covering chat messages."},
-		{"/terminal [seconds]", "Types incoming messages letter by letter with a blinking solid/hollow square cursor that stays on the latest message. Pauses after . ? !; stacks with other ChatFX."},
+		{"/terminal [seconds]", "Types incoming messages letter by letter with a blinking main-text-coloured block cursor (█) that stays on the latest message. Pauses after . ? !; stacks with other ChatFX."},
 		{"/terminal self [seconds]", "Types received messages on your screen only; combine it with rain, aquarium, or any other backdrop."},
 		{"/terminal off", "Stops the room's terminal typewriter layer without stopping its background effect."},
 		{"/terminal self off", "Stops your local terminal typing layer."},
