@@ -200,9 +200,22 @@ func (m model) chatFXFrameInterval() time.Duration {
 	fps := m.fxRenderFPS
 	if fps < 1 || fps > chatFXMaxFPS {
 		fps = chatFXDefaultFPS
-		// Fire benefits from interpolated frames even though its heat field
-		// only propagates at 7.5 Hz. Leave all other effects at 15 FPS.
-		if m.currentChatFX().name == "fire" || len(m.terminalReveals)>0 { fps = 30 }
+		// Fire benefits from interpolation; active typing benefits from
+		// smooth, single-character updates.
+		if m.currentChatFX().name == "fire" { fps = 30 }
+		if m.terminalIsTyping(time.Now()) { fps = max(fps,30) }
+	}
+	if len(m.terminalReveals)>0 && m.terminalEnabled() {
+		if m.terminalIsTyping(time.Now()) {
+			fps=max(fps,30)
+		} else if m.currentChatFX().name=="" && len(m.fxFading)==0 &&
+			m.fxInterrogationAmount<=0 {
+			// Just a blinking cursor: two frames/s, not a permanent
+			// 30 FPS redraw of an otherwise still chat window.
+			fps=2
+		} else {
+			fps=max(fps,2)
+		}
 	}
 	return time.Second / time.Duration(fps)
 }
