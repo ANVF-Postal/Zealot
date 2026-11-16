@@ -25,6 +25,70 @@ func TestTerminalPeriodPause(t *testing.T) {
     }
 }
 
+func TestTerminalQuestionAndExclamationPause(t *testing.T) {
+    for _,punctuation:=range []rune{'.','?','!'} {
+        text:="Go"+string(punctuation)+" Next"
+        prefix:=3*terminalLetterDelay
+        if got:=terminalRevealCount(text,prefix);got!=3 {
+            t.Fatalf("%q not printed at correct time: %d",punctuation,got)
+        }
+        if got:=terminalRevealCount(text,prefix+terminalPeriodPause-time.Millisecond);got!=3 {
+            t.Fatalf("%q did not hold cursor for 250 ms: %d",punctuation,got)
+        }
+        if got:=terminalRevealCount(text,prefix+terminalPeriodPause+terminalLetterDelay);got!=4 {
+            t.Fatalf("%q did not resume typing: %d",punctuation,got)
+        }
+        want:=time.Duration(len([]rune(text)))*terminalLetterDelay+terminalPeriodPause
+        if got:=terminalTextDuration(text);got!=want {
+            t.Fatalf("%q total typing time %v, expected %v",punctuation,got,want)
+        }
+    }
+}
+
+func TestTerminalCursorBlinksBetweenSolidAndHollowSquares(t *testing.T) {
+    now:=time.Unix(0,0)
+    if got:=terminalCursorGlyph(now);got!='█' {t.Fatalf("first cursor phase: %q",got)}
+    if got:=terminalCursorGlyph(now.Add(terminalCursorBlink));got!='□' {
+        t.Fatalf("hollow cursor phase: %q",got)
+    }
+    if got:=terminalCursorGlyph(now.Add(2*terminalCursorBlink));got!='█' {
+        t.Fatalf("cursor failed to cycle back: %q",got)
+    }
+}
+
+func TestTerminalCursorStaysOnLatestCompletedMessage(t *testing.T) {
+    m:=newMessageInteractionTestModel(85)
+    m.terminalLocalUntil=terminalForever
+    for _,body:=range []string{"First message?","Second message!"} {
+        p:=Packet{Type:"message",ID:body,User:User{Name:"Alice",Color:"#92C6D7"},
+            Text:body,Time:time.Now()}
+        m.appendMessage(p)
+        m.terminalTrackMessage(p)
+    }
+    old:=time.Now().Add(-10*time.Second)
+    for key,reveal:=range m.terminalReveals {
+        reveal.started=old
+        m.terminalReveals[key]=reveal
+    }
+    m.terminalAdvance(time.Now())
+    if len(m.terminalReveals)!=1 || m.terminalLatestMessage()!=1 {
+        t.Fatalf("only newest message should retain cursor: %+v",m.terminalReveals)
+    }
+    rows:=append([]string(nil),m.renderMessageLines()...)
+    m.renderTerminalRows(rows,0)
+    text:=strings.Join(rows,"\n")
+    if strings.Count(text,"\x1b[7m")!=1 {
+        t.Fatalf("expected exactly one cursor on last message: %q",text)
+    }
+    if !strings.Contains(stripANSISequences(text),"First message?") ||
+        !strings.Contains(stripANSISequences(text),"Second message!") {
+        t.Fatal("completed text was changed by persistent cursor")
+    }
+    m.terminalLocalUntil=time.Time{}
+    m.terminalAdvance(time.Now())
+    if len(m.terminalReveals)!=0 {t.Fatal("cursor should disappear after terminal stops")}
+}
+
 func TestTerminalRowsReserveWrappedMessageAndKeepColours(t *testing.T) {
     m:=newMessageInteractionTestModel(85)
     m.width=85
@@ -71,8 +135,13 @@ func TestTerminalRowsReserveWrappedMessageAndKeepColours(t *testing.T) {
     m.terminalReveals[0]=state
     complete:=append([]string(nil),full...)
     m.renderTerminalRows(complete,0)
-    for i:=range complete {
-        if complete[i]!=full[i] {t.Fatal("completed message wasn't displayed unchanged")}
+    if !strings.Contains(strings.Join(complete,"\n"),"\x1b[7m") {
+        t.Fatal("newest completed message must retain its square cursor")
+    }
+    if len(complete)!=len(full) {t.Fatal("completed cursor shifted reserved rows")}
+    m.terminalAdvance(time.Now())
+    if len(m.terminalReveals)!=1 {
+        t.Fatal("finished newest message lost its persistent blinking cursor")
     }
 }
 
@@ -205,7 +274,7 @@ func TestTerminalMaskPreservesWidthAndUsernames(t *testing.T) {
     body:=messageBodyRange{Start:15,End:26}
     remaining:=0
     placed:=false
-    result:=terminalMaskRow(line,body,&remaining,&placed)
+    result:=terminalMaskRow(line,body,&remaining,&placed,'█')
     plain:=stripANSISequences(result)
     if !strings.Contains(plain,"Alice:") {t.Fatal("terminal erased the author")}
     if strings.Contains(plain,"world") {t.Fatal("terminal revealed unreached text")}
