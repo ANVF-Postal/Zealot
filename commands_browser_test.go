@@ -114,8 +114,7 @@ func TestHandbookVisualIntroductionAndCompactNavigation(t *testing.T) {
                 lines=append(lines,stripANSISequences(row))
             }
             return lines
-        }()," ");!strings.Contains(intro,"These are commands to activate visual effects") ||
-            !strings.Contains(intro,"self") {
+        }()," ");!strings.Contains(strings.Join(strings.Fields(intro)," "),handbookVisualIntro) {
             t.Fatalf("width %d: missing VISUAL intro: %q",width,intro)
         }
         rendered:=m.renderCommandsBrowser()
