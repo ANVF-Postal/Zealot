@@ -45,11 +45,11 @@ func TestTerminalQuestionAndExclamationPause(t *testing.T) {
     }
 }
 
-func TestTerminalCursorBlinksBetweenSolidAndHollowSquares(t *testing.T) {
+func TestTerminalCursorBlinksSolidBlockOnAndOff(t *testing.T) {
     now:=time.Unix(0,0)
     if got:=terminalCursorGlyph(now);got!='█' {t.Fatalf("first cursor phase: %q",got)}
-    if got:=terminalCursorGlyph(now.Add(terminalCursorBlink));got!='□' {
-        t.Fatalf("hollow cursor phase: %q",got)
+    if got:=terminalCursorGlyph(now.Add(terminalCursorBlink));got!=' ' {
+        t.Fatalf("invisible cursor phase: %q",got)
     }
     if got:=terminalCursorGlyph(now.Add(2*terminalCursorBlink));got!='█' {
         t.Fatalf("cursor failed to cycle back: %q",got)
@@ -81,6 +81,31 @@ func TestTerminalIdleCursorKeepsTickingWithoutFullFrameRate(t *testing.T) {
     }
 }
 
+func TestTerminalCursorUsesMainTextColourAndInvisiblePhase(t *testing.T) {
+    for _,tc:=range []struct{colour,want string}{
+        {"#34FF75","\x1b[38;2;52;255;117m█\x1b[39m"},
+        {"#C0C0C0","\x1b[38;2;192;192;192m█\x1b[39m"},
+        {"#FFAA00","\x1b[38;2;255;170;0m█\x1b[39m"},
+    } {
+        if got:=terminalCursorPaint('█',tc.colour);got!=tc.want {
+            t.Fatalf("cursor for %s = %q, expected %q",tc.colour,got,tc.want)
+        }
+        if got:=terminalCursorPaint(' ',tc.colour);got!=" " {
+            t.Fatalf("invisible phase for %s must be a blank: %q",tc.colour,got)
+        }
+    }
+    line:="\x1b[48;2;10;20;30m\x1b[38;2;99;80;70mHello       \x1b[0m"
+    done:=terminalCursorAtEnd(line,5,'█',"#34FF75")
+    if !strings.Contains(done,"\x1b[38;2;52;255;117m█\x1b[39m") {
+        t.Fatal("completed message cursor didn't use main text colour")
+    }
+    if !strings.Contains(done,"\x1b[48;2;10;20;30m") || strings.Contains(done,"\x1b[7m") {
+        t.Fatal("completed cursor changed the background")
+    }
+    if got:=terminalCursorAtEnd(line,5,' ',"#34FF75");strings.Contains(got,"█") ||
+        strings.Contains(got,"□") {t.Fatal("invisible phase must hide block")}
+}
+
 func TestTerminalCursorStaysOnLatestCompletedMessage(t *testing.T) {
     m:=newMessageInteractionTestModel(85)
     m.terminalLocalUntil=terminalForever
@@ -102,7 +127,7 @@ func TestTerminalCursorStaysOnLatestCompletedMessage(t *testing.T) {
     rows:=append([]string(nil),m.renderMessageLines()...)
     m.renderTerminalRows(rows,0)
     text:=strings.Join(rows,"\n")
-    if strings.Count(text,"\x1b[7m")!=1 {
+    if strings.Count(text,"\x1b[38;2;")<1 {
         t.Fatalf("expected exactly one cursor on last message: %q",text)
     }
     if !strings.Contains(stripANSISequences(text),"First message?") ||
@@ -135,8 +160,7 @@ func TestTerminalRowsReserveWrappedMessageAndKeepColours(t *testing.T) {
     if strings.Contains(stripANSISequences(rendered),"plenty of characters") {
         t.Fatal("hidden body leaked before typing")
     }
-    if !strings.Contains(rendered,"\x1b[7m█\x1b[27m") &&
-        !strings.Contains(rendered,"\x1b[7m□\x1b[27m") {
+    if !strings.Contains(rendered,"\x1b[38;2;") {
         t.Fatal("missing block cursor")
     }
     if !strings.Contains(rendered,"92;") && !strings.Contains(rendered,"92C6D7") {
@@ -161,7 +185,7 @@ func TestTerminalRowsReserveWrappedMessageAndKeepColours(t *testing.T) {
     m.terminalReveals[0]=state
     complete:=append([]string(nil),full...)
     m.renderTerminalRows(complete,0)
-    if !strings.Contains(strings.Join(complete,"\n"),"\x1b[7m") {
+    if !strings.Contains(strings.Join(complete,"\n"),"\x1b[38;2;") {
         t.Fatal("newest completed message must retain its square cursor")
     }
     if len(complete)!=len(full) {t.Fatal("completed cursor shifted reserved rows")}
@@ -215,8 +239,7 @@ func TestTerminalCursorStaysAfterFinalPeriod(t *testing.T) {
     m.terminalReveals[0]=state
     rows:=append([]string(nil),m.renderMessageLines()...)
     m.renderTerminalRows(rows,0)
-    if !strings.Contains(strings.Join(rows,"\n"),"\x1b[7m█\x1b[27m") &&
-        !strings.Contains(strings.Join(rows,"\n"),"\x1b[7m□\x1b[27m") {
+    if !strings.Contains(strings.Join(rows,"\n"),"\x1b[38;2;") {
         t.Fatal("cursor disappeared during final period's quarter-second pause")
     }
 }
@@ -301,12 +324,12 @@ func TestTerminalMaskPreservesWidthAndUsernames(t *testing.T) {
     body:=messageBodyRange{Start:15,End:26}
     remaining:=0
     placed:=false
-    result:=terminalMaskRow(line,body,&remaining,&placed,'█')
+    result:=terminalMaskRow(line,body,&remaining,&placed,'█',"#34FF75")
     plain:=stripANSISequences(result)
     if !strings.Contains(plain,"Alice:") {t.Fatal("terminal erased the author")}
     if strings.Contains(plain,"world") {t.Fatal("terminal revealed unreached text")}
-    if !strings.Contains(result,"\x1b[7m█\x1b[27m") {t.Fatal("cursor absent")}
-    if strings.Contains(result,"\x1b[7m█\x1b[27m\x1b[0m") {
-        t.Fatal("cursor reset message background styling")
+    if !strings.Contains(result,"\x1b[38;2;52;255;117m█\x1b[39m") {t.Fatalf("theme-colored cursor absent: %q",result)}
+    if strings.Contains(result,"\x1b[7m") || !strings.Contains(result,"\x1b[48;2;17;19;24m") {
+        t.Fatal("cursor inverted or stripped message background")
     }
 }
