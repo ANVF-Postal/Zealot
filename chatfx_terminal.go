@@ -117,6 +117,14 @@ func (m *model) terminalUpdateCursorRows(previous,latest int) {
     m.clampScroll()
 }
 
+// Release a wrapped cursor row when the terminal layer is turned off.
+// The message retains every character and its original wrapped height.
+func (m *model) terminalClearReveals() {
+    previous:=m.terminalLatestMessage()
+    clear(m.terminalReveals)
+    if previous>=0 {m.terminalUpdateCursorRows(previous,-1)}
+}
+
 func (m *model) terminalTrackMessage(packet Packet) {
     if !m.terminalEnabled() {return}
     // Type newly arrived chat, actions and system messages, but not old
@@ -138,7 +146,7 @@ func (m *model) terminalTrackMessage(packet Packet) {
 func (m *model) terminalAdvance(now time.Time) {
     if len(m.terminalReveals)==0 {return}
     if !m.terminalEnabled() {
-        clear(m.terminalReveals)
+        m.terminalClearReveals()
         return
     }
     latest:=m.terminalLatestMessage()
