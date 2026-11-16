@@ -45,6 +45,7 @@ type roomState struct {
 	polls map[string]*pollState
 	pollSequence int
 	fx chatFXState
+	terminalUntil time.Time // independent, stackable message animation
 }
 
 type server struct {
@@ -265,6 +266,11 @@ func (s *server) handle(conn net.Conn) {
 		if fx.name != "" && (fx.until.IsZero() || fx.until.After(time.Now())) {
 			writeErr = client.enc.Encode(Packet{Type:"fx_state", Room:roomName, FX:fx.name, FXUntil:fx.until})
 		}
+		if writeErr==nil && !room.terminalUntil.Equal(time.Time{}) {
+			if room.terminalUntil.After(time.Now()) || room.terminalUntil.Equal(terminalForever) {
+				writeErr=client.enc.Encode(Packet{Type:"fx_terminal_state",Room:roomName,FXUntil:room.terminalUntil})
+			}
+		}
 	}
 	if writeErr == nil {
 		// Mark the end of replay so history does not trigger notifications.
@@ -326,6 +332,24 @@ func (s *server) handle(conn net.Conn) {
 		}
 
 		switch packet.Type {
+		case "fx_terminal_start":
+			if packet.FXSeconds<0 || packet.FXSeconds>chatFXMaxSeconds {
+				client.send(Packet{Type:"system",Room:roomName,Text:"Invalid terminal effect duration.",Time:time.Now().UTC()})
+				continue
+			}
+			until:=terminalForever
+			if packet.FXSeconds>0 {until=time.Now().Add(time.Duration(packet.FXSeconds)*time.Second)}
+			s.mu.Lock()
+			if current:=s.rooms[roomName];current!=nil {current.terminalUntil=until}
+			s.mu.Unlock()
+			s.broadcast(roomName,Packet{Type:"fx_terminal_state",Room:roomName,FXUntil:until})
+			s.systemMessage(roomName,formatChatFXLaunch(client.user.Name,"terminal",packet.FXSeconds))
+		case "fx_terminal_stop":
+			s.mu.Lock()
+			if current:=s.rooms[roomName];current!=nil {current.terminalUntil=time.Time{}}
+			s.mu.Unlock()
+			s.broadcast(roomName,Packet{Type:"fx_terminal_state",Room:roomName})
+			s.systemMessage(roomName,client.user.Name+" stopped terminal typing.")
 		case "fx_start":
 			if (packet.FX != "rain" && packet.FX != "snow" && packet.FX != "blizzard" && packet.FX != "embers" && packet.FX != "fire" && packet.FX != "matrix" && packet.FX != "confetti" && packet.FX != "fireworks" && packet.FX != "static" && packet.FX != "glitch" && packet.FX != "interrogation" && packet.FX != "bubbles" && packet.FX != "aquarium") ||
 				packet.FXSeconds < 0 || packet.FXSeconds > chatFXMaxSeconds {
@@ -350,9 +374,11 @@ func (s *server) handle(conn net.Conn) {
 			s.mu.Lock()
 			if current := s.rooms[roomName]; current != nil {
 				current.fx = chatFXState{}
+				current.terminalUntil=time.Time{}
 			}
 			s.mu.Unlock()
 			s.broadcast(roomName, Packet{Type:"fx_state", Room:roomName})
+			s.broadcast(roomName, Packet{Type:"fx_terminal_state", Room:roomName})
 			s.systemMessage(roomName, client.user.Name+" stopped the room effects.")
 		case "theme_share":
 			s.shareTheme(roomName, client, packet.Theme)
