@@ -372,13 +372,17 @@ func (s *server) handle(conn net.Conn) {
 			s.systemMessage(roomName, formatChatFXLaunch(client.user.Name,packet.FX,seconds))
 		case "fx_stop":
 			s.mu.Lock()
+			hadTerminal:=false
 			if current := s.rooms[roomName]; current != nil {
 				current.fx = chatFXState{}
+				hadTerminal=!current.terminalUntil.IsZero()
 				current.terminalUntil=time.Time{}
 			}
 			s.mu.Unlock()
 			s.broadcast(roomName, Packet{Type:"fx_state", Room:roomName})
-			s.broadcast(roomName, Packet{Type:"fx_terminal_state", Room:roomName})
+			if hadTerminal {
+				s.broadcast(roomName, Packet{Type:"fx_terminal_state", Room:roomName})
+			}
 			s.systemMessage(roomName, client.user.Name+" stopped the room effects.")
 		case "theme_share":
 			s.shareTheme(roomName, client, packet.Theme)
