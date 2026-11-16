@@ -122,12 +122,13 @@ func (m model) Update(
 		case "poll_result":
 			m.applyPollSnapshot(packet)
 
-		case "fx_state":
+		case "fx_state", "fx_terminal_state":
 			m.receiveChatFX(packet)
 			if m.fxSalt == 0 { m.fxSalt = uint64(time.Now().UnixNano()) }
 
 		case "message", "system", "me", "letter", "coinflip_result", "random_result", "roll_result", "fortune_result", "whisper_result", "theme_result":
 			m.appendMessage(packet)
+			m.terminalTrackMessage(packet)
 			if (packet.Type == "message" || packet.Type == "whisper_result") && packet.User.Name != m.user.Name {
 				m.userActivity[packet.User.Name] = 6
 			}
