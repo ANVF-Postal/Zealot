@@ -193,5 +193,18 @@ func (m model) renderTerminalRows(visible []string,globalStart int) {
             visible[row-globalStart]=terminalMaskRow(
                 visible[row-globalStart],ranges[relative],&remaining,&placed)
         }
+        // A trailing period still has a 250 ms hold. Keep the cursor
+        // visible just after it instead of disappearing during that pause.
+        if !placed && len(reveal.text)>0 && strings.HasSuffix(reveal.text,".") &&
+            terminalRevealCount(reveal.text,elapsed)==utf8.RuneCountInString(reveal.text) &&
+            len(ranges)>0 && rows.End-1>=globalStart && rows.End-1<globalStart+len(visible) {
+            last:=rows.End-1-globalStart
+            end:=ranges[len(ranges)-1].End
+            if end<chatContentWidth(m.width) {
+                none:=0
+                visible[last]=terminalMaskRow(
+                    visible[last],messageBodyRange{Start:end,End:end+1},&none,&placed)
+            }
+        }
     }
 }
