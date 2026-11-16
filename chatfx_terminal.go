@@ -174,7 +174,7 @@ func terminalMaskRow(row string,body messageBodyRange,visibleCount *int,cursorPl
 
 // Place the persistent cursor in a spare cell immediately after the final
 // body glyph, never append another cell and never alter the reserved row count.
-func terminalCursorAtEnd(row string,column int,cursor rune,mainTextColor string) string {
+func terminalCursorAtEnd(row string,column int,cursor rune,mainTextColor,backgroundColor string) string {
     if column<0 {return row}
     var out strings.Builder
     out.Grow(len(row)+24)
@@ -191,8 +191,10 @@ func terminalCursorAtEnd(row string,column int,cursor rune,mainTextColor string)
         ch,size:=utf8.DecodeRuneInString(row[i:])
         if size<=0 {break}
         width:=lipgloss.Width(string(ch))
-        if !painted && pos==column && width==1 {
-            out.WriteString(terminalCursorPaint(cursor,mainTextColor))
+        if !painted && pos==column && width>0 {
+            out.WriteString(terminalCursorPaint(cursor,mainTextColor,backgroundColor))
+            // Replace the whole display footprint of any wide Matrix glyph.
+            if width>1 {out.WriteString(strings.Repeat(" ",width-1))}
             painted=true
         } else {
             out.WriteString(row[i:i+size])
