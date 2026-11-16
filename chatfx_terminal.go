@@ -326,16 +326,23 @@ func (m model) renderTerminalRows(visible []string,globalStart int) {
         // exceeding the content width or forcing new wrapping.
         lastRow:=-1
         lastColumn:=-1
-        for i:=len(ranges)-1;i>=0;i-- {
-            if ranges[i].End>ranges[i].Start {
-                lastRow=rows.Start+i
-                lastColumn=ranges[i].End
-                break
+        if m.terminalCursorNeedsWrap(packet,m.width) {
+            // The final body cell is occupied. The additional row was
+            // reserved before rendering, so never replace the last letter.
+            lastRow=rows.End-1
+            lastColumn=0
+        } else {
+            for i:=len(ranges)-1;i>=0;i-- {
+                if ranges[i].End>ranges[i].Start {
+                    lastRow=rows.Start+i
+                    lastColumn=ranges[i].End
+                    break
+                }
             }
         }
         if lastRow<globalStart || lastRow>=globalStart+len(visible) {continue}
         contentWidth:=chatContentWidth(m.width)
-        if lastColumn>=contentWidth {lastColumn=contentWidth-1}
+        if lastColumn>=contentWidth {continue} // no spare cell: must wrap
         if lastColumn>=0 {
             visible[lastRow-globalStart]=terminalCursorAtEnd(
                 visible[lastRow-globalStart],lastColumn,glyph,m.cfg.Theme.TextColor,m.cfg.Theme.Background)
