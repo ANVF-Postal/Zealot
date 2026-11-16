@@ -202,7 +202,7 @@ func (m model) chatFXFrameInterval() time.Duration {
 		fps = chatFXDefaultFPS
 		// Fire benefits from interpolated frames even though its heat field
 		// only propagates at 7.5 Hz. Leave all other effects at 15 FPS.
-		if m.currentChatFX().name == "fire" { fps = 30 }
+		if m.currentChatFX().name == "fire" || len(m.terminalReveals)>0 { fps = 30 }
 	}
 	return time.Second / time.Duration(fps)
 }
