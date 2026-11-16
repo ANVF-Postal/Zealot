@@ -139,6 +139,9 @@ func (m model) renderTerminalRows(visible []string,globalStart int) {
         if elapsed>=terminalTextDuration(reveal.text) {continue}
         remaining:=terminalRevealCount(reveal.text,elapsed)
         ranges:=m.messageBodyRangesForLineCount(packet,m.width,rows.End-rows.Start)
+        // Offscreen cache rows may be intentionally blank. Reconstruct the
+        // message once to keep character progress accurate when scrolled.
+        fullLines:=m.renderPacketLines(packet,m.width)
         placed:=false
         // Consume all prior rows, even when scrolled halfway through a
         // long message. The reveal remains continuous across wrapping.
@@ -147,12 +150,15 @@ func (m model) renderTerminalRows(visible []string,globalStart int) {
             if relative>=len(ranges) {break}
             if row<globalStart || row>=globalStart+len(visible) {
                 // Count real displayed body runes in omitted previous rows.
-                if row<globalStart && row>=0 && row<len(m.renderedLines) {
-                    plain:=[]rune(stripANSISequences(m.renderedLines[row]))
-                    for col,r:=range plain {
-                        if col>=ranges[relative].Start && col<ranges[relative].End && r!=0 {
+                if row<globalStart && relative<len(fullLines) {
+                    line:=stripANSISequences(fullLines[relative])
+                    col:=0
+                    for _,r:=range line {
+                        width:=lipgloss.Width(string(r))
+                        if col>=ranges[relative].Start && col<ranges[relative].End {
                             if remaining>0 {remaining--} else if !placed {placed=true}
                         }
+                        col+=width
                     }
                 }
                 continue
