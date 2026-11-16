@@ -76,6 +76,55 @@ func TestTerminalRowsReserveWrappedMessageAndKeepColours(t *testing.T) {
     }
 }
 
+func TestTerminalExplicitMultilinePreservesReservedRows(t *testing.T) {
+    m:=newMessageInteractionTestModel(65)
+    m.terminalLocalUntil=terminalForever
+    packet:=Packet{
+        Type:"message",ID:"multiple-lines",
+        User:User{Name:"Bob",Color:"#94D5AA"},
+        Text:"First line.\nSecond line is visible later.\nThird line waits.",
+        Time:time.Now(),
+    }
+    m.appendMessage(packet)
+    m.terminalTrackMessage(packet)
+    original:=append([]string(nil),m.renderMessageLines()...)
+    if len(original)<3 {t.Fatalf("expected reserved explicit lines, got %d",len(original))}
+    if got:=m.terminalReveals[0].text;strings.Contains(got,"\n") {
+        t.Fatalf("newline incorrectly consumes a typewriter glyph: %q",got)
+    }
+    state:=m.terminalReveals[0]
+    state.started=time.Now().Add(-time.Duration(len([]rune("First line.")))*terminalLetterDelay-
+        terminalPeriodPause-2*terminalLetterDelay)
+    m.terminalReveals[0]=state
+    rows:=append([]string(nil),original...)
+    m.renderTerminalRows(rows,0)
+    if len(rows)!=len(original) {t.Fatal("multiline typewriter shifted chat layout")}
+    joined:=stripANSISequences(strings.Join(rows,"\n"))
+    if !strings.Contains(joined,"First line.") {t.Fatal("completed first line disappeared")}
+    if strings.Contains(joined,"Second line is visible later.") ||
+        strings.Contains(joined,"Third line waits.") {
+        t.Fatal("future multiline text was revealed prematurely")
+    }
+}
+
+func TestTerminalCursorStaysAfterFinalPeriod(t *testing.T) {
+    m:=newMessageInteractionTestModel(85)
+    m.terminalLocalUntil=terminalForever
+    p:=Packet{Type:"message",ID:"period-hold",
+        User:User{Name:"Alice",Color:"#92C6D7"},
+        Text:"Hello.",Time:time.Now()}
+    m.appendMessage(p)
+    m.terminalTrackMessage(p)
+    state:=m.terminalReveals[0]
+    state.started=time.Now().Add(-time.Duration(len([]rune(p.Text)))*terminalLetterDelay-100*time.Millisecond)
+    m.terminalReveals[0]=state
+    rows:=append([]string(nil),m.renderMessageLines()...)
+    m.renderTerminalRows(rows,0)
+    if !strings.Contains(strings.Join(rows,"\n"),"\x1b[7m█\x1b[27m") {
+        t.Fatal("cursor disappeared during final period's quarter-second pause")
+    }
+}
+
 func TestTerminalControlsRemainIndependentOfBackgroundFX(t *testing.T) {
     m:=newMessageInteractionTestModel(100)
     m.room="lobby"
