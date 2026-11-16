@@ -27,40 +27,6 @@ var handbookPages = []struct {
 		{"/vote ID OPTION", "Votes for an option in poll ID; you may change your choice until it closes."},
 		{"/poll close ID", "Closes one of your polls and reveals final results."},
 		{"/whisper @user message", "Sends a private message visible only to you and the specified user. Whispers are not saved in public room history."},
-		{"/rain [seconds]", "Starts room-wide rain in the chat background. Optional duration: 1–300 seconds; otherwise continues until stopped."},
-		{"/rain self [seconds]", "Starts rain only on your screen. Other users are unaffected. Rain density changes naturally over time."},
-		{"/snow [seconds]", "Starts gentle, drifting snow for the room. Intensity varies over time, like rain."},
-		{"/snow self [seconds]", "Starts gently falling snow only on your client; tiny dot flakes fall twice as fast as matching larger flakes."},
-		{"/blizzard [seconds]", "Starts a dense, wind-driven room blizzard with strong sideways snowfall, long-changing gusts, and occasional calm periods."},
-		{"/blizzard self [seconds]", "Starts a blizzard only on your screen, without affecting the room."},
-		{"/embers [seconds]", "Starts rising glowing embers for the room, drifting upward and cooling as they fade."},
-		{"/embers self [seconds]", "Starts a warm ember effect only on your terminal."},
-		{"/fire [seconds]", "Renders shorter, slow-swaying Doom-style ASCII flames; flame height shrinks on wider terminals to keep animations responsive."},
-		{"/fire self [seconds]", "Displays flames locally without changing the room effect."},
-		{"/matrix [seconds]", "Starts falling green code with bright heads and smoothly fading trails that blend into your theme background."},
-		{"/matrix self [seconds]", "Displays Matrix code rain only on your terminal."},
-		{"/static [seconds]", "Unpredictable CRT static bursts (0.1–60 second gaps), with fading dot noise and rare star-like flashes."},
-		{"/static self [seconds]", "Displays intermittent CRT noise and subtle static locally."},
-		{"/glitch [seconds]", "PuTTY ANSI-coloured tears alternate with muted fake terminal errors that type themselves out and fade."},
-		{"/glitch self [seconds]", "Shows coloured glitches and animated hexadecimal error blocks locally."},
-		{"/interrogation [seconds]", "Five-second lighting fade reveals a low central lamp, rounded vignette, recent-message spotlight and rare flickers; restores on stop."},
-		{"/interrogation self [seconds]", "Lights only your chat-message pane with the interrogation lamp and fading spotlight."},
-		{"/bubbles [seconds]", "Fills the chat with hollow Braille bubbles featuring simulated soft-body rims, elastic collisions and particle pops (up to 32)."},
-		{"/bubbles self [seconds]", "Blows springy coloured bubbles in from the lower-right with curved reflections and animated pop fragments."},
-		{"/aquarium [seconds]", "Individually coloured minnows, visiting larger fish, bottom-dwelling walleye, a speedy snake-like eel and rare muskie; fish roam, hunt and turn among swaying kelp and bubbles."},
-		{"/aquarium self [seconds]", "Runs the aquarium only on your terminal, without covering chat messages."},
-		{"/terminal [seconds]", "Types incoming messages letter by letter with a blinking main-text-coloured block cursor (█) that stays on the latest message. Pauses after . ? !; stacks with other ChatFX."},
-		{"/terminal self [seconds]", "Types received messages on your screen only; combine it with rain, aquarium, or any other backdrop."},
-		{"/terminal off", "Stops the room's terminal typewriter layer without stopping its background effect."},
-		{"/terminal self off", "Stops your local terminal typing layer."},
-		{"/fireworks [seconds]", "Launches colorful fireworks for the room. Default 10 seconds; varied-width bursts, rare giant 0 shells, and colorful radial, willow and crackle styles."},
-		{"/fireworks self [seconds]", "Runs the fireworks celebration only on your screen."},
-		{"/confetti [seconds]", "Drops vivid candy-colored paper and rare streamers. Stops emitting after 10 seconds by default; remaining pieces fall out."},
-		{"/confetti self [seconds]", "Runs a local-only confetti celebration without affecting the room."},
-		{"/stop", "Stops new room-wide FX emissions; existing particles drift and fade away."},
-		{"/stopfx self", "Stops local FX emissions and lets existing particles fade out."},
-		{"/disablefx", "Toggles all visual effects off or on for your client."},
-		{"/fxfps 1-60", "Sets your local ChatFX rendering frame rate (default 15 FPS). Effect simulation runs independently at 30 Hz."},
 		{"/rainbow", "Toggle: messages you send will be in rainbow colors."},
 		{"/rb", "Sends a single message in rainbow colors."},
 		{"/coinflip", "Sends a special message with the result of a coin flip."},
@@ -70,6 +36,27 @@ var handbookPages = []struct {
 		{"/spoiler", "Obfuscates the following text as # symbols. Click the spoiler message to reveal the text."},
 		{"Click a message", "Click another user's message to reply directly to it."},
 		{"Click a username", "Click a user's name to insert an @mention with their name pre-written."},
+	}},
+	{"VISUAL", []handbookEntry{
+		{"/rain [seconds]", "Gentle rain that drifts through the chat background and varies naturally in intensity."},
+		{"/snow [seconds]", "Falling snow with delicate flakes that drift at different speeds."},
+		{"/blizzard [seconds]", "Dense wind-driven snow, changing gusts and occasional calm periods."},
+		{"/embers [seconds]", "Glowing embers rise and slowly cool as they fade."},
+		{"/fire [seconds]", "Doom-inspired ASCII flames that sway and adapt their height to the terminal."},
+		{"/matrix [seconds]", "Falling green code with bright heads and smooth trails fading into your theme background."},
+		{"/static [seconds]", "Unpredictable CRT static, intermittent bursts and occasional flashes."},
+		{"/glitch [seconds]", "ANSI-coloured screen tears, simulated errors and short typed error messages."},
+		{"/interrogation [seconds]", "A dim lamp, rounded vignette and a spotlight on recent messages, with rare flickers."},
+		{"/bubbles [seconds]", "Springy hollow Braille bubbles with reflections, elastic collisions and animated pops."},
+		{"/aquarium [seconds]", "Individually coloured minnows, pike, perch, bluegill, bass, bottom-dwelling walleye, rare eels and muskies, bubbles and swaying kelp."},
+		{"/terminal [seconds]", "Incoming messages type letter by letter with a blinking main-text-coloured block cursor (█). Pauses after . ? ! and stacks with other visual effects."},
+		{"/fireworks [seconds]", "Colourful bursts with radial, willow and crackle styles. Defaults to 10 seconds."},
+		{"/confetti [seconds]", "Colourful paper and streamers fall through the chat. Defaults to 10 seconds."},
+		{"/terminal off", "Stops the room's terminal typing layer without stopping its background effect. Add self to stop only your local terminal layer."},
+		{"/stop", "Stops room-wide visual effects. Remaining particles drift or fade away."},
+		{"/stopfx self", "Stops visual effects on your own client."},
+		{"/disablefx", "Toggles all visual effects off or on for your client."},
+		{"/fxfps 1-60", "Sets your local effects rendering frame rate (default 15 FPS). Simulations run independently at 30 Hz."},
 	}},
 	{"USER", []handbookEntry{
 		{"/rename", "Renames you from the chat window. Usage: /rename name"},
@@ -81,6 +68,16 @@ var handbookPages = []struct {
 		{"--room example", "Joins the room named example, creating it if it doesn't exist."},
 		{"--add-history", "Enables chat history when creating a room. New arrivals can see earlier messages. History clears when the last user leaves."},
 	}},
+}
+
+// The VISUAL handbook explains the common room/local syntax once instead
+// of repeating an identical self variant for every effect.
+const handbookVisualIntro = "These are commands to activate visual effects for the current room. Type \"self\" after a command to have it only affect you."
+
+func handbookTabLabels() []string {
+    labels:=make([]string,len(handbookPages))
+    for i,page:=range handbookPages {labels[i]=" "+page.Name+" "}
+    return labels
 }
 
 func (m *model) openCommandsBrowser() {
@@ -130,7 +127,7 @@ func commandsTabWidth(label string) int {
 func (m model) commandsTabsOverflow() bool {
 	// Match the actual folder artwork, including the leading inset cell.
 	total := 1
-	for _, label := range []string{" CHAT ", " USER ", " LAUNCH "} {
+	for _, label := range handbookTabLabels() {
 		total += commandsTabWidth(label)
 	}
 	return total > chatContentWidth(m.width)
@@ -164,7 +161,7 @@ func (m model) commandsTabsLine() (top, face string, ranges []messageBodyRange) 
 	bg := lipgloss.Color(m.cfg.Theme.Background)
 	active := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).Background(bg).Bold(true)
 	inactive := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).Background(bg)
-	labels := []string{" CHAT ", " USER ", " LAUNCH "}
+	labels := handbookTabLabels()
 	ranges = make([]messageBodyRange, len(labels))
 	width := chatContentWidth(m.width)
 	overflow := m.commandsTabsOverflow()
@@ -244,6 +241,13 @@ func (m model) buildCommandsTextRows() []string {
 	nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.TextColor)).Background(bg).Bold(true)
 	descriptionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).Background(bg)
 	lines := make([]string, 0, 40)
+    if handbookPages[m.commandsTab].Name=="VISUAL" {
+        introStyle:=lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.TextColor)).Background(bg)
+        for _,line:=range wrapText(handbookVisualIntro,width) {
+            lines=append(lines,introStyle.Render("  "+line))
+        }
+        lines=append(lines,"")
+    }
 	for _, entry := range handbookPages[m.commandsTab].Entries {
 		for _, line := range wrapText(entry.Command, width) {
 			lines = append(lines, nameStyle.Render("  "+line))
