@@ -251,6 +251,13 @@ func terminalCursorAtEnd(row string,column int,cursor rune,mainTextColor,backgro
         pos+=width
         i+=size
     }
+    // Defensive fallback for a renderer that provides only ANSI styling
+    // (no printable cells) for the cursor-only row. Keep the final letter
+    // intact and still draw the block at the requested next-row column.
+    if !painted && pos<=column {
+        if column>pos {out.WriteString(strings.Repeat(" ",column-pos))}
+        out.WriteString(terminalCursorPaint(cursor,mainTextColor,backgroundColor))
+    }
     return out.String()
 }
 
