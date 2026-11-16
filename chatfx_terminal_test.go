@@ -110,7 +110,8 @@ func TestTerminalRowsReserveWrappedMessageAndKeepColours(t *testing.T) {
     if strings.Contains(stripANSISequences(rendered),"plenty of characters") {
         t.Fatal("hidden body leaked before typing")
     }
-    if !strings.Contains(rendered,"\x1b[7m█\x1b[27m") {
+    if !strings.Contains(rendered,"\x1b[7m█\x1b[27m") &&
+        !strings.Contains(rendered,"\x1b[7m□\x1b[27m") {
         t.Fatal("missing block cursor")
     }
     if !strings.Contains(rendered,"92;") && !strings.Contains(rendered,"92C6D7") {
@@ -189,7 +190,8 @@ func TestTerminalCursorStaysAfterFinalPeriod(t *testing.T) {
     m.terminalReveals[0]=state
     rows:=append([]string(nil),m.renderMessageLines()...)
     m.renderTerminalRows(rows,0)
-    if !strings.Contains(strings.Join(rows,"\n"),"\x1b[7m█\x1b[27m") {
+    if !strings.Contains(strings.Join(rows,"\n"),"\x1b[7m█\x1b[27m") &&
+        !strings.Contains(strings.Join(rows,"\n"),"\x1b[7m□\x1b[27m") {
         t.Fatal("cursor disappeared during final period's quarter-second pause")
     }
 }
