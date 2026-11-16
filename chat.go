@@ -326,7 +326,9 @@ func (m model) renderPacketLines(msg Packet, width int) []string {
     lines:=m.renderPacketLinesBase(msg,width)
     if m.terminalCursorNeedsWrap(msg,width) {
         fill:=lipgloss.NewStyle().Background(lipgloss.Color(m.cfg.Theme.Background))
-        lines=append(lines,renderChatRow(fill,"",chatContentWidth(width)))
+        // This must contain real blank cells, not just ANSI styling.
+        // The terminal cursor renderer replaces the first one with █.
+        lines=append(lines,renderChatRow(fill,strings.Repeat(" ",chatContentWidth(width)),chatContentWidth(width)))
     }
     return lines
 }
