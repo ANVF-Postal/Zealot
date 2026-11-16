@@ -44,7 +44,7 @@ func chatFXDuration(args []string) (int, bool) {
 // chat/whisper message handling so they can never leak as ordinary messages.
 func isChatFXCommand(command string) bool {
 	switch command {
-	case "/rain", "/snow", "/blizzard", "/embers", "/fire", "/matrix", "/confetti", "/fireworks", "/static", "/glitch", "/interrogation", "/bubbles", "/aquarium", "/stop", "/stopfx", "/disablefx", "/fxfps":
+	case "/rain", "/snow", "/blizzard", "/embers", "/fire", "/matrix", "/confetti", "/fireworks", "/static", "/glitch", "/interrogation", "/bubbles", "/aquarium", "/terminal", "/stop", "/stopfx", "/disablefx", "/fxfps":
 		return true
 	}
 	return false
@@ -52,6 +52,32 @@ func isChatFXCommand(command string) bool {
 
 func (m *model) chatFXCommand(command string, fields []string) {
 	switch command {
+	case "/terminal":
+		args:=fields[1:]
+		self:=len(args)>0 && strings.EqualFold(args[0],"self")
+		if self {args=args[1:]}
+		stop:=len(args)==1 && strings.EqualFold(args[0],"off")
+		seconds:=0
+		if !stop {
+			var ok bool
+			seconds,ok=chatFXDuration(args)
+			if !ok {m.chatFXNotice("Usage: /terminal [self] [seconds 1-300|off]");return}
+		}
+		if self {
+			if stop {
+				m.terminalLocalUntil=time.Time{}
+				m.chatFXNotice("Local terminal typing stopped.")
+			} else {
+				m.terminalLocalUntil=terminalForever
+				if seconds>0 {m.terminalLocalUntil=time.Now().Add(time.Duration(seconds)*time.Second)}
+				m.chatFXNotice(formatChatFXLaunch("You","terminal",seconds)+" (local)")
+			}
+		} else if m.client!=nil && m.connected {
+			typ:="fx_terminal_start"
+			if stop {typ="fx_terminal_stop"}
+			_ = m.client.send(Packet{Type:typ,Room:m.room,FXSeconds:seconds})
+		}
+		if stop && !m.terminalEnabled() {clear(m.terminalReveals)}
 	case "/fxfps":
 		if len(fields) != 2 {
 			m.chatFXNotice("Usage: /fxfps 1-60")
@@ -98,6 +124,8 @@ func (m *model) chatFXCommand(command string, fields []string) {
 		}
 	case "/stop", "/stopfx":
 		if len(fields)==2 && strings.EqualFold(fields[1], "self") {
+			m.terminalLocalUntil=time.Time{}
+			if !m.terminalEnabled() {clear(m.terminalReveals)}
 			if m.fxLocalOverride { m.retireChatFX(m.fxLocal) }
 			m.fxLocal = chatFXState{}
 			m.fxLocalOverride = false
@@ -118,6 +146,9 @@ func (m *model) chatFXNotice(text string) {
 
 func (m *model) receiveChatFX(packet Packet) {
 	switch packet.Type {
+	case "fx_terminal_state":
+		m.terminalRoomUntil=packet.FXUntil
+		if !m.terminalEnabled() {clear(m.terminalReveals)}
 	case "fx_state":
 		previous := m.currentChatFX()
 		// Preserve the visible room effect as outgoing particles before
@@ -177,7 +208,7 @@ func (m model) chatFXFrameInterval() time.Duration {
 }
 
 func (m *model) ensureChatFXTick() tea.Cmd {
-	if m.fxTickPending || (m.currentChatFX().name == "" && len(m.fxFading)==0 && m.fxInterrogationAmount<=0) { return nil }
+	if m.fxTickPending || (m.currentChatFX().name == "" && len(m.fxFading)==0 && m.fxInterrogationAmount<=0 && len(m.terminalReveals)==0) { return nil }
 	m.fxTickPending = true
 	m.fxTickGeneration++
 	generation := m.fxTickGeneration
@@ -260,7 +291,8 @@ func (m *model) advanceChatFX(msg chatFXTickMsg) tea.Cmd {
 		m.fxLocalOverride = false
 		m.fxLocal = chatFXState{}
 	}
-	if m.currentChatFX().name == "" && len(m.fxFading)==0 && m.fxInterrogationAmount<=0 {
+	m.terminalAdvance(time.Now())
+	if m.currentChatFX().name == "" && len(m.fxFading)==0 && m.fxInterrogationAmount<=0 && len(m.terminalReveals)==0 {
 		m.fxLastTick = time.Time{}
 		return nil
 	}
