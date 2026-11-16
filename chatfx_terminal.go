@@ -79,6 +79,44 @@ func (m model) terminalEnabled() bool {
     return local || room
 }
 
+// Cursor wrapping is determined from the fully rendered message, not the
+// final rune alone. This handles compact layouts and viewport resizing.
+func (m model) terminalCursorNeedsWrap(packet Packet,width int) bool {
+    if !m.terminalEnabled() || len(m.terminalReveals)==0 {return false}
+    latest:=m.terminalLatestMessage()
+    if latest<0 || latest>=len(m.messages) || width<1 {return false}
+    tracked:=m.messages[latest]
+    if tracked.ID!="" && packet.ID!="" {
+        if tracked.ID!=packet.ID {return false}
+    } else if tracked.Type!=packet.Type || tracked.Text!=packet.Text ||
+        !tracked.Time.Equal(packet.Time) || tracked.User.Name!=packet.User.Name {
+        return false
+    }
+    lines:=m.renderPacketLinesBase(packet,width)
+    ranges:=m.terminalBodyRanges(packet,lines)
+    for i:=len(ranges)-1;i>=0;i-- {
+        if ranges[i].End>ranges[i].Start {
+            return ranges[i].End>=chatContentWidth(width)
+        }
+    }
+    return false
+}
+
+// When a new message starts typing, the old completed message no longer owns
+// a cursor line. Resize only the affected rows; never rewrap the full history.
+func (m *model) terminalUpdateCursorRows(previous,latest int) {
+    if !m.renderCacheValid || m.width<1 {return}
+    for _,i:=range []int{previous,latest} {
+        if i<0 || i>=len(m.messages) {continue}
+        expected:=m.renderPacketLineCount(m.messages[i],m.width)
+        if i<len(m.messageRowRanges) &&
+            m.messageRowRanges[i].End-m.messageRowRanges[i].Start!=expected {
+            m.resizeCachedMessageRows(i,expected)
+        }
+    }
+    m.clampScroll()
+}
+
 func (m *model) terminalTrackMessage(packet Packet) {
     if !m.terminalEnabled() {return}
     // Type newly arrived chat, actions and system messages, but not old
@@ -87,11 +125,14 @@ func (m *model) terminalTrackMessage(packet Packet) {
         packet.Type!="system" && packet.Type!="me" {return}
     if packet.XKeyscore>0 || packet.Long || packet.Text=="" {return}
     if m.terminalReveals==nil {m.terminalReveals=make(map[int]terminalReveal)}
-    m.terminalReveals[len(m.messages)-1]=terminalReveal{
+    previous:=m.terminalLatestMessage()
+    current:=len(m.messages)-1
+    m.terminalReveals[current]=terminalReveal{
         // Hard line breaks reserve another row rather than consuming a
         // printable-character tick. The original packet remains untouched.
         started:time.Now(),text:strings.ReplaceAll(strings.ReplaceAll(packet.Text,"\r",""),"\n",""),
     }
+    m.terminalUpdateCursorRows(previous,current)
 }
 
 func (m *model) terminalAdvance(now time.Time) {
