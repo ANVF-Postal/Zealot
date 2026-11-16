@@ -56,6 +56,31 @@ func TestTerminalCursorBlinksBetweenSolidAndHollowSquares(t *testing.T) {
     }
 }
 
+func TestTerminalIdleCursorKeepsTickingWithoutFullFrameRate(t *testing.T) {
+    m:=newMessageInteractionTestModel(85)
+    m.terminalLocalUntil=terminalForever
+    packet:=Packet{Type:"message",ID:"idle-blink",Text:"Done!",
+        User:User{Name:"Bob",Color:"#94D5AA"},Time:time.Now()}
+    m.appendMessage(packet)
+    m.terminalTrackMessage(packet)
+    if interval:=m.chatFXFrameInterval();interval>time.Second/25 {
+        t.Fatalf("typing should use responsive redraws: %s",interval)
+    }
+    reveal:=m.terminalReveals[0]
+    reveal.started=time.Now().Add(-time.Minute)
+    m.terminalReveals[0]=reveal
+    m.terminalAdvance(time.Now())
+    if len(m.terminalReveals)!=1 {
+        t.Fatal("idle cursor should stay tracked")
+    }
+    if interval:=m.chatFXFrameInterval();interval!=terminalCursorBlink {
+        t.Fatalf("idle cursor should blink at 2 FPS, got %s",interval)
+    }
+    if m.ensureChatFXTick()==nil {
+        t.Fatal("idle cursor did not schedule its next blink")
+    }
+}
+
 func TestTerminalCursorStaysOnLatestCompletedMessage(t *testing.T) {
     m:=newMessageInteractionTestModel(85)
     m.terminalLocalUntil=terminalForever
