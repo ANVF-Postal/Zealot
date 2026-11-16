@@ -64,7 +64,9 @@ func (m *model) terminalTrackMessage(packet Packet) {
     if packet.XKeyscore>0 || packet.Text=="" {return}
     if m.terminalReveals==nil {m.terminalReveals=make(map[int]terminalReveal)}
     m.terminalReveals[len(m.messages)-1]=terminalReveal{
-        started:time.Now(),text:packet.Text,
+        // Hard line breaks reserve another row rather than consuming a
+        // printable-character tick. The original packet remains untouched.
+        started:time.Now(),text:strings.ReplaceAll(strings.ReplaceAll(packet.Text,"\r",""),"\n",""),
     }
 }
 
