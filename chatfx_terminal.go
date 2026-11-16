@@ -43,7 +43,7 @@ func terminalCursorPaint(cursor rune,mainTextColor,backgroundColor string) strin
     if cursor==0 {cursor=' '}
     fg:=interrogationRGB(mainTextColor,[3]int{230,230,230})
     bg:=interrogationRGB(backgroundColor,[3]int{17,19,24})
-    return fmt.Sprintf("\x1b[38;2;%d;%d;%d;48;2;%d;%d;%dm%c\x1b[0m",
+    return fmt.Sprintf("\x1b[38;2;%d;%d;%d;48;2;%d;%d;%dm%c\x1b[39m",
         fg[0],fg[1],fg[2],bg[0],bg[1],bg[2],cursor)
 }
 
