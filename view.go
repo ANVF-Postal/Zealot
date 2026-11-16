@@ -246,6 +246,9 @@ func (m model) View() tea.View {
 	// preserving foreground weather glyphs and existing message content.
 	m.renderStormSkyGradient(visible, chatContentWidth(m.width))
 	m.renderInterrogationRows(visible,start)
+	// Terminal is the sole stackable foreground ChatFX layer. It hides only
+	// unrevealed body glyphs; the complete message already reserves all rows.
+	m.renderTerminalRows(visible,start)
 	for i := range visible {
 		visible[i] = truncateANSI(visible[i], chatContentWidth(m.width)) + scrollbarRows[i]
 	}
