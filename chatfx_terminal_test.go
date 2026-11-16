@@ -108,6 +108,101 @@ func TestTerminalCursorUsesThemeForegroundAndOpaqueBackground(t *testing.T) {
     }
 }
 
+func terminalTestEdgeMessage(m model) Packet {
+    probe:=Packet{Type:"message",ID:"terminal-border",User:User{Name:"Bob",Color:"#84EAB0"},
+        Text:"X",Time:time.Now().UTC()}
+    natural:=m.renderPacketLinesBase(probe,m.width)
+    ranges:=m.terminalBodyRanges(probe,natural)
+    if len(ranges)==0 {return probe}
+    capacity:=chatContentWidth(m.width)-ranges[0].Start
+    probe.Text=strings.Repeat("X",max(1,capacity))
+    return probe
+}
+
+func TestTerminalCursorWrapsBelowFullWidthMessage(t *testing.T) {
+    m:=newMessageInteractionTestModel(80)
+    m.terminalLocalUntil=terminalForever
+    packet:=terminalTestEdgeMessage(m)
+    m.appendMessage(packet)
+    original:=m.renderPacketLinesBase(packet,m.width)
+    if len(original)!=1 || !strings.HasSuffix(strings.TrimSpace(stripANSISequences(original[0])),packet.Text) {
+        t.Fatalf("fixture must fill exactly one body row: %q",original)
+    }
+    m.terminalTrackMessage(packet)
+    if !m.terminalCursorNeedsWrap(packet,m.width) {
+        t.Fatal("full-width message did not reserve a cursor-only row")
+    }
+    if rows:=m.messageRowRanges[0];rows.End-rows.Start!=2 {
+        t.Fatalf("expected two reserved rows, got %+v",rows)
+    }
+    reveal:=m.terminalReveals[0]
+    reveal.started=time.Now().Add(-time.Minute)
+    m.terminalReveals[0]=reveal
+    full:=append([]string(nil),m.renderMessageLines()...)
+    if len(full)!=2 {t.Fatalf("cached message should have extra row: %d",len(full))}
+    visible:=append([]string(nil),full...)
+    m.renderTerminalRows(visible,0)
+    first:=stripANSISequences(visible[0])
+    if !strings.HasSuffix(strings.TrimSpace(first),packet.Text) {
+        t.Fatalf("cursor covered the last letter: %q",first)
+    }
+    if !strings.Contains(visible[1],"\x1b[38;2;") {
+        t.Fatalf("cursor not painted on following row: %q",visible[1])
+    }
+    if len(visible)!=2 {
+        t.Fatal("typewriter modified reserved message layout")
+    }
+}
+
+func TestTerminalWrappedCursorRelayoutOnResizeAndNextMessage(t *testing.T) {
+    m:=newMessageInteractionTestModel(80)
+    m.terminalLocalUntil=terminalForever
+    first:=terminalTestEdgeMessage(m)
+    m.appendMessage(first)
+    m.terminalTrackMessage(first)
+    if got:=len(m.renderMessageLines());got!=2 {
+        t.Fatalf("initial edge rows = %d, want 2",got)
+    }
+    m.width=81
+    m.rebuildMessageCache()
+    if m.terminalCursorNeedsWrap(first,m.width) {
+        t.Fatal("cursor row remained reserved after making terminal wider")
+    }
+    if got:=len(m.renderMessageLines());got!=1 {
+        t.Fatalf("wider layout rows = %d, want 1",got)
+    }
+    m.width=80
+    m.rebuildMessageCache()
+    if got:=len(m.renderMessageLines());got!=2 {
+        t.Fatalf("restored edge rows = %d, want 2",got)
+    }
+    second:=Packet{Type:"message",ID:"new-message",User:User{Name:"Alice",Color:"#FFDDAA"},
+        Text:"A short message",Time:time.Now().UTC()}
+    m.appendMessage(second)
+    m.terminalTrackMessage(second)
+    if old:=m.messageRowRanges[0];old.End-old.Start!=1 {
+        t.Fatalf("old cursor-only row persisted after newer message: %+v",old)
+    }
+    if got:=len(m.renderMessageLines());got!=2 {
+        t.Fatalf("new message must not leave blank cursor row behind: %d",got)
+    }
+}
+
+func TestTerminalWrappedCursorRowRemovedWhenStopped(t *testing.T) {
+    m:=newMessageInteractionTestModel(80)
+    m.terminalLocalUntil=terminalForever
+    packet:=terminalTestEdgeMessage(m)
+    m.appendMessage(packet)
+    m.terminalTrackMessage(packet)
+    if len(m.renderMessageLines())!=2 {t.Fatal("fixture did not reserve cursor row")}
+    m.terminalLocalUntil=time.Time{}
+    m.terminalAdvance(time.Now())
+    if len(m.terminalReveals)!=0 {t.Fatal("terminal reveal was not cleared")}
+    if len(m.renderMessageLines())!=1 {
+        t.Fatal("terminal stop left a blank cursor row in chat history")
+    }
+}
+
 func TestTerminalCursorCoversMatrixGlyphInBothBlinkPhases(t *testing.T) {
     // Simulate a Matrix cell in the blank space directly after chat text.
     matrix:="\x1b[48;2;12;19;25m\x1b[38;2;21;190;70m界\x1b[0m"
