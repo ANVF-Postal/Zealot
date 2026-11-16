@@ -1,6 +1,7 @@
 package main
 
 import (
+    "fmt"
     "strings"
     "time"
     "unicode/utf8"
@@ -56,9 +57,10 @@ func (m model) terminalEnabled() bool {
 
 func (m *model) terminalTrackMessage(packet Packet) {
     if !m.terminalEnabled() {return}
-    // Message bodies are typed, not system control notices, old history,
-    // outgoing echoes, or special interactive artwork/polls.
-    if packet.Type!="message" && packet.Type!="whisper_result" {return}
+    // Type newly arrived chat, actions and system messages, but not old
+    // history, rich interactive artwork, polls, or command/result UI.
+    if packet.Type!="message" && packet.Type!="whisper_result" &&
+        packet.Type!="system" && packet.Type!="me" {return}
     if packet.XKeyscore>0 || packet.Text=="" {return}
     if m.terminalReveals==nil {m.terminalReveals=make(map[int]terminalReveal)}
     m.terminalReveals[len(m.messages)-1]=terminalReveal{
@@ -124,6 +126,30 @@ func terminalMaskRow(row string,body messageBodyRange,visibleCount *int,cursorPl
     return out.String()
 }
 
+// Locate message content without ever altering the original packet, so the
+// layout does not contract while typing (including narrow/compact layouts).
+func (m model) terminalBodyRanges(packet Packet,lines []string) []messageBodyRange {
+    if packet.Type=="message" || packet.Type=="whisper_result" {
+        return m.messageBodyRangesForLineCount(packet,m.width,len(lines))
+    }
+    ranges:=make([]messageBodyRange,len(lines))
+    contentWidth:=chatContentWidth(m.width)
+    prefix:=fmt.Sprintf("[%s] ",packet.Time.Local().Format("15:04"))
+    if packet.Type=="me" {
+        prefix=fmt.Sprintf("[%s] * %s ",packet.Time.Local().Format("15:04"),packet.User.Name)
+    }
+    startFirst:=2+lipgloss.Width(prefix)
+    for i,line:=range lines {
+        start:=2
+        if i==0 {start=startFirst}
+        used:=lipgloss.Width(strings.TrimRight(stripANSISequences(line)," "))
+        if start<used {
+            ranges[i]=clippedMessageBodyRange(start,used,contentWidth)
+        }
+    }
+    return ranges
+}
+
 func (m model) renderTerminalRows(visible []string,globalStart int) {
     if len(m.terminalReveals)==0 || !m.terminalEnabled() || !m.renderCacheValid {
         return
@@ -134,14 +160,15 @@ func (m model) renderTerminalRows(visible []string,globalStart int) {
         rows:=m.messageRowRanges[index]
         if rows.Start>=globalStart+len(visible) || rows.End<=globalStart {continue}
         packet:=m.messages[index]
-        if packet.Type!="message" && packet.Type!="whisper_result" {continue}
+        if packet.Type!="message" && packet.Type!="whisper_result" &&
+            packet.Type!="system" && packet.Type!="me" {continue}
         elapsed:=now.Sub(reveal.started)
         if elapsed>=terminalTextDuration(reveal.text) {continue}
         remaining:=terminalRevealCount(reveal.text,elapsed)
-        ranges:=m.messageBodyRangesForLineCount(packet,m.width,rows.End-rows.Start)
         // Offscreen cache rows may be intentionally blank. Reconstruct the
         // message once to keep character progress accurate when scrolled.
         fullLines:=m.renderPacketLines(packet,m.width)
+        ranges:=m.terminalBodyRanges(packet,fullLines)
         placed:=false
         // Consume all prior rows, even when scrolled halfway through a
         // long message. The reveal remains continuous across wrapping.
