@@ -61,7 +61,7 @@ func (m *model) terminalTrackMessage(packet Packet) {
     // history, rich interactive artwork, polls, or command/result UI.
     if packet.Type!="message" && packet.Type!="whisper_result" &&
         packet.Type!="system" && packet.Type!="me" {return}
-    if packet.XKeyscore>0 || packet.Text=="" {return}
+    if packet.XKeyscore>0 || packet.Long || packet.Text=="" {return}
     if m.terminalReveals==nil {m.terminalReveals=make(map[int]terminalReveal)}
     m.terminalReveals[len(m.messages)-1]=terminalReveal{
         // Hard line breaks reserve another row rather than consuming a
