@@ -81,30 +81,51 @@ func TestTerminalIdleCursorKeepsTickingWithoutFullFrameRate(t *testing.T) {
     }
 }
 
-func TestTerminalCursorUsesMainTextColourAndInvisiblePhase(t *testing.T) {
+func TestTerminalCursorUsesThemeForegroundAndOpaqueBackground(t *testing.T) {
     for _,tc:=range []struct{colour,want string}{
-        {"#34FF75","\x1b[38;2;52;255;117m█\x1b[39m"},
-        {"#C0C0C0","\x1b[38;2;192;192;192m█\x1b[39m"},
-        {"#FFAA00","\x1b[38;2;255;170;0m█\x1b[39m"},
+        {"#34FF75","\x1b[38;2;52;255;117;48;2;10;20;30m█\x1b[0m"},
+        {"#C0C0C0","\x1b[38;2;192;192;192;48;2;10;20;30m█\x1b[0m"},
+        {"#FFAA00","\x1b[38;2;255;170;0;48;2;10;20;30m█\x1b[0m"},
     } {
-        if got:=terminalCursorPaint('█',tc.colour);got!=tc.want {
-            t.Fatalf("cursor for %s = %q, expected %q",tc.colour,got,tc.want)
+        if got:=terminalCursorPaint('█',tc.colour,"#0A141E");got!=tc.want {
+            t.Fatalf("cursor for %s = %q, want %q",tc.colour,got,tc.want)
         }
-        if got:=terminalCursorPaint(' ',tc.colour);got!=" " {
-            t.Fatalf("invisible phase for %s must be a blank: %q",tc.colour,got)
+        if got:=terminalCursorPaint(' ',tc.colour,"#0A141E");got!=strings.Replace(tc.want,"m█","m ",1) {
+            t.Fatalf("invisible phase must paint an opaque background cell: %q",got)
         }
     }
     line:="\x1b[48;2;10;20;30m\x1b[38;2;99;80;70mHello       \x1b[0m"
-    done:=terminalCursorAtEnd(line,5,'█',"#34FF75")
-    if !strings.Contains(done,"\x1b[38;2;52;255;117m█\x1b[39m") {
-        t.Fatal("completed message cursor didn't use main text colour")
+    done:=terminalCursorAtEnd(line,5,'█',"#34FF75","#0A141E")
+    if !strings.Contains(done,"\x1b[38;2;52;255;117;48;2;10;20;30m█\x1b[0m") {
+        t.Fatal("completed cursor lost theme main text or background colour")
     }
-    if !strings.Contains(done,"\x1b[48;2;10;20;30m") || strings.Contains(done,"\x1b[7m") {
-        t.Fatal("completed cursor changed the background")
+    if strings.Contains(done,"\x1b[7m") || strings.Contains(done,"□") {
+        t.Fatal("cursor must never use reverse video or a hollow box")
     }
-    if got:=terminalCursorAtEnd(line,5,' ',"#34FF75");strings.Contains(got,"█") ||
-        strings.Contains(got,"□") {t.Fatal("invisible phase must hide block")}
+    off:=terminalCursorAtEnd(line,5,' ',"#34FF75","#0A141E")
+    if !strings.Contains(off,"\x1b[38;2;52;255;117;48;2;10;20;30m \x1b[0m") {
+        t.Fatal("off phase must erase underlying FX with theme background")
+    }
 }
+
+func TestTerminalCursorCoversMatrixGlyphInBothBlinkPhases(t *testing.T) {
+    // Simulate a Matrix cell in the blank space directly after chat text.
+    matrix:="\x1b[48;2;12;19;25m\x1b[38;2;21;190;70m界\x1b[0m"
+    line:="\x1b[48;2;12;19;25mHello"+matrix+"    "
+    for _,cursor:=range []rune{'█',' '} {
+        got:=terminalCursorAtEnd(line,5,cursor,"#89FF94","#0C1319")
+        // The Matrix character must be completely replaced rather than
+        // inheriting its green foreground, fading tint or background.
+        if strings.Contains(stripANSISequences(got),"界") {
+            t.Fatalf("Matrix glyph leaked into cursor cell (%q): %q",cursor,got)
+        }
+        expected:=terminalCursorPaint(cursor,"#89FF94","#0C1319")
+        if !strings.Contains(got,expected) {
+            t.Fatalf("Matrix overlapped cursor (%q): %q",cursor,got)
+        }
+    }
+}
+
 
 func TestTerminalCursorStaysOnLatestCompletedMessage(t *testing.T) {
     m:=newMessageInteractionTestModel(85)
@@ -327,11 +348,11 @@ func TestTerminalMaskPreservesWidthAndUsernames(t *testing.T) {
     body:=messageBodyRange{Start:15,End:26}
     remaining:=0
     placed:=false
-    result:=terminalMaskRow(line,body,&remaining,&placed,'█',"#34FF75")
+    result:=terminalMaskRow(line,body,&remaining,&placed,'█',"#34FF75","#111318")
     plain:=stripANSISequences(result)
     if !strings.Contains(plain,"Alice:") {t.Fatal("terminal erased the author")}
     if strings.Contains(plain,"world") {t.Fatal("terminal revealed unreached text")}
-    if !strings.Contains(result,"\x1b[38;2;52;255;117m█\x1b[39m") {t.Fatalf("theme-colored cursor absent: %q",result)}
+    if !strings.Contains(result,"\x1b[38;2;52;255;117;48;2;17;19;24m█\x1b[0m") {t.Fatalf("theme-colored opaque cursor absent: %q",result)}
     if strings.Contains(result,"\x1b[7m") || !strings.Contains(result,"\x1b[48;2;17;19;24m") {
         t.Fatal("cursor inverted or stripped message background")
     }
