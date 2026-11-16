@@ -16,6 +16,7 @@ var terminalForever=time.Date(9999,1,1,0,0,0,0,time.UTC)
 const (
     terminalLetterDelay=38*time.Millisecond
     terminalPeriodPause=250*time.Millisecond
+    terminalCursorBlink=500*time.Millisecond
 )
 
 type terminalReveal struct {
@@ -23,11 +24,22 @@ type terminalReveal struct {
     text string
 }
 
+func terminalSentencePause(ch rune) bool {
+    return ch=='.' || ch=='?' || ch=='!'
+}
+
+// A simple Commodore-inspired solid/hollow square. Blink phase is based on
+// time, not frame count, so /fxfps never changes the blink rate.
+func terminalCursorGlyph(now time.Time) rune {
+    if (now.UnixNano()/int64(terminalCursorBlink))%2==0 {return '█'}
+    return '□'
+}
+
 func terminalTextDuration(text string) time.Duration {
     duration:=time.Duration(0)
     for _,ch:=range text {
         duration+=terminalLetterDelay
-        if ch=='.' {duration+=terminalPeriodPause}
+        if terminalSentencePause(ch) {duration+=terminalPeriodPause}
     }
     return duration
 }
@@ -39,7 +51,7 @@ func terminalRevealCount(text string,elapsed time.Duration) int {
         if elapsed<terminalLetterDelay {return count}
         elapsed-=terminalLetterDelay
         count++
-        if ch=='.' {
+        if terminalSentencePause(ch) {
             if elapsed<terminalPeriodPause {return count}
             elapsed-=terminalPeriodPause
         }
@@ -76,18 +88,41 @@ func (m *model) terminalAdvance(now time.Time) {
         clear(m.terminalReveals)
         return
     }
+    latest:=m.terminalLatestMessage()
     for index,reveal:=range m.terminalReveals {
-        if now.Sub(reveal.started)>=terminalTextDuration(reveal.text) {
+        if index!=latest && now.Sub(reveal.started)>=terminalTextDuration(reveal.text) {
             delete(m.terminalReveals,index)
         }
     }
+}
+
+// The cursor belongs only to the newest incoming message, not every
+// partially typed message. Its completed reveal remains tracked indefinitely
+// while /terminal is enabled, so the cursor can keep blinking in place.
+func (m model) terminalLatestMessage() int {
+    latest:=-1
+    for index:=range m.terminalReveals {
+        if index>latest {latest=index}
+    }
+    return latest
+}
+
+func (m model) terminalIsTyping(now time.Time) bool {
+    for _,reveal:=range m.terminalReveals {
+        if now.Sub(reveal.started)<terminalTextDuration(reveal.text) {
+            return true
+        }
+    }
+    return false
 }
 
 // Paint the *already wrapped* full message, hiding only body glyphs that
 // haven't been typed yet. This preserves stable row counts, original
 // colours, hover/reply geometry, ANSI escapes and the scrollbar position.
 // visibleCount is shared across all rows of one message.
-func terminalMaskRow(row string,body messageBodyRange,visibleCount *int,cursorPlaced *bool) string {
+// Mask unrevealed body characters without altering the row's terminal width.
+// When this is the newest message, the block occupies the first hidden cell.
+func terminalMaskRow(row string,body messageBodyRange,visibleCount *int,cursorPlaced *bool,cursor rune) string {
     if body.End<=body.Start {return row}
     var out strings.Builder
     out.Grow(len(row)+32)
@@ -109,11 +144,8 @@ func terminalMaskRow(row string,body messageBodyRange,visibleCount *int,cursorPl
             if *visibleCount>0 {
                 out.WriteString(row[i:i+n])
                 *visibleCount--
-            } else if !*cursorPlaced {
-                // Inverse video preserves the row's existing foreground
-                // and background colours; resetting SGR here would leak
-                // black patches into the theme's painted chat area.
-                out.WriteString("\x1b[7m█\x1b[27m")
+            } else if !*cursorPlaced && cursor!=0 {
+                out.WriteString("\x1b[7m"+string(cursor)+"\x1b[27m")
                 if width>1 {out.WriteString(strings.Repeat(" ",width-1))}
                 *cursorPlaced=true
             } else {
@@ -124,6 +156,37 @@ func terminalMaskRow(row string,body messageBodyRange,visibleCount *int,cursorPl
         }
         column+=width
         i+=n
+    }
+    return out.String()
+}
+
+// Place the persistent cursor in a spare cell immediately after the final
+// body glyph, never append another cell and never alter the reserved row count.
+func terminalCursorAtEnd(row string,column int,cursor rune) string {
+    if column<0 {return row}
+    var out strings.Builder
+    out.Grow(len(row)+24)
+    pos:=0
+    painted:=false
+    for i:=0;i<len(row); {
+        if row[i]==0x1b {
+            end:=ansiSequenceEnd(row,i)
+            if end<=i {end=i+1}
+            out.WriteString(row[i:end])
+            i=end
+            continue
+        }
+        ch,size:=utf8.DecodeRuneInString(row[i:])
+        if size<=0 {break}
+        width:=lipgloss.Width(string(ch))
+        if !painted && pos==column && width==1 {
+            out.WriteString("\x1b[7m"+string(cursor)+"\x1b[27m")
+            painted=true
+        } else {
+            out.WriteString(row[i:i+size])
+        }
+        pos+=width
+        i+=size
     }
     return out.String()
 }
