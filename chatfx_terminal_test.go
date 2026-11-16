@@ -117,11 +117,38 @@ func TestTerminalNeverAnimatesReplayedOrControlMessages(t *testing.T) {
     m.terminalLocalUntil=terminalForever
     m.terminalTrackMessage(message)
     if len(m.terminalReveals)!=1 {t.Fatal("new message not tracked")}
-    m.appendMessage(Packet{Type:"system",Text:"Room joined",Time:time.Now()})
-    m.terminalTrackMessage(Packet{Type:"system",Text:"Room joined",Time:time.Now()})
-    if len(m.terminalReveals)!=1 {t.Fatal("system notice improperly used typewriter")}
+    notice:=Packet{Type:"system",Text:"Room joined",Time:time.Now()}
+    m.appendMessage(notice)
+    m.terminalTrackMessage(notice)
+    if len(m.terminalReveals)!=2 {t.Fatal("incoming system notice should be typed too")}
     m.fxDisabled=true
     if m.terminalEnabled() {t.Fatal("disablefx didn't suppress terminal")}
+}
+
+func TestTerminalSystemAndActionRowsKeepTheirHeaders(t *testing.T) {
+    m:=newMessageInteractionTestModel(90)
+    m.width=90
+    m.terminalLocalUntil=terminalForever
+    packets:=[]Packet{
+        {Type:"system",ID:"terminal-system",Text:"Something interesting happened.",Time:time.Now()},
+        {Type:"me",ID:"terminal-action",Text:"waves to everybody.",User:User{Name:"Alice",Color:"#AABBCC"},Time:time.Now()},
+    }
+    for _,packet:=range packets {
+        m.appendMessage(packet)
+        m.terminalTrackMessage(packet)
+    }
+    if len(m.terminalReveals)!=len(packets) {t.Fatal("system or action message was not tracked")}
+    original:=append([]string(nil),m.renderMessageLines()...)
+    visible:=append([]string(nil),original...)
+    m.renderTerminalRows(visible,0)
+    if len(visible)!=len(original) {t.Fatal("terminal altered row allocation")}
+    joined:=stripANSISequences(strings.Join(visible,"\n"))
+    if !strings.Contains(joined,"Alice") || !strings.Contains(joined,"[") {
+        t.Fatal("terminal hid message metadata while typing")
+    }
+    if strings.Contains(joined,"interesting happened") || strings.Contains(joined,"waves to everybody") {
+        t.Fatal("untyped system/action body was visible")
+    }
 }
 
 func TestTerminalMaskPreservesWidthAndUsernames(t *testing.T) {
