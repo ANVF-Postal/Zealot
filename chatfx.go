@@ -77,7 +77,7 @@ func (m *model) chatFXCommand(command string, fields []string) {
 			if stop {typ="fx_terminal_stop"}
 			_ = m.client.send(Packet{Type:typ,Room:m.room,FXSeconds:seconds})
 		}
-		if stop && !m.terminalEnabled() {clear(m.terminalReveals)}
+		if stop && !m.terminalEnabled() {m.terminalClearReveals()}
 	case "/fxfps":
 		if len(fields) != 2 {
 			m.chatFXNotice("Usage: /fxfps 1-60")
@@ -125,7 +125,7 @@ func (m *model) chatFXCommand(command string, fields []string) {
 	case "/stop", "/stopfx":
 		if len(fields)==2 && strings.EqualFold(fields[1], "self") {
 			m.terminalLocalUntil=time.Time{}
-			if !m.terminalEnabled() {clear(m.terminalReveals)}
+			if !m.terminalEnabled() {m.terminalClearReveals()}
 			if m.fxLocalOverride { m.retireChatFX(m.fxLocal) }
 			m.fxLocal = chatFXState{}
 			m.fxLocalOverride = false
@@ -148,7 +148,7 @@ func (m *model) receiveChatFX(packet Packet) {
 	switch packet.Type {
 	case "fx_terminal_state":
 		m.terminalRoomUntil=packet.FXUntil
-		if !m.terminalEnabled() {clear(m.terminalReveals)}
+		if !m.terminalEnabled() {m.terminalClearReveals()}
 	case "fx_state":
 		previous := m.currentChatFX()
 		// Preserve the visible room effect as outgoing particles before
