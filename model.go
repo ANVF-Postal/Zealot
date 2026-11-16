@@ -132,6 +132,9 @@ type model struct {
 	privateTypingOrder []string
 
 	// Visual effects are an optional, client-rendered chat decoration.
+	terminalRoomUntil time.Time
+	terminalLocalUntil time.Time
+	terminalReveals map[int]terminalReveal
 	fxRoom chatFXState
 	fxLocal chatFXState
 	fxFading []chatFXFading
