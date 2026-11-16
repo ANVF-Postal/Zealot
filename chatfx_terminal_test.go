@@ -6,6 +6,8 @@ import (
     "strings"
     "testing"
     "time"
+
+    "charm.land/lipgloss/v2"
 )
 
 func TestTerminalPeriodPause(t *testing.T) {
@@ -117,6 +119,20 @@ func terminalTestEdgeMessage(m model) Packet {
     capacity:=chatContentWidth(m.width)-ranges[0].Start
     probe.Text=strings.Repeat("X",max(1,capacity))
     return probe
+}
+
+func TestTerminalCursorDrawsInANSIOnlyReservedRow(t *testing.T) {
+    row:="\x1b[48;2;17;19;24m\x1b[m"
+    for _,glyph:=range []rune{'█',' '} {
+        got:=terminalCursorAtEnd(row,0,glyph,"#34FF75","#111318")
+        want:=terminalCursorPaint(glyph,"#34FF75","#111318")
+        if !strings.Contains(got,want) {
+            t.Fatalf("ANSI-only row did not receive cursor %q: %q",glyph,got)
+        }
+        if lipgloss.Width(got)!=1 {
+            t.Fatalf("ANSI-only cursor changed width: %d",lipgloss.Width(got))
+        }
+    }
 }
 
 func TestTerminalCursorWrapsBelowFullWidthMessage(t *testing.T) {
