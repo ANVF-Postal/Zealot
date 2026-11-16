@@ -262,13 +262,14 @@ func (s *server) handle(conn net.Conn) {
 		// replaying old effect commands or animation frames.
 		s.mu.Lock()
 		fx := room.fx
+		terminalUntil := room.terminalUntil
 		s.mu.Unlock()
 		if fx.name != "" && (fx.until.IsZero() || fx.until.After(time.Now())) {
 			writeErr = client.enc.Encode(Packet{Type:"fx_state", Room:roomName, FX:fx.name, FXUntil:fx.until})
 		}
-		if writeErr==nil && !room.terminalUntil.Equal(time.Time{}) {
-			if room.terminalUntil.After(time.Now()) || room.terminalUntil.Equal(terminalForever) {
-				writeErr=client.enc.Encode(Packet{Type:"fx_terminal_state",Room:roomName,FXUntil:room.terminalUntil})
+		if writeErr==nil && !terminalUntil.IsZero() {
+			if terminalUntil.After(time.Now()) {
+				writeErr=client.enc.Encode(Packet{Type:"fx_terminal_state",Room:roomName,FXUntil:terminalUntil})
 			}
 		}
 	}
