@@ -220,6 +220,8 @@ func (m model) renderTerminalRows(visible []string,globalStart int) {
         return
     }
     now:=time.Now()
+    latest:=m.terminalLatestMessage()
+    glyph:=terminalCursorGlyph(now)
     for index,reveal:=range m.terminalReveals {
         if index<0 || index>=len(m.messageRowRanges) || index>=len(m.messages) {continue}
         rows:=m.messageRowRanges[index]
@@ -228,48 +230,60 @@ func (m model) renderTerminalRows(visible []string,globalStart int) {
         if packet.Type!="message" && packet.Type!="whisper_result" &&
             packet.Type!="system" && packet.Type!="me" {continue}
         elapsed:=now.Sub(reveal.started)
-        if elapsed>=terminalTextDuration(reveal.text) {continue}
+        duration:=terminalTextDuration(reveal.text)
+        complete:=elapsed>=duration
+        if complete && index!=latest {continue}
         remaining:=terminalRevealCount(reveal.text,elapsed)
-        // Offscreen cache rows may be intentionally blank. Reconstruct the
-        // message once to keep character progress accurate when scrolled.
+        // The full message has already reserved its final rows. Rebuild
+        // only its small visible packet here, never the full chat history.
         fullLines:=m.renderPacketLines(packet,m.width)
         ranges:=m.terminalBodyRanges(packet,fullLines)
         placed:=false
-        // Consume all prior rows, even when scrolled halfway through a
-        // long message. The reveal remains continuous across wrapping.
+        showCursor:=index==latest
+        cursor:=rune(0)
+        if showCursor {cursor=glyph}
         for row:=rows.Start;row<rows.End;row++ {
             relative:=row-rows.Start
             if relative>=len(ranges) {break}
             if row<globalStart || row>=globalStart+len(visible) {
-                // Count real displayed body runes in omitted previous rows.
                 if row<globalStart && relative<len(fullLines) {
                     line:=stripANSISequences(fullLines[relative])
                     col:=0
                     for _,r:=range line {
                         width:=lipgloss.Width(string(r))
                         if col>=ranges[relative].Start && col<ranges[relative].End {
-                            if remaining>0 {remaining--} else if !placed {placed=true}
+                            if remaining>0 {remaining--} else if !placed && showCursor {placed=true}
                         }
                         col+=width
                     }
                 }
                 continue
             }
-            visible[row-globalStart]=terminalMaskRow(
-                visible[row-globalStart],ranges[relative],&remaining,&placed)
-        }
-        // A trailing period still has a 250 ms hold. Keep the cursor
-        // visible just after it instead of disappearing during that pause.
-        if !placed && len(reveal.text)>0 && strings.HasSuffix(reveal.text,".") &&
-            terminalRevealCount(reveal.text,elapsed)==utf8.RuneCountInString(reveal.text) &&
-            len(ranges)>0 && rows.End-1>=globalStart && rows.End-1<globalStart+len(visible) {
-            last:=rows.End-1-globalStart
-            end:=ranges[len(ranges)-1].End
-            if end<chatContentWidth(m.width) {
-                none:=0
-                visible[last]=terminalMaskRow(
-                    visible[last],messageBodyRange{Start:end,End:end+1},&none,&placed)
+            if !complete {
+                visible[row-globalStart]=terminalMaskRow(
+                    visible[row-globalStart],ranges[relative],&remaining,&placed,cursor)
             }
+        }
+        if !showCursor || placed || len(ranges)==0 {continue}
+        // With all characters displayed, the cursor stays just after the
+        // last body character (including during a trailing punctuation hold).
+        // On a completely full row it occupies the final cell instead of
+        // exceeding the content width or forcing new wrapping.
+        lastRow:=-1
+        lastColumn:=-1
+        for i:=len(ranges)-1;i>=0;i-- {
+            if ranges[i].End>ranges[i].Start {
+                lastRow=rows.Start+i
+                lastColumn=ranges[i].End
+                break
+            }
+        }
+        if lastRow<globalStart || lastRow>=globalStart+len(visible) {continue}
+        contentWidth:=chatContentWidth(m.width)
+        if lastColumn>=contentWidth {lastColumn=contentWidth-1}
+        if lastColumn>=0 {
+            visible[lastRow-globalStart]=terminalCursorAtEnd(
+                visible[lastRow-globalStart],lastColumn,glyph)
         }
     }
 }
