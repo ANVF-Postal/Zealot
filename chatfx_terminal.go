@@ -28,11 +28,20 @@ func terminalSentencePause(ch rune) bool {
     return ch=='.' || ch=='?' || ch=='!'
 }
 
-// A simple Commodore-inspired solid/hollow square. Blink phase is based on
-// time, not frame count, so /fxfps never changes the blink rate.
+// Blink a single solid block on and off at a fixed rate, independent of
+// /fxfps. The invisible phase is one blank cell, not a hollow-square glyph.
 func terminalCursorGlyph(now time.Time) rune {
     if (now.UnixNano()/int64(terminalCursorBlink))%2==0 {return '█'}
-    return '□'
+    return ' '
+}
+
+// Match the theme editor's "main text color" rather than inheriting a
+// username, mention or rainbow foreground. Only the foreground changes,
+// leaving the current chat row's background intact.
+func terminalCursorPaint(cursor rune,mainTextColor string) string {
+    if cursor==' ' || cursor==0 {return " "}
+    rgb:=interrogationRGB(mainTextColor,[3]int{230,230,230})
+    return fmt.Sprintf("\x1b[38;2;%d;%d;%dm%c\x1b[39m",rgb[0],rgb[1],rgb[2],cursor)
 }
 
 func terminalTextDuration(text string) time.Duration {
@@ -122,7 +131,7 @@ func (m model) terminalIsTyping(now time.Time) bool {
 // visibleCount is shared across all rows of one message.
 // Mask unrevealed body characters without altering the row's terminal width.
 // When this is the newest message, the block occupies the first hidden cell.
-func terminalMaskRow(row string,body messageBodyRange,visibleCount *int,cursorPlaced *bool,cursor rune) string {
+func terminalMaskRow(row string,body messageBodyRange,visibleCount *int,cursorPlaced *bool,cursor rune,mainTextColor string) string {
     if body.End<=body.Start {return row}
     var out strings.Builder
     out.Grow(len(row)+32)
@@ -145,7 +154,7 @@ func terminalMaskRow(row string,body messageBodyRange,visibleCount *int,cursorPl
                 out.WriteString(row[i:i+n])
                 *visibleCount--
             } else if !*cursorPlaced && cursor!=0 {
-                out.WriteString("\x1b[7m"+string(cursor)+"\x1b[27m")
+                out.WriteString(terminalCursorPaint(cursor,mainTextColor))
                 if width>1 {out.WriteString(strings.Repeat(" ",width-1))}
                 *cursorPlaced=true
             } else {
@@ -162,7 +171,7 @@ func terminalMaskRow(row string,body messageBodyRange,visibleCount *int,cursorPl
 
 // Place the persistent cursor in a spare cell immediately after the final
 // body glyph, never append another cell and never alter the reserved row count.
-func terminalCursorAtEnd(row string,column int,cursor rune) string {
+func terminalCursorAtEnd(row string,column int,cursor rune,mainTextColor string) string {
     if column<0 {return row}
     var out strings.Builder
     out.Grow(len(row)+24)
@@ -180,7 +189,7 @@ func terminalCursorAtEnd(row string,column int,cursor rune) string {
         if size<=0 {break}
         width:=lipgloss.Width(string(ch))
         if !painted && pos==column && width==1 {
-            out.WriteString("\x1b[7m"+string(cursor)+"\x1b[27m")
+            out.WriteString(terminalCursorPaint(cursor,mainTextColor))
             painted=true
         } else {
             out.WriteString(row[i:i+size])
@@ -261,7 +270,7 @@ func (m model) renderTerminalRows(visible []string,globalStart int) {
             }
             if !complete {
                 visible[row-globalStart]=terminalMaskRow(
-                    visible[row-globalStart],ranges[relative],&remaining,&placed,cursor)
+                    visible[row-globalStart],ranges[relative],&remaining,&placed,cursor,m.cfg.Theme.TextColor)
             }
         }
         if !showCursor || placed || len(ranges)==0 {continue}
@@ -283,7 +292,7 @@ func (m model) renderTerminalRows(visible []string,globalStart int) {
         if lastColumn>=contentWidth {lastColumn=contentWidth-1}
         if lastColumn>=0 {
             visible[lastRow-globalStart]=terminalCursorAtEnd(
-                visible[lastRow-globalStart],lastColumn,glyph)
+                visible[lastRow-globalStart],lastColumn,glyph,m.cfg.Theme.TextColor)
         }
     }
 }
