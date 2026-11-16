@@ -1,7 +1,6 @@
 package main
 
 import (
-    "fmt"
     "strings"
     "time"
     "unicode/utf8"
@@ -60,7 +59,7 @@ func (m *model) terminalTrackMessage(packet Packet) {
     // Message bodies are typed, not system control notices, old history,
     // outgoing echoes, or special interactive artwork/polls.
     if packet.Type!="message" && packet.Type!="whisper_result" {return}
-    if packet.XKeyscore>0 || packet.Text=="" || packet.User.Name==m.user.Name {return}
+    if packet.XKeyscore>0 || packet.Text=="" {return}
     if m.terminalReveals==nil {m.terminalReveals=make(map[int]terminalReveal)}
     m.terminalReveals[len(m.messages)-1]=terminalReveal{
         started:time.Now(),text:packet.Text,
@@ -84,7 +83,7 @@ func (m *model) terminalAdvance(now time.Time) {
 // haven't been typed yet. This preserves stable row counts, original
 // colours, hover/reply geometry, ANSI escapes and the scrollbar position.
 // visibleCount is shared across all rows of one message.
-func terminalMaskRow(row string,body messageBodyRange,visibleCount *int,cursorPlaced *bool,cursorColor string) string {
+func terminalMaskRow(row string,body messageBodyRange,visibleCount *int,cursorPlaced *bool) string {
     if body.End<=body.Start {return row}
     var out strings.Builder
     out.Grow(len(row)+32)
@@ -107,10 +106,10 @@ func terminalMaskRow(row string,body messageBodyRange,visibleCount *int,cursorPl
                 out.WriteString(row[i:i+n])
                 *visibleCount--
             } else if !*cursorPlaced {
-                // One real terminal-cell block, in the message foreground.
-                out.WriteString("\x1b[38;2;")
-                out.WriteString(cursorColor)
-                out.WriteString("m█\x1b[0m")
+                // Inverse video preserves the row's existing foreground
+                // and background colours; resetting SGR here would leak
+                // black patches into the theme's painted chat area.
+                out.WriteString("\x1b[7m█\x1b[27m")
                 if width>1 {out.WriteString(strings.Repeat(" ",width-1))}
                 *cursorPlaced=true
             } else {
@@ -125,19 +124,11 @@ func terminalMaskRow(row string,body messageBodyRange,visibleCount *int,cursorPl
     return out.String()
 }
 
-// A foreground ANSI SGR string that avoids injecting a theme-specific
-// background or reflowing the message when its block cursor is shown.
-func terminalCursorRGB(hex string) string {
-    rgb:=interrogationRGB(hex,[3]int{224,232,242})
-    return fmt.Sprintf("%d;%d;%d",rgb[0],rgb[1],rgb[2])
-}
-
 func (m model) renderTerminalRows(visible []string,globalStart int) {
     if len(m.terminalReveals)==0 || !m.terminalEnabled() || !m.renderCacheValid {
         return
     }
     now:=time.Now()
-    color:=terminalCursorRGB(m.cfg.Theme.TextColor)
     for index,reveal:=range m.terminalReveals {
         if index<0 || index>=len(m.messageRowRanges) || index>=len(m.messages) {continue}
         rows:=m.messageRowRanges[index]
@@ -167,7 +158,7 @@ func (m model) renderTerminalRows(visible []string,globalStart int) {
                 continue
             }
             visible[row-globalStart]=terminalMaskRow(
-                visible[row-globalStart],ranges[relative],&remaining,&placed,color)
+                visible[row-globalStart],ranges[relative],&remaining,&placed)
         }
     }
 }
