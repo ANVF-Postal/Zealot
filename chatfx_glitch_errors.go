@@ -32,36 +32,14 @@ type glitchErrorEvent struct {
 // Random-looking waits, but with a fixed, reproducible event stream.
 // Typical starts are separated by roughly 9-33 seconds.
 func glitchTextEvent(tick, salt uint64) (glitchErrorEvent,bool) {
-    next:=uint64(0)
-    for i:=uint64(0);i<100000;i++ {
-        seed:=chatFXHash(salt^0x7e827aa2+(i+1)*0x9e3779b97f4a7c15)
-        next+=270+(seed>>8)%720
-        duration:=glitchErrorDuration(seed) // writing, brief hold, fade
-        if tick<next {return glitchErrorEvent{},false}
-        if tick<next+duration {
-            return glitchErrorEvent{start:next,duration:duration,seed:seed},true
-        }
-        next+=duration
-    }
-    return glitchErrorEvent{},false
+    sample:=cachedGlitchSchedule(tick,salt)
+    return sample.event,sample.active
 }
 
-// Pause the ordinary visual corruption clock whenever text diagnostics own
-// the screen, rather than skipping a scheduled streak behind an error block.
+// The distortion clock pauses during active diagnostic text, including when
+// callers seek backward to a previously rendered simulation tick.
 func glitchDistortionTick(tick, salt uint64) uint64 {
-    next:=uint64(0)
-    paused:=uint64(0)
-    for i:=uint64(0);i<100000;i++ {
-        seed:=chatFXHash(salt^0x7e827aa2+(i+1)*0x9e3779b97f4a7c15)
-        next+=270+(seed>>8)%720
-        if tick<=next {break}
-        duration:=glitchErrorDuration(seed)
-        elapsed:=min(duration,tick-next)
-        paused+=elapsed
-        if tick<next+duration {break}
-        next+=duration
-    }
-    return tick-paused
+    return cachedGlitchSchedule(tick,salt).adjustedTick
 }
 
 func glitchErrorDuration(seed uint64) uint64 {
