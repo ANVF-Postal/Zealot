@@ -24,6 +24,7 @@ func cachedRainDensity(seconds float64,salt uint64) float64 {
     if seconds<0 {seconds=0}
     rainPhaseCursors.Lock()
     defer rainPhaseCursors.Unlock()
+    if _,ok:=rainPhaseCursors.bySalt[salt];!ok && len(rainPhaseCursors.bySalt)>=32 { clear(rainPhaseCursors.bySalt) }
     c:=rainPhaseCursors.bySalt[salt]
     if c.valid && c.at==seconds {return c.value}
     if !c.valid || seconds<c.at {
@@ -76,6 +77,7 @@ func cachedBlizzardWind(seconds float64,salt uint64) (float64,float64) {
     if seconds<=0 {return 0,0}
     blizzardPhaseCursors.Lock()
     defer blizzardPhaseCursors.Unlock()
+    if _,ok:=blizzardPhaseCursors.bySalt[salt];!ok && len(blizzardPhaseCursors.bySalt)>=32 { clear(blizzardPhaseCursors.bySalt) }
     c:=blizzardPhaseCursors.bySalt[salt]
     if c.valid && c.at==seconds {return c.valueOffset,c.valueSpeed}
     if !c.valid || seconds<c.at {c=blizzardPhaseCursor{}}
