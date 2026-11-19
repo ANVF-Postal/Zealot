@@ -205,14 +205,25 @@ const matrixFadeSteps = 48
 // Matrix colours depend only on the theme background, never the frame.
 // Cache the 48 computed shades so dense 60 FPS streams avoid repeated
 // floating-point blending and hex-string formatting.
-var matrixPaletteCache sync.Map // map[string][matrixFadeSteps]string
+var matrixPaletteCache = struct {
+    sync.RWMutex
+    byBackground map[string][matrixFadeSteps]string
+}{byBackground:make(map[string][matrixFadeSteps]string)}
 
 func matrixFadePalette(background string) [matrixFadeSteps]string {
-    if cached,ok:=matrixPaletteCache.Load(background);ok {
-        return cached.([matrixFadeSteps]string)
+    matrixPaletteCache.RLock()
+    colors,ok:=matrixPaletteCache.byBackground[background]
+    matrixPaletteCache.RUnlock()
+    if ok {return colors}
+    colors=matrixFadePaletteUncached(background)
+    matrixPaletteCache.Lock()
+    // A changed theme is rare; keep a few palettes instead of retaining
+    // every background ever previewed during a long-running session.
+    if len(matrixPaletteCache.byBackground)>=8 {
+        clear(matrixPaletteCache.byBackground)
     }
-    colors:=matrixFadePaletteUncached(background)
-    matrixPaletteCache.Store(background,colors)
+    matrixPaletteCache.byBackground[background]=colors
+    matrixPaletteCache.Unlock()
     return colors
 }
 
