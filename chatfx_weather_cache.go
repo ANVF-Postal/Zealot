@@ -82,6 +82,7 @@ func cachedBlizzardWind(seconds float64,salt uint64) (float64,float64) {
     remaining:=seconds-c.consumed
     for phase:=c.phase;phase<65536;phase++ {
         p:=blizzardPhase(phase,salt)
+        previousOffset:=c.offset
         if remaining>=p.gustDuration {
             c.offset+=p.speed*(p.gustDuration-p.rampDuration)
             remaining-=p.gustDuration
@@ -109,7 +110,12 @@ func cachedBlizzardWind(seconds float64,salt uint64) (float64,float64) {
             return offset,speed
         }
         if remaining<p.calmDuration {
-            c.at,c.valueOffset,c.valueSpeed,c.valid=seconds,c.offset,0,true
+            // The gust is finished, but do not commit it to the cursor
+            // until its calm period has elapsed. Otherwise next frame
+            // would add the same gust displacement a second time.
+            completedOffset:=c.offset
+            c.offset=previousOffset
+            c.at,c.valueOffset,c.valueSpeed,c.valid=seconds,completedOffset,0,true
             blizzardPhaseCursors.bySalt[salt]=c
             return c.offset,0
         }
