@@ -1,7 +1,9 @@
 package main
 
 import (
+    "fmt"
 	"math"
+    "strconv"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -147,6 +149,22 @@ func (m model) snowPositions(width, height int) []map[int]chatFXCell {
 	return positions
 }
 
+// chatFXForegroundANSI produces the same true-colour foreground as Lip Gloss,
+// without building a style per glyph. Effects use #RRGGBB colours; indexed
+// fallbacks retain their original Lip Gloss rendering when necessary.
+func chatFXForegroundANSI(color string) string {
+    if len(color)==7 && color[0]=='#' {
+        r,er:=strconv.ParseUint(color[1:3],16,8)
+        g,eg:=strconv.ParseUint(color[3:5],16,8)
+        b,eb:=strconv.ParseUint(color[5:7],16,8)
+        if er==nil && eg==nil && eb==nil {
+            return fmt.Sprintf("\x1b[38;2;%d;%d;%dm",r,g,b)
+        }
+    }
+    // A colourless particle should not inherit the preceding cell's colour.
+    return "\x1b[39m"
+}
+
 // renderChatFXBackground decorates the visible chat pane without changing
 // message glyphs, scrollbar geometry, borders, typing line or hitboxes.
 // Bubbles are the exception to blank-cell-only painting: their translucent
@@ -174,13 +192,13 @@ func (m model) renderChatFXBackground(rows []string, width int) {
 		if positions[y]==nil { positions[y]=make(map[int]chatFXCell,len(row)) }
 		for x,cell:=range row { positions[y][x]=cell }
 	}
-	background := lipgloss.Color(m.cfg.Theme.Background)
+	// ANSI sequences are reused per colour for the whole frame. The old
+	// renderer created a Lip Gloss style and a styled string for every
+	// distinct (colour, glyph) pair, then styled every blank run separately.
+	// Dense Matrix streams could allocate thousands of times per frame.
 	bgANSI := doomFireBackgroundANSI(m.cfg.Theme.Background)
-	styles := make(map[string]lipgloss.Style,16)
-	// A palette token is rendered only once per frame, while blank runs are
-	// written directly. Calling lipgloss.Render for every gap used to dominate
-	// both the frame time and allocation count on dense backgrounds.
-	tokens := make(map[chatFXCell]string,32)
+	foregrounds := make(map[string]string,16)
+	backgrounds := make(map[string]string,4)
 	for y, original := range rows {
 		if len(positions[y]) == 0 { continue }
 		plain := stripANSISequences(original)
@@ -190,34 +208,50 @@ func (m model) renderChatFXBackground(rows []string, width int) {
 		// its styling while laying down particles.
 		if strings.Contains(original,m.cfg.Theme.MentionBackgroundColor) { continue }
 		var tail strings.Builder
-		tail.Grow(width*3)
+		tail.Grow(width*6)
 		blankStart := prefix
 		wrote := false
+		lastFG := ""
+		lastBG := ""
+		setBG := func(code string) {
+			if code != lastBG {
+				tail.WriteString(code)
+				lastBG = code
+			}
+		}
 		for x:=prefix; x<width; x++ {
 			cell,exists := positions[y][x]
 			if !exists { continue }
 			if x>blankStart {
-				tail.WriteString(bgANSI)
+				setBG(bgANSI)
 				tail.WriteString(strings.Repeat(" ",x-blankStart))
 			}
-			rendered,ok := tokens[cell]
-			if !ok {
-				style,exists := styles[cell.color+"|"+cell.background]
-				if !exists {
-					style=lipgloss.NewStyle().Foreground(lipgloss.Color(cell.color)).Background(background)
-					if cell.background!="" {style=style.Background(lipgloss.Color(cell.background))}
-					styles[cell.color+"|"+cell.background]=style
+			cellBG:=bgANSI
+			if cell.background!="" {
+				var ok bool
+				cellBG,ok=backgrounds[cell.background]
+				if !ok {
+					cellBG=doomFireBackgroundANSI(cell.background)
+					backgrounds[cell.background]=cellBG
 				}
-				rendered=style.Render(string(cell.glyph))
-				tokens[cell]=rendered
 			}
-			tail.WriteString(rendered)
+			setBG(cellBG)
+			fg,ok:=foregrounds[cell.color]
+			if !ok {
+				fg=chatFXForegroundANSI(cell.color)
+				foregrounds[cell.color]=fg
+			}
+			if fg!=lastFG {
+				tail.WriteString(fg)
+				lastFG=fg
+			}
+			tail.WriteRune(cell.glyph)
 			blankStart=x+1
 			wrote=true
 		}
 		if !wrote { continue }
 		if blankStart<width {
-			tail.WriteString(bgANSI)
+			setBG(bgANSI)
 			tail.WriteString(strings.Repeat(" ",width-blankStart))
 		}
 		head := ""
