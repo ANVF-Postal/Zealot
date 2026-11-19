@@ -26,6 +26,7 @@ func cachedInterferenceBurst(tick,salt uint64,glitch bool) (uint64,bool) {
     key:=interferenceScheduleKey{salt,glitch}
     interferenceSchedules.Lock()
     defer interferenceSchedules.Unlock()
+    if _,ok:=interferenceSchedules.cursors[key];!ok && len(interferenceSchedules.cursors)>=32 { clear(interferenceSchedules.cursors) }
     cursor:=interferenceSchedules.cursors[key]
     if cursor.valid && tick==cursor.tick {return cursor.seed,cursor.active}
     if !cursor.valid || tick<cursor.tick {
@@ -77,6 +78,7 @@ var glitchSchedules = struct {
 func cachedGlitchSchedule(tick,salt uint64) glitchScheduleSample {
     glitchSchedules.Lock()
     defer glitchSchedules.Unlock()
+    if _,ok:=glitchSchedules.cursors[salt];!ok && len(glitchSchedules.cursors)>=32 { clear(glitchSchedules.cursors) }
     cursor:=glitchSchedules.cursors[salt]
     if cursor.valid && tick==cursor.tick {return cursor.sample}
     if !cursor.valid || tick<cursor.tick {
