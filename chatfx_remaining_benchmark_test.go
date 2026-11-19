@@ -55,6 +55,9 @@ func BenchmarkChatFXRemainingStyledFrame(b *testing.B) {
                     // Use genuine packet rows and a valid render cache so
                     // the production terminal renderer performs real work.
                     source=m.renderMessageLines()
+                    if !m.renderCacheValid || len(m.messageRowRanges)==0 {
+                        b.Fatal("terminal benchmark requires populated message render cache")
+                    }
                     if len(source)>size.height {source=source[:size.height]}
                 }
                 rows:=make([]string,len(source))
