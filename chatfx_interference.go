@@ -32,17 +32,7 @@ func interferenceGap(seed uint64, glitch bool) uint64 {
 }
 
 func interferenceBurst(tick uint64, salt uint64, glitch bool) (uint64,bool) {
-    next:=uint64(0)
-    for event:=uint64(0);event<100000;event++ {
-        seed:=chatFXHash(salt+(event+1)*0x9e3779b97f4a7c15)
-        next+=interferenceGap(seed,glitch)
-        length:=uint64(3+(seed>>24)%10)
-        if glitch {length=uint64(4+(seed>>24)%13)}
-        if tick<next {return seed,false}
-        if tick<next+length {return seed,true}
-        next+=length
-    }
-    return 0,false
+    return cachedInterferenceBurst(tick,salt,glitch)
 }
 
 // A soft triangular envelope allows quiet minor faults to appear and fade
