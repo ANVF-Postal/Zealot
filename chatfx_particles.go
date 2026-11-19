@@ -175,11 +175,11 @@ func (m model) renderChatFXBackground(rows []string, width int) {
 		for x,cell:=range row { positions[y][x]=cell }
 	}
 	background := lipgloss.Color(m.cfg.Theme.Background)
-	fill := lipgloss.NewStyle().Background(background)
+	bgANSI := doomFireBackgroundANSI(m.cfg.Theme.Background)
 	styles := make(map[string]lipgloss.Style,16)
-	// Dense blizzards repeatedly draw the same few colored glyphs.
-	// Cache ANSI-rendered tokens once per frame instead of building a style
-	// and invoking lipgloss.Render for every single snowflake.
+	// A palette token is rendered only once per frame, while blank runs are
+	// written directly. Calling lipgloss.Render for every gap used to dominate
+	// both the frame time and allocation count on dense backgrounds.
 	tokens := make(map[chatFXCell]string,32)
 	for y, original := range rows {
 		if len(positions[y]) == 0 { continue }
@@ -190,11 +190,16 @@ func (m model) renderChatFXBackground(rows []string, width int) {
 		// its styling while laying down particles.
 		if strings.Contains(original,m.cfg.Theme.MentionBackgroundColor) { continue }
 		var tail strings.Builder
+		tail.Grow(width*3)
 		blankStart := prefix
+		wrote := false
 		for x:=prefix; x<width; x++ {
 			cell,exists := positions[y][x]
 			if !exists { continue }
-			if x>blankStart { tail.WriteString(fill.Render(strings.Repeat(" ",x-blankStart))) }
+			if x>blankStart {
+				tail.WriteString(bgANSI)
+				tail.WriteString(strings.Repeat(" ",x-blankStart))
+			}
 			rendered,ok := tokens[cell]
 			if !ok {
 				style,exists := styles[cell.color+"|"+cell.background]
@@ -208,12 +213,16 @@ func (m model) renderChatFXBackground(rows []string, width int) {
 			}
 			tail.WriteString(rendered)
 			blankStart=x+1
+			wrote=true
 		}
-		if blankStart == prefix { continue }
-		if blankStart<width { tail.WriteString(fill.Render(strings.Repeat(" ",width-blankStart))) }
+		if !wrote { continue }
+		if blankStart<width {
+			tail.WriteString(bgANSI)
+			tail.WriteString(strings.Repeat(" ",width-blankStart))
+		}
 		head := ""
 		if prefix>0 { head=truncateANSI(original,prefix) }
-		rows[y]=head+tail.String()
+		rows[y]=head+tail.String()+"\\x1b[0m"
 	}
 	// Bubble backgrounds can coexist with the departing particles of the
 	// previously active effect; they never replace those glyphs or chat text.
