@@ -34,37 +34,7 @@ func blizzardEaseIntegral(u float64) float64 {
 }
 
 func blizzardWindSample(seconds float64, salt uint64) (offset,speed float64) {
-	if seconds<=0 { return 0,0 }
-	remaining:=seconds
-	for phase:=uint64(0);phase<65536;phase++ {
-		p:=blizzardPhase(phase,salt)
-		if remaining>=p.gustDuration {
-			// Whole gust contributes its plateau displacement and two ramps.
-			offset+=p.speed*(p.gustDuration-p.rampDuration)
-			remaining-=p.gustDuration
-		} else {
-			t:=remaining
-			ramp:=p.rampDuration
-			switch {
-			case t<ramp:
-				u:=t/ramp
-				offset+=p.speed*ramp*blizzardEaseIntegral(u)
-				speed=p.speed*u*u*(3-2*u)
-			case t<p.gustDuration-ramp:
-				offset+=p.speed*(ramp*0.5+t-ramp)
-				speed=p.speed
-			default:
-				u:=(t-(p.gustDuration-ramp))/ramp
-				offset+=p.speed*(p.gustDuration-1.5*ramp)
-				offset+=p.speed*ramp*(u-blizzardEaseIntegral(u))
-				speed=p.speed*(1-u*u*(3-2*u))
-			}
-			return offset,speed
-		}
-		if remaining < p.calmDuration { return offset,0 }
-		remaining-=p.calmDuration
-	}
-	return offset,0
+    return cachedBlizzardWind(seconds,salt)
 }
 
 func blizzardWindOffset(seconds float64, salt uint64) float64 {
