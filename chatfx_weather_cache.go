@@ -119,7 +119,7 @@ func cachedBlizzardWind(seconds float64,salt uint64) (float64,float64) {
             c.offset=previousOffset
             c.at,c.valueOffset,c.valueSpeed,c.valid=seconds,completedOffset,0,true
             blizzardPhaseCursors.bySalt[salt]=c
-            return c.offset,0
+            return completedOffset,0
         }
         remaining-=p.calmDuration
         c.consumed+=p.gustDuration+p.calmDuration
