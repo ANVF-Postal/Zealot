@@ -136,6 +136,31 @@ func TestChatFXCachedSchedulesMatchOriginalTimeline(t *testing.T) {
     }
 }
 
+// The cursor must show the completed gust displacement throughout its calm
+// interval without adding that same gust again on subsequent frames.
+func TestCachedBlizzardWindStaysContinuousThroughCalm(t *testing.T) {
+    for _,salt:=range []uint64{0,73,127} {
+        p:=blizzardPhase(0,salt)
+        times:=[]float64{
+            p.gustDuration-0.1,
+            p.gustDuration,
+            p.gustDuration+0.01,
+            p.gustDuration+p.calmDuration/2,
+            p.gustDuration+p.calmDuration-0.01,
+            p.gustDuration+p.calmDuration,
+            p.gustDuration+p.calmDuration+0.01,
+            p.gustDuration+p.calmDuration/2, // backward seek
+        }
+        for _,second:=range times {
+            got,speed:=blizzardWindSample(second,salt)
+            want,wantSpeed:=referenceBlizzardWind(second,salt)
+            if math.Abs(got-want)>1e-7 || math.Abs(speed-wantSpeed)>1e-9 {
+                t.Fatalf("salt %d at %.6fs: wind (%v,%v), reference (%v,%v)",salt,second,got,speed,want,wantSpeed)
+            }
+        }
+    }
+}
+
 func TestChatFXOptimizedANSIRendererPreservesTextAndWidth(t *testing.T) {
     for _,effect:=range []string{"static","glitch","rain","snow","blizzard","matrix"} {
         m:=newMessageInteractionTestModel(100)
