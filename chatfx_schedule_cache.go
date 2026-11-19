@@ -67,6 +67,7 @@ type glitchScheduleCursor struct {
     index uint64
     next uint64 // end of the preceding diagnostic
     paused uint64 // durations of completed diagnostics
+    duration uint64 // duration of the current event (computed once)
     sample glitchScheduleSample
     valid bool
 }
@@ -94,7 +95,11 @@ func cachedGlitchSchedule(tick,salt uint64) glitchScheduleSample {
             glitchSchedules.cursors[salt]=cursor
             return cursor.sample
         }
-        duration:=glitchErrorDuration(seed)
+        duration:=cursor.duration
+        if duration==0 {
+            duration=glitchErrorDuration(seed)
+            cursor.duration=duration
+        }
         if tick<start+duration {
             cursor.sample=glitchScheduleSample{
                 event:glitchErrorEvent{start:start,duration:duration,seed:seed},
@@ -108,6 +113,7 @@ func cachedGlitchSchedule(tick,salt uint64) glitchScheduleSample {
         }
         cursor.next=start+duration
         cursor.index=event+1
+        cursor.duration=0
         cursor.paused+=duration
     }
     cursor.sample=glitchScheduleSample{adjustedTick:tick-cursor.paused}
