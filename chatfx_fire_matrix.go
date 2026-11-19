@@ -4,6 +4,7 @@ import (
     "fmt"
     "math"
     "strconv"
+    "sync"
 )
 
 // Doom-style fire based on filipedeschamps/doom-fire-algorithm (MIT).
@@ -201,7 +202,21 @@ func (m model) firePositions(width,height int) []map[int]chatFXCell {
 // rendered frame, rather than one calculation and allocation per glyph.
 const matrixFadeSteps = 48
 
+// Matrix colours depend only on the theme background, never the frame.
+// Cache the 48 computed shades so dense 60 FPS streams avoid repeated
+// floating-point blending and hex-string formatting.
+var matrixPaletteCache sync.Map // map[string][matrixFadeSteps]string
+
 func matrixFadePalette(background string) [matrixFadeSteps]string {
+    if cached,ok:=matrixPaletteCache.Load(background);ok {
+        return cached.([matrixFadeSteps]string)
+    }
+    colors:=matrixFadePaletteUncached(background)
+    matrixPaletteCache.Store(background,colors)
+    return colors
+}
+
+func matrixFadePaletteUncached(background string) [matrixFadeSteps]string {
     bg:=[3]int{17,19,24} // default-theme fallback for indexed colours
     if len(background)==7 && background[0]=='#' {
         valid:=true
