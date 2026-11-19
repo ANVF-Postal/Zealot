@@ -13,27 +13,7 @@ import (
 // It holds each target for 30-180 seconds, then eases over 3-12 seconds
 // to the next target. No weather-state animation data travels over IPC.
 func rainDensityAt(seconds float64, salt uint64) float64 {
-	if seconds < 0 { seconds = 0 }
-	// Advance deterministically through variable-length segments. Do not
-	// wrap at a fixed wall-clock interval: that would cause a visible jump
-	// after an hour of continuous weather.
-	previous := 0.65
-	for segment:=uint64(0); segment<65536; segment++ {
-		seed := chatFXHash(salt+segment*0x9e3779b97f4a7c15)
-		target := 0.28 + 0.70*chatFXUnit(seed+1)
-		hold := 30 + 150*chatFXUnit(seed+2)
-		transition := 3 + 9*chatFXUnit(seed+3)
-		if seconds < hold { return previous }
-		seconds -= hold
-		if seconds < transition {
-			u := seconds/transition
-			u = u*u*(3-2*u) // smoothstep: no abrupt change at either end
-			return previous+(target-previous)*u
-		}
-		seconds -= transition
-		previous = target
-	}
-	return previous
+    return cachedRainDensity(seconds,salt)
 }
 
 // Candy shades come in vibrant and pastel variants. Individual confetti
