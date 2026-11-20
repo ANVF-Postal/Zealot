@@ -84,7 +84,7 @@ func TestRainSkyStylingDoesNotInheritMessageReverseVideo(t *testing.T) {
     }
     if !found {t.Fatal("no test seed painted rain across the first row")}
     rows:=make([]string,22)
-    rows[0]="\x1b[7m\x1b[38;2;180;220;255mHello\x1b[0m"+strings.Repeat(" ",95)
+    rows[0]="\x1b[7m\x1b[38;2;180;220;255mHello"+strings.Repeat(" ",95)
     for y:=1;y<len(rows);y++ {rows[y]=strings.Repeat(" ",100)}
     m.renderChatFXBackground(rows,100)
     m.renderStormSkyGradient(rows,100)
@@ -93,8 +93,8 @@ func TestRainSkyStylingDoesNotInheritMessageReverseVideo(t *testing.T) {
     }
     // A reset must separate the protected message prefix from the
     // unoccupied particle tail, preventing reverse-video/blue colour bleed.
-    if !strings.Contains(rows[0],"\x1b[0m\x1b[") {
-        t.Fatalf("rain renderer did not isolate protected text styling: %q",rows[0])
+    if !strings.Contains(rows[0],"Hello\x1b[0m") {
+        t.Fatalf("rain renderer inherited unterminated reverse-video styles: %q",rows[0])
     }
 }
 
