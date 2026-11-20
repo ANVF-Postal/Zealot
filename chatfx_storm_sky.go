@@ -61,6 +61,10 @@ func stormSkyRow(row,themeBackground,themeForeground string,weight float64,width
     currentBG,currentFG:=normalBG,normalFG
     var out strings.Builder
     out.Grow(len(row)+width+128)
+    // Never inherit reverse-video or a coloured background from the
+    // previous terminal row. Otherwise a shaded droplet foreground can
+    // turn into a solid blue bar across the remaining blank cells.
+    out.WriteString("\x1b[0m")
     emit:=func() {
         shadedBG:=stormSkyColor(currentBG,weight)
         // Snow and raindrops recede naturally into the upper darkness.
@@ -82,6 +86,10 @@ func stormSkyRow(row,themeBackground,themeForeground string,weight float64,width
                 currentBG=interrogationANSIBackground(params,currentBG,normalBG)
                 currentFG=interrogationANSIColor(params,currentFG,normalFG)
                 out.WriteString(row[i:end])
+                // The weather background is always explicitly shaded.
+                // Source reverse-video must not invert it into the current
+                // droplet or message foreground colour.
+                out.WriteString("\x1b[27m")
                 emit()
             } else {
                 out.WriteString(row[i:end])
