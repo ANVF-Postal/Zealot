@@ -54,8 +54,10 @@ var handbookPages = []struct {
 		{"/confetti [seconds]", "Colourful paper and streamers fall through the chat. Defaults to 10 seconds."},
 		{"/terminal off", "Stops the room's terminal typing layer without stopping its background effect. Add self to stop only your local terminal layer."},
 		{"/stop", "Stops room-wide visual effects. Remaining particles drift or fade away."},
-		{"/stopfx self", "Stops visual effects on your own client."},
+		{"/stopfx self", "Hides the current effect on your client without stopping it for the room."},
+		{"/startfx", "Restarts the room effect locally, or restarts the last stopped room effect."},
 		{"/disablefx", "Toggles all visual effects off or on for your client."},
+		{"/enablefx", "Enables visual effects locally without toggling them off."},
 		{"/fxfps 1-60", "Sets your local effects rendering frame rate (default 15 FPS). Simulations run independently at 30 Hz."},
 	}},
 	{"USER", []handbookEntry{
