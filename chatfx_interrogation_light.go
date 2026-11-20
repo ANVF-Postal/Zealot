@@ -167,9 +167,10 @@ func interrogationLightRow(row,background,foreground string,width,height,y int,a
                 lastFG,lastBG=[3]int{-1,-1,-1},[3]int{-1,-1,-1}
             }
             output.WriteString(row[i:end])
-            if row[end-1]=='m' && strings.HasPrefix(row[i:end],"\x1b[") {
-                // Never allow a previous FX's reverse-video state to swap
-                // Matrix glyph colours into full-width background bands.
+            if row[end-1]=='m' && strings.HasPrefix(row[i:end],"\x1b[") &&
+                chatFXHasInverseSGR(row[i+2:end-1]) {
+                // A source reverse-video attribute can otherwise turn a
+                // Matrix foreground into a bright background band.
                 output.WriteString("\x1b[27m")
             }
             i=end
