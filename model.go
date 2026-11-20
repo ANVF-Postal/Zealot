@@ -146,6 +146,7 @@ type model struct {
 	fxBubbles *bubbleState
 	fxAquariumSalt uint64
 	fxAquarium *aquariumState
+	fxRoomMuted bool // local stop hides room FX without disturbing its state
 	fxLocalOverride bool
 	fxDisabled bool
 	fxTerminalMuted bool // /stopfx self silences room typing locally
