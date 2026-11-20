@@ -8,11 +8,17 @@ import (
     "charm.land/lipgloss/v2"
 )
 
-// A dark storm ceiling occupies 30% of the visible message pane, independent
-// of chat history length. The smoothstep horizon matches the normal theme.
+// Each weather effect has its own smooth, viewport-relative storm ceiling.
+// The smoothstep horizon returns fully to the normal theme background.
 func stormSkyBlend(height,y int) float64 {
+    return stormSkyBlendForEffect(height,y,"rain")
+}
+
+func stormSkyBlendForEffect(height,y int,effect string) float64 {
     if height<=0 || y<0 {return 0}
-    skyRows:=int(math.Ceil(float64(height)*0.30))
+    coverage:=0.40 // rain
+    if effect=="blizzard" {coverage=0.50}
+    skyRows:=int(math.Ceil(float64(height)*coverage))
     if y>=skyRows {return 0}
     if skyRows==1 {return 0.88}
     t:=float64(y)/float64(skyRows-1)
@@ -102,7 +108,7 @@ func (m model) renderStormSkyGradient(rows []string,width int) {
         return
     }
     for y:=range rows {
-        weight:=stormSkyBlend(len(rows),y)
+        weight:=stormSkyBlendForEffect(len(rows),y,m.currentChatFX().name)
         if weight<=0 {continue}
         rows[y]=stormSkyRow(rows[y],m.cfg.Theme.Background,m.cfg.Theme.TextColor,weight,width)
     }
