@@ -44,7 +44,7 @@ func chatFXDuration(args []string) (int, bool) {
 // chat/whisper message handling so they can never leak as ordinary messages.
 func isChatFXCommand(command string) bool {
 	switch command {
-	case "/rain", "/snow", "/blizzard", "/embers", "/fire", "/matrix", "/confetti", "/fireworks", "/static", "/glitch", "/interrogation", "/bubbles", "/aquarium", "/terminal", "/stop", "/stopfx", "/disablefx", "/fxfps":
+	case "/rain", "/snow", "/blizzard", "/embers", "/fire", "/matrix", "/confetti", "/fireworks", "/static", "/glitch", "/interrogation", "/bubbles", "/aquarium", "/terminal", "/stop", "/stopfx", "/disablefx", "/enablefx", "/startfx", "/fxfps":
 		return true
 	}
 	return false
@@ -94,14 +94,28 @@ func (m *model) chatFXCommand(command string, fields []string) {
 		m.fxTickGeneration++
 		m.fxTickPending = false
 		m.chatFXNotice(fmt.Sprintf("ChatFX rendering set to %d FPS", fps))
-	case "/disablefx":
-		if len(fields) != 1 { m.chatFXNotice("Usage: /disablefx"); return }
-		m.fxDisabled = !m.fxDisabled
+	case "/disablefx", "/enablefx":
+		if len(fields) != 1 { m.chatFXNotice("Usage: "+command); return }
+		if command=="/disablefx" { m.fxDisabled=!m.fxDisabled } else {m.fxDisabled=false}
 		if m.fxDisabled {
-			m.chatFXNotice("ChatFX disabled locally. Use /disablefx again to enable.")
+			m.chatFXNotice("ChatFX disabled locally. Use /enablefx or /disablefx to enable.")
 		} else {
 			m.chatFXNotice("ChatFX enabled locally.")
 		}
+	case "/startfx":
+		if len(fields)!=1 {m.chatFXNotice("Usage: /startfx");return}
+		// Restore the room effect suppressed by /stopfx self. This is a
+		// local presentation action; restarting does not broadcast to peers.
+		m.fxDisabled=false
+		m.fxLocalOverride=false
+		m.fxLocal=chatFXState{}
+		if m.currentChatFX().name=="" {
+			m.chatFXNotice("No room ChatFX is active. Start one with /rain, /matrix, etc.")
+			return
+		}
+		m.fxFading=nil
+		m.resetChatFXSimulation()
+		m.chatFXNotice("ChatFX restarted locally.")
 	case "/rain", "/snow", "/blizzard", "/embers", "/fire", "/matrix", "/confetti", "/fireworks", "/static", "/glitch", "/interrogation", "/bubbles", "/aquarium":
 		args := fields[1:]
 		self := len(args)>0 && strings.EqualFold(args[0], "self")
@@ -126,10 +140,14 @@ func (m *model) chatFXCommand(command string, fields []string) {
 		if len(fields)==2 && strings.EqualFold(fields[1], "self") {
 			m.terminalLocalUntil=time.Time{}
 			if !m.terminalEnabled() {m.terminalClearReveals()}
-			if m.fxLocalOverride { m.retireChatFX(m.fxLocal) }
+			// A room effect must stay running for other clients, but it
+			// must no longer reappear immediately on this client.
 			m.fxLocal = chatFXState{}
-			m.fxLocalOverride = false
-			m.chatFXNotice("Local ChatFX stopped.")
+			m.fxLocalOverride = true // empty override = locally muted
+			m.fxFading = nil
+			m.fxInterrogationAmount=0
+			m.fxInterrogationLast=time.Time{}
+			m.chatFXNotice("ChatFX stopped locally. Use /startfx to resume the room effect.")
 		} else if len(fields)==1 {
 			if m.client != nil && m.connected {
 				_ = m.client.send(Packet{Type:"fx_stop", Room:m.room})
@@ -183,8 +201,10 @@ func (m model) chatFXAlive(fx chatFXState) bool {
 
 func (m model) currentChatFX() chatFXState {
 	if m.fxDisabled { return chatFXState{} }
-	if m.fxLocalOverride && m.chatFXAlive(m.fxLocal) {
-		return m.fxLocal
+	if m.fxLocalOverride {
+		// An empty override intentionally suppresses room-wide FX.
+		if m.fxLocal.name=="" {return chatFXState{}}
+		if m.chatFXAlive(m.fxLocal) {return m.fxLocal}
 	}
 	if m.chatFXAlive(m.fxRoom) { return m.fxRoom }
 	return chatFXState{}
@@ -300,7 +320,7 @@ func (m *model) advanceChatFX(msg chatFXTickMsg) tea.Cmd {
 	m.advanceInterrogationFade(msg.at)
 	m.trimChatFXFading(time.Now())
 	m.finishExpiredPrimary(time.Now())
-	if m.fxLocalOverride && !m.chatFXAlive(m.fxLocal) {
+	if m.fxLocalOverride && m.fxLocal.name!="" && !m.chatFXAlive(m.fxLocal) {
 		m.fxLocalOverride = false
 		m.fxLocal = chatFXState{}
 	}
