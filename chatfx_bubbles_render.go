@@ -162,13 +162,24 @@ func bubblePaintRow(row string,pixels []bubblePixel,themeBG string,width int) st
     var out strings.Builder
     out.Grow(len(row)+width*9)
     x:=0
+    // Most occupied cells share one of a few bubble colours. Reusing the
+    // SGR tokens avoids two fmt.Fprintf calls per Braille cell.
+    rgbTokens:=make(map[[3]int]string,8)
+    rgbToken:=func(color [3]int) string {
+        token,ok:=rgbTokens[color]
+        if !ok {
+            token=fmt.Sprintf("\x1b[38;2;%d;%d;%dm",color[0],color[1],color[2])
+            rgbTokens[color]=token
+        }
+        return token
+    }
     draw:=func(ch string,blank bool) {
         if x>=width {out.WriteString(ch);return}
         pixel:=pixels[x]
         if blank && x>=protectedWidth && pixel.glyph!=0 {
-            fmt.Fprintf(&out,"\x1b[38;2;%d;%d;%dm%c\x1b[38;2;%d;%d;%dm",
-                pixel.color[0],pixel.color[1],pixel.color[2],pixel.glyph,
-                currentFG[0],currentFG[1],currentFG[2])
+            out.WriteString(rgbToken(pixel.color))
+            out.WriteRune(pixel.glyph)
+            out.WriteString(rgbToken(currentFG))
         } else {
             out.WriteString(ch)
         }
@@ -188,7 +199,10 @@ func bubblePaintRow(row string,pixels []bubblePixel,themeBG string,width int) st
         }
         ch,size:=utf8.DecodeRuneInString(row[i:])
         if size<=0 {break}
-        w:=lipgloss.Width(string(ch))
+        // ASCII fills most chat cells; avoid allocating a one-rune string
+        // and invoking the full grapheme-width engine for every space.
+        w:=1
+        if size>1 {w=lipgloss.Width(string(ch))}
         if w==1 {
             // Coloured mention backgrounds are respected; only actual blank
             // cells against the chat background receive the ASCII outlines.
