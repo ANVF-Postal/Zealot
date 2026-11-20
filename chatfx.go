@@ -109,6 +109,7 @@ func (m *model) chatFXCommand(command string, fields []string) {
 		// local presentation action; restarting does not broadcast to peers.
 		m.fxDisabled=false
 		m.fxTerminalMuted=false
+		m.fxRoomMuted=false
 		m.fxLocalOverride=false
 		m.fxLocal=chatFXState{}
 		if m.currentChatFX().name=="" {
@@ -144,6 +145,7 @@ func (m *model) chatFXCommand(command string, fields []string) {
 			m.retireChatFX(m.currentChatFX())
 			m.fxLocal = chatFXState{name:name, started:time.Now(), until:until}
 			m.fxLocalOverride = true
+			m.fxRoomMuted=false
 			m.resetChatFXSimulation()
 			m.chatFXNotice(formatChatFXLaunch("You",name,seconds)+" (local)")
 		} else if m.client != nil && m.connected {
@@ -165,11 +167,14 @@ func (m *model) chatFXCommand(command string, fields []string) {
 			}
 			// A room effect must stay running for other clients, but it
 			// must no longer reappear immediately on this client.
+			// Retire before clearing the local emitter. Room FX stays in
+			// the daemon and continues for other clients.
+			m.retireChatFX(m.currentChatFX())
 			m.fxLocal = chatFXState{}
-			m.fxLocalOverride = true // empty override = locally muted
-			m.fxFading = nil
-			m.fxInterrogationAmount=0
-			m.fxInterrogationLast=time.Time{}
+			m.fxLocalOverride = false
+			m.fxRoomMuted = true
+			// Keep outgoing particles and the Interrogation fade-out.
+			// They expire naturally unless /disablefx hides all effects.
 			m.chatFXNotice("ChatFX stopped locally. Use /startfx to resume the room effect.")
 		} else if len(fields)==1 {
 			if m.client != nil && m.connected {
@@ -193,6 +198,11 @@ func (m *model) receiveChatFX(packet Packet) {
 	case "fx_state":
 		previous := m.currentChatFX()
 		previousRoom:=m.fxRoom.name
+		// A fresh room effect may still retire the old weather even if
+		// this client had locally hidden it until that new effect began.
+		if m.fxRoomMuted && previous.name=="" && m.fxRoom.name!="" && packet.FX!="" && packet.FX!=m.fxRoom.name {
+			previous=m.fxRoom
+		}
 		if packet.FX=="" && previousRoom!="" {
 			m.fxLastStopped=previousRoom
 			m.fxLastStoppedRoom=m.room
@@ -202,10 +212,8 @@ func (m *model) receiveChatFX(packet Packet) {
 		if packet.FX!="" && packet.FX!=previousRoom {
 			m.fxLastSelfStopped=""
 			m.fxLastSelfStoppedRoom=""
-			if m.fxLocalOverride && m.fxLocal.name=="" {
-				m.fxLocalOverride=false
-				m.fxTerminalMuted=false
-			}
+			m.fxRoomMuted=false
+			m.fxTerminalMuted=false
 		}
 		// Preserve the visible room effect as outgoing particles before
 		// replacing/stopping its authoritative state.
@@ -239,11 +247,8 @@ func (m model) chatFXAlive(fx chatFXState) bool {
 
 func (m model) currentChatFX() chatFXState {
 	if m.fxDisabled { return chatFXState{} }
-	if m.fxLocalOverride {
-		// An empty override intentionally suppresses room-wide FX.
-		if m.fxLocal.name=="" {return chatFXState{}}
-		if m.chatFXAlive(m.fxLocal) {return m.fxLocal}
-	}
+	if m.fxLocalOverride && m.chatFXAlive(m.fxLocal) {return m.fxLocal}
+	if m.fxRoomMuted {return chatFXState{}}
 	if m.chatFXAlive(m.fxRoom) { return m.fxRoom }
 	return chatFXState{}
 }
