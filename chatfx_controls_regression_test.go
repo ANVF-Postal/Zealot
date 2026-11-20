@@ -19,7 +19,7 @@ func TestStopFXSelfHidesRoomEffectUntilStartFX(t *testing.T) {
         t.Fatal("room effects should initially be visible")
     }
     m.chatFXCommand("/stopfx",[]string{"/stopfx","self"})
-    if m.currentChatFX().name!="" || m.fxRoom.name!="rain" {
+    if m.currentChatFX().name!="" || !m.fxRoomMuted || m.fxLocalOverride || m.fxRoom.name!="rain" {
         t.Fatal("local stop failed to hide the room effect")
     }
     if m.terminalEnabled() {t.Fatal("room terminal FX remained visible after local stop")}
