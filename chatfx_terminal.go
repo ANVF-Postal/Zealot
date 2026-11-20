@@ -198,7 +198,8 @@ func terminalMaskRow(row string,body messageBodyRange,visibleCount *int,cursorPl
         }
         ch,n:=utf8.DecodeRuneInString(row[i:])
         if n<=0 {break}
-        width:=lipgloss.Width(string(ch))
+        width:=1
+        if n>1 {width=lipgloss.Width(string(ch))}
         if width<0 {width=0}
         inside:=column>=body.Start && column<body.End
         if inside {
@@ -239,7 +240,8 @@ func terminalCursorAtEnd(row string,column int,cursor rune,mainTextColor,backgro
         }
         ch,size:=utf8.DecodeRuneInString(row[i:])
         if size<=0 {break}
-        width:=lipgloss.Width(string(ch))
+        width:=1
+        if size>1 {width=lipgloss.Width(string(ch))}
         if !painted && pos==column && width>0 {
             out.WriteString(terminalCursorPaint(cursor,mainTextColor,backgroundColor))
             // Replace the whole display footprint of any wide Matrix glyph.
