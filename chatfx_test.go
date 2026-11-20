@@ -76,13 +76,23 @@ func TestChatFXLocalAndRoomState(t *testing.T) {
 	m.receiveChatFX(Packet{Type:"fx_state",FX:"rain"})
 	if m.currentChatFX().name!="rain" { t.Fatal("no rain active") }
 	m.chatFXCommand("/stopfx",[]string{"/stopfx","self"})
+	if !m.fxLocalOverride || m.currentChatFX().name!="" || m.fxRoom.name!="rain" {
+		t.Fatal("stopping locally should hide room rain without stopping room state")
+	}
+	m.chatFXCommand("/startfx",[]string{"/startfx"})
 	if m.fxLocalOverride || m.currentChatFX().name!="rain" {
-		t.Fatal("stopping local FX should reveal room rain")
+		t.Fatal("/startfx should restart the visible room rain locally")
 	}
 	m.chatFXCommand("/disablefx",[]string{"/disablefx"})
 	if m.currentChatFX().name!="" || !m.fxDisabled { t.Fatal("disablefx did not suppress rain") }
+	m.chatFXCommand("/enablefx",[]string{"/enablefx"})
+	if m.currentChatFX().name!="rain" { t.Fatal("/enablefx did not restore room rain") }
+	m.chatFXCommand("/enablefx",[]string{"/enablefx"})
+	if m.fxDisabled {t.Fatal("/enablefx must be idempotent")}
 	m.chatFXCommand("/disablefx",[]string{"/disablefx"})
-	if m.currentChatFX().name!="rain" { t.Fatal("reenabling FX did not restore room rain") }
+	if !m.fxDisabled {t.Fatal("/disablefx must still toggle off")}
+	m.chatFXCommand("/disablefx",[]string{"/disablefx"})
+	if m.currentChatFX().name!="rain" { t.Fatal("/disablefx must still toggle back on") }
 	m.receiveChatFX(Packet{Type:"fx_state"})
 	if m.currentChatFX().name!="" { t.Fatal("server stop did not clear rain") }
 }
