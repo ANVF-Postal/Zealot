@@ -142,6 +142,7 @@ func (m model) interrogationSpotlightIndex() int {
 // immediately; there is no per-message fade-in stripe as history scrolls.
 func (m model) renderInterrogationRows(rows []string, start int) {
     if m.fxDisabled || m.fxInterrogationAmount<=0 || len(rows)==0 {return}
+    if fx:=m.currentChatFX().name;fx!="" && fx!="interrogation" {return}
     width:=chatContentWidth(m.width)
     if width<1 {return}
     flicker:=interrogationLampIntensity(m.fxSimSteps,m.fxSalt)
@@ -157,6 +158,7 @@ func (m model) renderInterrogationRows(rows []string, start int) {
 
 func (m model) renderInterrogationTypingRow(row string, y int) string {
     if m.fxDisabled || m.fxInterrogationAmount<=0 {return row}
+    if fx:=m.currentChatFX().name;fx!="" && fx!="interrogation" {return row}
     return interrogationLightRow(
         row,m.cfg.Theme.Background,m.cfg.Theme.TextColor,
         chatContentWidth(m.width),y+1,y,m.fxInterrogationAmount,0,
