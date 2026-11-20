@@ -137,3 +137,16 @@ func TestGlitchHasVisibleNULAndLongDiagnostics(t *testing.T) {
     }
     if !foundTen {t.Fatal("ten-line glitch diagnostics are unreachable")}
 }
+
+func TestStartFXRestoresStoppedSelfEffectWithoutNetwork(t *testing.T) {
+    m:=newMessageInteractionTestModel(90)
+    m.room="lobby"
+    m.chatFXCommand("/bubbles",[]string{"/bubbles","self"})
+    if m.currentChatFX().name!="bubbles" {t.Fatal("local bubbles did not start")}
+    m.chatFXCommand("/stopfx",[]string{"/stopfx","self"})
+    if m.currentChatFX().name!="" {t.Fatal("local effect still visible")}
+    m.chatFXCommand("/startfx",[]string{"/startfx"})
+    if m.currentChatFX().name!="bubbles" || !m.fxLocalOverride {
+        t.Fatal("startfx didn't restore the last self-launched effect")
+    }
+}
