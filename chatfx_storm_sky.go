@@ -8,6 +8,18 @@ import (
     "charm.land/lipgloss/v2"
 )
 
+// Detect SGR 7 without allocating a parameter slice or confusing it
+// with colour values such as 37, 47, or 107.
+func chatFXHasInverseSGR(params string) bool {
+    for start:=0;start<len(params); {
+        end:=start
+        for end<len(params) && params[end]!=';' {end++}
+        if end==start+1 && params[start]=='7' {return true}
+        start=end+1
+    }
+    return false
+}
+
 // Each weather effect has its own smooth, viewport-relative storm ceiling.
 // The smoothstep horizon returns fully to the normal theme background.
 func stormSkyBlend(height,y int) float64 {
@@ -86,10 +98,9 @@ func stormSkyRow(row,themeBackground,themeForeground string,weight float64,width
                 currentBG=interrogationANSIBackground(params,currentBG,normalBG)
                 currentFG=interrogationANSIColor(params,currentFG,normalFG)
                 out.WriteString(row[i:end])
-                // The weather background is always explicitly shaded.
-                // Source reverse-video must not invert it into the current
-                // droplet or message foreground colour.
-                out.WriteString("\x1b[27m")
+                // Source inverse-video must not swap a shaded droplet's
+                // foreground into the background of the rest of the row.
+                if chatFXHasInverseSGR(params) {out.WriteString("\x1b[27m")}
                 emit()
             } else {
                 out.WriteString(row[i:end])
