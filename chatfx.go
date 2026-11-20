@@ -112,7 +112,13 @@ func (m *model) chatFXCommand(command string, fields []string) {
 		m.fxLocalOverride=false
 		m.fxLocal=chatFXState{}
 		if m.currentChatFX().name=="" {
-			if m.fxLastStopped!="" && m.fxLastStoppedRoom==m.room && m.client!=nil && m.connected {
+			if m.fxLastSelfStopped!="" && m.fxLastSelfStoppedRoom==m.room {
+				m.fxLocal=chatFXState{name:m.fxLastSelfStopped,started:time.Now()}
+				m.fxLocalOverride=true
+				m.fxFading=nil
+				m.resetChatFXSimulation()
+				m.chatFXNotice("Local ChatFX restarted.")
+			} else if m.fxLastStopped!="" && m.fxLastStoppedRoom==m.room && m.client!=nil && m.connected {
 				_ = m.client.send(Packet{Type:"fx_start",Room:m.room,FX:m.fxLastStopped})
 				m.chatFXNotice("Restarting the last room ChatFX.")
 			} else {
@@ -148,6 +154,15 @@ func (m *model) chatFXCommand(command string, fields []string) {
 			m.terminalLocalUntil=time.Time{}
 			m.fxTerminalMuted=true
 			if !m.terminalEnabled() {m.terminalClearReveals()}
+			// Remember a self-launched effect if there is no room effect to
+			// resume. /startfx can restore it without contacting the daemon.
+			if m.fxLocalOverride && m.fxLocal.name!="" {
+				m.fxLastSelfStopped=m.fxLocal.name
+				m.fxLastSelfStoppedRoom=m.room
+			} else {
+				m.fxLastSelfStopped=""
+				m.fxLastSelfStoppedRoom=""
+			}
 			// A room effect must stay running for other clients, but it
 			// must no longer reappear immediately on this client.
 			m.fxLocal = chatFXState{}
