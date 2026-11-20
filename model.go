@@ -138,6 +138,8 @@ type model struct {
 	fxRoom chatFXState
 	fxLastStopped string // last room effect, for /startfx after /stop
 	fxLastStoppedRoom string
+	fxLastSelfStopped string
+	fxLastSelfStoppedRoom string
 	fxLocal chatFXState
 	fxFading []chatFXFading
 	fxFire *doomFireState
