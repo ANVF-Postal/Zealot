@@ -22,6 +22,13 @@ const (
 type terminalReveal struct {
     started time.Time
     text string
+    duration time.Duration // immutable per message; avoid rescanning punctuation each frame
+}
+
+// Zero-duration test fixtures and legacy reveals still take the original path.
+func terminalRevealDuration(reveal terminalReveal) time.Duration {
+    if reveal.duration>0 {return reveal.duration}
+    return terminalTextDuration(reveal.text)
 }
 
 func terminalSentencePause(ch rune) bool {
@@ -140,6 +147,9 @@ func (m *model) terminalTrackMessage(packet Packet) {
         // printable-character tick. The original packet remains untouched.
         started:time.Now(),text:strings.ReplaceAll(strings.ReplaceAll(packet.Text,"\r",""),"\n",""),
     }
+    reveal:=m.terminalReveals[current]
+    reveal.duration=terminalTextDuration(reveal.text)
+    m.terminalReveals[current]=reveal
     m.terminalUpdateCursorRows(previous,current)
 }
 
@@ -151,7 +161,7 @@ func (m *model) terminalAdvance(now time.Time) {
     }
     latest:=m.terminalLatestMessage()
     for index,reveal:=range m.terminalReveals {
-        if index!=latest && now.Sub(reveal.started)>=terminalTextDuration(reveal.text) {
+        if index!=latest && now.Sub(reveal.started)>=terminalRevealDuration(reveal) {
             delete(m.terminalReveals,index)
         }
     }
@@ -302,7 +312,7 @@ func (m model) renderTerminalRows(visible []string,globalStart int) {
         if packet.Type!="message" && packet.Type!="whisper_result" &&
             packet.Type!="system" && packet.Type!="me" {continue}
         elapsed:=now.Sub(reveal.started)
-        duration:=terminalTextDuration(reveal.text)
+        duration:=terminalRevealDuration(reveal)
         complete:=elapsed>=duration
         if complete && index!=latest {continue}
         remaining:=terminalRevealCount(reveal.text,elapsed)
