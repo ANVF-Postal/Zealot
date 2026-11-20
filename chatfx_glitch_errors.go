@@ -43,7 +43,7 @@ func glitchDistortionTick(tick, salt uint64) uint64 {
 }
 
 func glitchErrorDuration(seed uint64) uint64 {
-    lines:=2+int((seed>>43)%5)
+    lines:=2+int((seed>>43)%9)
     speed:=uint64(1+(seed>>51)%2)
     writing:=uint64(0)
     for i:=0;i<lines;i++ {
@@ -100,7 +100,7 @@ func (m model) glitchErrorPositions(width,height int) ([]map[int]chatFXCell,bool
     rows:=make([]map[int]chatFXCell,height)
     age:=m.fxSimSteps-event.start
     // A few lines build into a block, each typing left to right.
-    lines:=2+int((event.seed>>43)%5)
+    lines:=2+int((event.seed>>43)%9)
     lines=min(lines,height)
     // Use an aligned error block, but keep it away from the extreme edges.
     x0:=0
