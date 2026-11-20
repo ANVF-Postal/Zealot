@@ -198,11 +198,8 @@ func (m *model) receiveChatFX(packet Packet) {
 	case "fx_state":
 		previous := m.currentChatFX()
 		previousRoom:=m.fxRoom.name
-		// A fresh room effect may still retire the old weather even if
-		// this client had locally hidden it until that new effect began.
-		if m.fxRoomMuted && previous.name=="" && m.fxRoom.name!="" && packet.FX!="" && packet.FX!=m.fxRoom.name {
-			previous=m.fxRoom
-		}
+		// /stopfx self already retired its local particles. Do not
+		// retire that hidden room emitter again during the next handoff.
 		if packet.FX=="" && previousRoom!="" {
 			m.fxLastStopped=previousRoom
 			m.fxLastStoppedRoom=m.room
