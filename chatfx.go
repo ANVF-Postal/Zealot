@@ -199,9 +199,13 @@ func (m *model) receiveChatFX(packet Packet) {
 		}
 		// A genuinely different new room effect can play after a local
 		// /stopfx self; /disablefx remains the persistent opt-out.
-		if m.fxLocalOverride && m.fxLocal.name=="" &&
-			packet.FX!="" && packet.FX!=previousRoom {
-			m.fxLocalOverride=false
+		if packet.FX!="" && packet.FX!=previousRoom {
+			m.fxLastSelfStopped=""
+			m.fxLastSelfStoppedRoom=""
+			if m.fxLocalOverride && m.fxLocal.name=="" {
+				m.fxLocalOverride=false
+				m.fxTerminalMuted=false
+			}
 		}
 		// Preserve the visible room effect as outgoing particles before
 		// replacing/stopping its authoritative state.
