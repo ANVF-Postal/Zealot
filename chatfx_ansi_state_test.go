@@ -17,8 +17,16 @@ func assertChatFXNoReverseAtPrintable(t *testing.T, row string) {
             end:=ansiSequenceEnd(row,i)
             if end<=i {t.Fatalf("invalid ANSI sequence at %d",i)}
             if strings.HasPrefix(row[i:end],"\x1b[") && row[end-1]=='m' {
-                for _,field:=range strings.Split(row[i+2:end-1],";") {
-                    switch field {
+                fields:=strings.Split(row[i+2:end-1],";")
+                for j:=0;j<len(fields);j++ {
+                    switch fields[j] {
+                    case "38","48":
+                        // RGB channels can be 0, 7, or 27 without setting
+                        // reset, reverse-video, or normal-video SGR.
+                        if j+1<len(fields) {
+                            if fields[j+1]=="2" && j+4<len(fields) {j+=4
+                            } else if fields[j+1]=="5" && j+2<len(fields) {j+=2}
+                        }
                     case "", "0": reversed=false
                     case "7": reversed=true
                     case "27": reversed=false
@@ -98,5 +106,43 @@ func TestActualRainAndMatrixFramesHaveNoBrightBackgroundStreaks(t *testing.T) {
                 }
             }
         }
+    }
+}
+
+func TestSGRColourComponentsCannotBecomeIndependentControlCodes(t *testing.T) {
+    background:=[3]int{17,19,24}
+    foreground:=[3]int{230,230,230}
+    for _,params:=range []string{
+        "38;2;104;156;196", // 104 is bright blue BACKGROUND if misread
+        "38;2;7;27;0",     // 7/27/0 are styling instructions if misread
+        "38;5;104",        // indexed foreground also skips its argument
+    } {
+        if got:=interrogationANSIBackground(params,background,background);got!=background {
+            t.Fatalf("foreground SGR %q changed background to %v",params,got)
+        }
+        if chatFXHasInverseSGR(params) {
+            t.Fatalf("foreground colour %q was mistaken for reverse-video",params)
+        }
+    }
+    for _,params:=range []string{
+        "48;2;30;90;39", // 30/90/39 must not change foreground
+        "48;2;0;7;27",
+        "48;5;39",
+    } {
+        if got:=interrogationANSIColor(params,foreground,foreground);got!=foreground {
+            t.Fatalf("background SGR %q changed foreground to %v",params,got)
+        }
+        if chatFXHasInverseSGR(params) {
+            t.Fatalf("background colour %q was mistaken for reverse-video",params)
+        }
+    }
+    if got:=interrogationANSIBackground("38;2;104;156;196;48;2;17;19;24",background,background);got!=background {
+        t.Fatalf("combined RGB SGR changed background: %v",got)
+    }
+    if got:=interrogationANSIColor("48;2;17;19;24;38;2;104;156;196",foreground,foreground);got!=[3]int{104,156,196} {
+        t.Fatalf("combined RGB SGR lost foreground: %v",got)
+    }
+    if !chatFXHasInverseSGR("38;2;7;27;0;7") {
+        t.Fatal("an actual SGR 7 was missed after the RGB triplet")
     }
 }
