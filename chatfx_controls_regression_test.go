@@ -1,0 +1,89 @@
+package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "strings"
+    "testing"
+    "time"
+)
+
+// Stopping locally must suppress a *room-owned* effect, not merely remove
+// a self override and immediately reveal the same room animation.
+func TestStopFXSelfHidesRoomEffectUntilStartFX(t *testing.T) {
+    m:=newMessageInteractionTestModel(90)
+    m.room="lobby"
+    m.fxRoom=chatFXState{name:"rain"}
+    m.terminalRoomUntil=time.Now().Add(time.Minute)
+    if m.currentChatFX().name!="rain" || !m.terminalEnabled() {
+        t.Fatal("room effects should initially be visible")
+    }
+    m.chatFXCommand("/stopfx",[]string{"/stopfx","self"})
+    if m.currentChatFX().name!="" || m.fxRoom.name!="rain" {
+        t.Fatal("local stop failed to hide the room effect")
+    }
+    if m.terminalEnabled() {t.Fatal("room terminal FX remained visible after local stop")}
+    m.chatFXCommand("/enablefx",[]string{"/enablefx"})
+    if m.currentChatFX().name!="" {
+        t.Fatal("/enablefx must not override an explicit local stop")
+    }
+    m.chatFXCommand("/startfx",[]string{"/startfx"})
+    if m.currentChatFX().name!="rain" || !m.terminalEnabled() {
+        t.Fatal("/startfx failed to restore the still-active room layers")
+    }
+}
+
+// The room stop command is authoritative; /startfx can resend the last room
+// effect only when it is still the same room and the client is connected.
+func TestStartFXRestartsLastStoppedRoomEffect(t *testing.T) {
+    m:=newMessageInteractionTestModel(90)
+    m.room="lobby"
+    m.connected=true
+    var wire bytes.Buffer
+    m.client=&wireClient{enc:json.NewEncoder(&wire)}
+    m.receiveChatFX(Packet{Type:"fx_state",FX:"snow"})
+    m.receiveChatFX(Packet{Type:"fx_state"})
+    if m.fxLastStopped!="snow" || m.currentChatFX().name!="" {
+        t.Fatal("last stopped room effect not remembered")
+    }
+    m.chatFXCommand("/startfx",[]string{"/startfx"})
+    var packet Packet
+    if err:=json.NewDecoder(&wire).Decode(&packet);err!=nil {t.Fatal(err)}
+    if packet.Type!="fx_start" || packet.Room!="lobby" || packet.FX!="snow" {
+        t.Fatalf("/startfx should request room effect restart: %+v",packet)
+    }
+    if m.currentChatFX().name!="" {
+        t.Fatal("room FX must await server confirmation")
+    }
+}
+
+func TestLocalStopDoesNotMuteANewRoomEffect(t *testing.T) {
+    m:=newMessageInteractionTestModel(90)
+    m.fxRoom=chatFXState{name:"rain"}
+    m.chatFXCommand("/stopfx",[]string{"/stopfx","self"})
+    if m.currentChatFX().name!="" {t.Fatal("local stop didn't hide rain")}
+    m.receiveChatFX(Packet{Type:"fx_state",FX:"snow"})
+    if m.currentChatFX().name!="snow" {
+        t.Fatal("a newly chosen room effect should not inherit the old local stop")
+    }
+}
+
+func TestRainSkyStylingDoesNotInheritMessageReverseVideo(t *testing.T) {
+    m:=newMessageInteractionTestModel(100)
+    m.fxRoom=chatFXState{name:"rain"}
+    m.fxSalt=17
+    m.fxSimSteps=900
+    rows:=make([]string,22)
+    rows[0]="\x1b[7m\x1b[38;2;180;220;255mHello\x1b[0m"+strings.Repeat(" ",95)
+    for y:=1;y<len(rows);y++ {rows[y]=strings.Repeat(" ",100)}
+    m.renderChatFXBackground(rows,100)
+    m.renderStormSkyGradient(rows,100)
+    if !strings.HasPrefix(stripANSISequences(rows[0]),"Hello") {
+        t.Fatal("weather painting overwrote message text")
+    }
+    // A reset must separate the protected message prefix from the
+    // unoccupied particle tail, preventing reverse-video/blue colour bleed.
+    if !strings.Contains(rows[0],"\x1b[0m\x1b[") {
+        t.Fatalf("rain renderer did not isolate protected text styling: %q",rows[0])
+    }
+}
