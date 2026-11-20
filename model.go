@@ -136,6 +136,8 @@ type model struct {
 	terminalLocalUntil time.Time
 	terminalReveals map[int]terminalReveal
 	fxRoom chatFXState
+	fxLastStopped string // last room effect, for /startfx after /stop
+	fxLastStoppedRoom string
 	fxLocal chatFXState
 	fxFading []chatFXFading
 	fxFire *doomFireState
