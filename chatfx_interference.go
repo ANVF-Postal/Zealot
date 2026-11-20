@@ -6,7 +6,9 @@ package main
 
 var crtStaticGlyphs = [...]rune{'.', ':', ',', '*', '+', '#', '%', '/', '\\'}
 var crtStaticColors = [...]string{"#66717B", "#87919A", "#A8AFB5", "#D2D6D9", "#F1F1ED"}
-var digitalGlitchGlyphs = [...]rune{'#', '%', '=', '_', '/', '\\', '|', '+', 'x', '0'}
+// Include visible control-code symbols (␀ represents NUL, not a raw
+// terminal control byte) and block graphics for stronger corruption.
+var digitalGlitchGlyphs = [...]rune{'#', '%', '=', '_', '/', '\\', '|', '+', 'x', '0', '█', '▓', '▒', '░', '␀', '¤', '¬', '╬', '╳', '@', '^', '~', '?'}
 // Classic PuTTY ANSI 16-colour palette, including standard and bright
 // variants. Black is retained for completeness but not sampled by the
 // visible glitches: it would disappear on the usual dark chat backgrounds.
