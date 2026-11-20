@@ -2,6 +2,7 @@ package main
 
 import (
     "fmt"
+    "sync"
     "math"
     "strings"
     "strconv"
@@ -15,21 +16,68 @@ import (
 // Wider light pool with a deeper rim; older messages remain decipherable.
 func interrogationLightAt(x,y,width,height int, emphasis,flicker float64) float64 {
     if width<1 || height<1 {return 1}
-    cx:=float64(width-1)*0.50
-    cy:=float64(height-1)-math.Min(1.5,float64(height-1)*0.15)
-    rx:=math.Max(3,float64(width)*0.73)
-    ry:=math.Max(4,math.Min(16,float64(height)*0.57))
-    dx:=(float64(x)-cx)/rx
-    dy:=(float64(y)-cy)/ry
-    glow:=math.Exp(-1.7*(dx*dx+dy*dy))
-    // Larger pool, with extra edge attenuation to retain a dramatic rim.
-    horizontalEdge:=math.Abs(float64(x)-cx)/math.Max(1,cx)
-    verticalEdge:=math.Abs(float64(y)-cy)/math.Max(1,float64(height-1))
-    rim:=1-0.34*math.Pow(horizontalEdge,4)-0.13*math.Pow(verticalEdge,4)
-    light:=0.23+0.72*glow*math.Max(0.45,rim)*flicker
-    // No message-specific brightness bands: the pool stays fixed while
-    // chat lines scroll through it, avoiding abrupt horizontal seams.
+    light:=0.23+cachedInterrogationLightShape(x,y,width,height)*flicker
     return math.Max(0.22,math.Min(1,light))
+}
+
+// Precompute only the stationary shape of the lamp. The time-dependent
+// flicker remains outside the cache, so its colour/timing is unchanged.
+type interrogationLightGeometryKey struct {width,height int}
+var interrogationLightGeometry = struct {
+    sync.RWMutex
+    values map[interrogationLightGeometryKey][]float64
+}{values:make(map[interrogationLightGeometryKey][]float64)}
+
+func cachedInterrogationLightShape(x,y,width,height int) float64 {
+    key:=interrogationLightGeometryKey{width,height}
+    interrogationLightGeometry.RLock()
+    values,ok:=interrogationLightGeometry.values[key]
+    interrogationLightGeometry.RUnlock()
+    if !ok {
+        values=make([]float64,width*height)
+        cx:=float64(width-1)*0.50
+        cy:=float64(height-1)-math.Min(1.5,float64(height-1)*0.15)
+        rx:=math.Max(3,float64(width)*0.73)
+        ry:=math.Max(4,math.Min(16,float64(height)*0.57))
+        for yy:=0;yy<height;yy++ {
+            dy:=(float64(yy)-cy)/ry
+            verticalEdge:=math.Abs(float64(yy)-cy)/math.Max(1,float64(height-1))
+            for xx:=0;xx<width;xx++ {
+                dx:=(float64(xx)-cx)/rx
+                glow:=math.Exp(-1.7*(dx*dx+dy*dy))
+                horizontalEdge:=math.Abs(float64(xx)-cx)/math.Max(1,cx)
+                rim:=1-0.34*math.Pow(horizontalEdge,4)-0.13*math.Pow(verticalEdge,4)
+                values[yy*width+xx]=0.72*glow*math.Max(0.45,rim)
+            }
+        }
+        interrogationLightGeometry.Lock()
+        if existing,found:=interrogationLightGeometry.values[key];found {
+            values=existing
+        } else {
+            if len(interrogationLightGeometry.values)>=8 {
+                clear(interrogationLightGeometry.values)
+            }
+            interrogationLightGeometry.values[key]=values
+        }
+        interrogationLightGeometry.Unlock()
+    }
+    if x<0 {x=0} else if x>=width {x=width-1}
+    if y<0 || y>=height {return 0}
+    return values[y*width+x]
+}
+
+func interrogationWriteRGB(output *strings.Builder,layer int,color [3]int) {
+    var bytes [48]byte
+    data:=bytes[:0]
+    data=append(data,'\x1b','[')
+    data=strconv.AppendInt(data,int64(layer),10)
+    data=append(data,';','2',';')
+    for i,v:=range color {
+        if i>0 {data=append(data,';')}
+        data=strconv.AppendInt(data,int64(v),10)
+    }
+    data=append(data,'m')
+    output.Write(data)
 }
 
 // Very rare, short fluorescent dips, deterministic at the 30 Hz simulation
@@ -84,11 +132,11 @@ func interrogationLightRow(row,background,foreground string,width,height,y int,a
             fgShade[c]=max(0,min(255,fgShade[c]))
         }
         if bgShade!=lastBG {
-            fmt.Fprintf(&output,"\x1b[48;2;%d;%d;%dm",bgShade[0],bgShade[1],bgShade[2])
+            interrogationWriteRGB(&output,48,bgShade)
             lastBG=bgShade
         }
         if fgShade!=lastFG {
-            fmt.Fprintf(&output,"\x1b[38;2;%d;%d;%dm",fgShade[0],fgShade[1],fgShade[2])
+            interrogationWriteRGB(&output,38,fgShade)
             lastFG=fgShade
         }
     }
@@ -111,7 +159,8 @@ func interrogationLightRow(row,background,foreground string,width,height,y int,a
         if size<1 {break}
         if x<width {emit()}
         output.WriteString(row[i:i+size])
-        advance:=lipgloss.Width(string(ch))
+        advance:=1
+        if size>1 {advance=lipgloss.Width(string(ch))}
         if advance>0 {x+=advance}
         i+=size
     }
