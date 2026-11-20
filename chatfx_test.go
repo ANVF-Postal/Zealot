@@ -76,7 +76,7 @@ func TestChatFXLocalAndRoomState(t *testing.T) {
 	m.receiveChatFX(Packet{Type:"fx_state",FX:"rain"})
 	if m.currentChatFX().name!="rain" { t.Fatal("no rain active") }
 	m.chatFXCommand("/stopfx",[]string{"/stopfx","self"})
-	if !m.fxLocalOverride || m.currentChatFX().name!="" || m.fxRoom.name!="rain" {
+	if m.fxLocalOverride || !m.fxRoomMuted || m.currentChatFX().name!="" || m.fxRoom.name!="rain" {
 		t.Fatal("stopping locally should hide room rain without stopping room state")
 	}
 	m.chatFXCommand("/startfx",[]string{"/startfx"})
