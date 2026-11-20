@@ -69,3 +69,39 @@ func TestInterrogationRGBWriterKeepsOriginalANSIBytes(t *testing.T) {
         }
     }
 }
+
+func TestAquariumCachedSpriteWidthPreservesGlyphColours(t *testing.T) {
+    fish:=aquariumSwimmers(160,45,30,73)
+    // Check both directions and all printable art frames, including the
+    // wide multi-line predator and its per-column colour highlights.
+    for _,swimmer:=range fish {
+        for _,direction:=range []int{-1,1} {
+            swimmer.direction=direction
+            art:=aquariumFishArt(swimmer)
+            width:=0
+            for _,line:=range art {
+                width=max(width,len([]rune(line)))
+            }
+            for row,line:=range art {
+                for col,glyph:=range line {
+                    got:=aquariumFishGlyphColorWithWidth(swimmer,row,col,glyph,width)
+                    want:=aquariumFishGlyphColor(swimmer,row,col,glyph)
+                    if got!=want {
+                        t.Fatalf("fish colour changed at %d,%d: got %q want %q",row,col,got,want)
+                    }
+                }
+            }
+        }
+    }
+}
+
+func TestTerminalRevealDurationCacheMatchesTypingTimeline(t *testing.T) {
+    for _,text:=range []string{"Hello.","What's happening?!","A long statement with spaces and punctuation...","界 hello!"} {
+        duration:=terminalTextDuration(text)
+        cached:=terminalReveal{duration:duration,text:text}
+        legacy:=terminalReveal{text:text}
+        if terminalRevealDuration(cached)!=duration || terminalRevealDuration(legacy)!=duration {
+            t.Fatalf("terminal duration cache changed punctuation timing for %q",text)
+        }
+    }
+}
