@@ -71,8 +71,18 @@ func TestLocalStopDoesNotMuteANewRoomEffect(t *testing.T) {
 func TestRainSkyStylingDoesNotInheritMessageReverseVideo(t *testing.T) {
     m:=newMessageInteractionTestModel(100)
     m.fxRoom=chatFXState{name:"rain"}
-    m.fxSalt=17
     m.fxSimSteps=900
+    // Deterministically choose a seed that actually paints the first row.
+    // Otherwise the test could accidentally inspect a blank frame.
+    found:=false
+    for salt:=uint64(1);salt<256;salt++ {
+        m.fxSalt=salt
+        for x:=range m.rainPositions(100,22)[0] {
+            if x>5 {found=true;break}
+        }
+        if found {break}
+    }
+    if !found {t.Fatal("no test seed painted rain across the first row")}
     rows:=make([]string,22)
     rows[0]="\x1b[7m\x1b[38;2;180;220;255mHello\x1b[0m"+strings.Repeat(" ",95)
     for y:=1;y<len(rows);y++ {rows[y]=strings.Repeat(" ",100)}
