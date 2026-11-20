@@ -143,6 +143,8 @@ func (m *model) finishExpiredPrimary(now time.Time) {
 	if m.fxRoom.name!="" && m.fxRoom.name!="confetti" && m.fxRoom.name!="fireworks" &&
 		!m.fxRoom.until.IsZero() && !now.Before(m.fxRoom.until) {
 		if !m.fxLocalOverride { m.retireChatFX(m.fxRoom) }
+		m.fxLastStopped=m.fxRoom.name
+		m.fxLastStoppedRoom=m.room
 		m.fxRoom=chatFXState{}
 	}
 }
