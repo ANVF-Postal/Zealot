@@ -68,6 +68,7 @@ func (m *model) chatFXCommand(command string, fields []string) {
 				m.terminalLocalUntil=time.Time{}
 				m.chatFXNotice("Local terminal typing stopped.")
 			} else {
+				m.fxTerminalMuted=false
 				m.terminalLocalUntil=terminalForever
 				if seconds>0 {m.terminalLocalUntil=time.Now().Add(time.Duration(seconds)*time.Second)}
 				m.chatFXNotice(formatChatFXLaunch("You","terminal",seconds)+" (local)")
@@ -107,6 +108,7 @@ func (m *model) chatFXCommand(command string, fields []string) {
 		// Restore the room effect suppressed by /stopfx self. This is a
 		// local presentation action; restarting does not broadcast to peers.
 		m.fxDisabled=false
+		m.fxTerminalMuted=false
 		m.fxLocalOverride=false
 		m.fxLocal=chatFXState{}
 		if m.currentChatFX().name=="" {
@@ -144,6 +146,7 @@ func (m *model) chatFXCommand(command string, fields []string) {
 	case "/stop", "/stopfx":
 		if len(fields)==2 && strings.EqualFold(fields[1], "self") {
 			m.terminalLocalUntil=time.Time{}
+			m.fxTerminalMuted=true
 			if !m.terminalEnabled() {m.terminalClearReveals()}
 			// A room effect must stay running for other clients, but it
 			// must no longer reappear immediately on this client.
