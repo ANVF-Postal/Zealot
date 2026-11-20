@@ -6,27 +6,29 @@ import (
     "testing"
 )
 
-func TestStormSkyGradientScalesToThirtyPercent(t *testing.T) {
-    for _,height:=range []int{8,12,20,31,40,60,100} {
-        skyRows:=int(math.Ceil(float64(height)*0.30))
-        if got:=stormSkyBlend(height,0);got<0.87 || got>0.89 {
-            t.Fatalf("height %d: missing dark sky at top: %f",height,got)
-        }
-        if skyRows>1 && stormSkyBlend(height,skyRows-1)!=0 {
-            t.Fatalf("height %d: gradient did not reach theme background at horizon",height)
-        }
-        for y:=skyRows;y<height;y++ {
-            if got:=stormSkyBlend(height,y);got!=0 {
-                t.Fatalf("height %d: sky extends below top 30%% at row %d: %f",height,y,got)
+func TestStormSkyGradientMatchesWeatherCoverage(t *testing.T) {
+    for _,tc:=range []struct {effect string;coverage float64}{
+        {"rain",0.40},{"blizzard",0.50},
+    } {
+        for _,height:=range []int{8,12,20,31,40,60,100} {
+            skyRows:=int(math.Ceil(float64(height)*tc.coverage))
+            if got:=stormSkyBlendForEffect(height,0,tc.effect);got<0.87 || got>0.89 {
+                t.Fatalf("%s height %d: missing dark sky at top: %f",tc.effect,height,got)
             }
-        }
-        previous:=1.0
-        for y:=0;y<skyRows;y++ {
-            strength:=stormSkyBlend(height,y)
-            if strength>previous {
-                t.Fatalf("height %d: dark sky increases with depth at row %d",height,y)
+            if skyRows>1 && stormSkyBlendForEffect(height,skyRows-1,tc.effect)!=0 {
+                t.Fatalf("%s height %d: gradient did not return to theme at horizon",tc.effect,height)
             }
-            previous=strength
+            for y:=skyRows;y<height;y++ {
+                if got:=stormSkyBlendForEffect(height,y,tc.effect);got!=0 {
+                    t.Fatalf("%s height %d: sky extends below %d rows at row %d",tc.effect,height,skyRows,y)
+                }
+            }
+            previous:=1.0
+            for y:=0;y<skyRows;y++ {
+                strength:=stormSkyBlendForEffect(height,y,tc.effect)
+                if strength>previous {t.Fatalf("%s: dark sky increases with depth at row %d",tc.effect,y)}
+                previous=strength
+            }
         }
     }
 }
@@ -44,11 +46,13 @@ func TestStormSkyOnlyRainAndBlizzard(t *testing.T) {
             if rows[0]==original[0] || !strings.Contains(rows[0],"\x1b[48;2;") {
                 t.Fatalf("%s sky did not shade the top row",name)
             }
-            if rows[9]!=original[9] {
-                t.Fatalf("%s sky leaked beyond top 30%%",name)
+            skyRows:=int(math.Ceil(float64(len(rows))*0.40))
+            if name=="blizzard" {skyRows=int(math.Ceil(float64(len(rows))*0.50))}
+            if rows[skyRows]!=original[skyRows] {
+                t.Fatalf("%s sky leaked beyond its horizon",name)
             }
-            if rows[7]==original[7] {
-                t.Fatalf("%s sky ended early before top 30%%",name)
+            if rows[skyRows-2]==original[skyRows-2] {
+                t.Fatalf("%s sky ended early before its horizon",name)
             }
         } else {
             for i:=range rows {
