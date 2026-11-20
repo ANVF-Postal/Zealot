@@ -114,6 +114,9 @@ func interrogationLightRow(row,background,foreground string,width,height,y int,a
     if height>0 && y>=0 && y<height {shape=interrogationLightShape(width,height)}
     var output strings.Builder
     output.Grow(len(row)+width*38)
+    // Source styles can contain inverse-video attributes inherited from
+    // previous effects. Start this row with known terminal attributes.
+    output.WriteString("\x1b[0m")
     x:=0
     lastFG,lastBG:=[3]int{-1,-1,-1},[3]int{-1,-1,-1}
     emit:=func() {
@@ -164,6 +167,11 @@ func interrogationLightRow(row,background,foreground string,width,height,y int,a
                 lastFG,lastBG=[3]int{-1,-1,-1},[3]int{-1,-1,-1}
             }
             output.WriteString(row[i:end])
+            if row[end-1]=='m' && strings.HasPrefix(row[i:end],"\x1b[") {
+                // Never allow a previous FX's reverse-video state to swap
+                // Matrix glyph colours into full-width background bands.
+                output.WriteString("\x1b[27m")
+            }
             i=end
             continue
         }
