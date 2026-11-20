@@ -28,7 +28,7 @@ var interrogationLightGeometry = struct {
     values map[interrogationLightGeometryKey][]float64
 }{values:make(map[interrogationLightGeometryKey][]float64)}
 
-func cachedInterrogationLightShape(x,y,width,height int) float64 {
+func interrogationLightShape(width,height int) []float64 {
     key:=interrogationLightGeometryKey{width,height}
     interrogationLightGeometry.RLock()
     values,ok:=interrogationLightGeometry.values[key]
@@ -61,9 +61,13 @@ func cachedInterrogationLightShape(x,y,width,height int) float64 {
         }
         interrogationLightGeometry.Unlock()
     }
+    return values
+}
+
+func cachedInterrogationLightShape(x,y,width,height int) float64 {
     if x<0 {x=0} else if x>=width {x=width-1}
     if y<0 || y>=height {return 0}
-    return values[y*width+x]
+    return interrogationLightShape(width,height)[y*width+x]
 }
 
 func interrogationWriteRGB(output *strings.Builder,layer int,color [3]int) {
@@ -105,12 +109,19 @@ func interrogationLightRow(row,background,foreground string,width,height,y int,a
     bg:=interrogationRGB(background,[3]int{17,19,24})
     normal:=interrogationRGB(foreground,[3]int{230,230,230})
     currentFG,currentBG:=normal,bg
+    // A single lookup per row; the per-cell lighting loop must not acquire
+    // a cache lock for every character in the viewport.
+    var shape []float64
+    if height>0 && y>=0 && y<height {shape=interrogationLightShape(width,height)}
     var output strings.Builder
     output.Grow(len(row)+width*38)
     x:=0
     lastFG,lastBG:=[3]int{-1,-1,-1},[3]int{-1,-1,-1}
     emit:=func() {
         sample:=interrogationLightAt(min(width-1,x),y,width,height,emphasis,flicker)
+        if len(shape)>0 {
+            sample=math.Max(0.22,math.Min(1,0.23+shape[y*width+min(width-1,x)]*flicker))
+        }
         // Use 32 light levels to keep wide terminal panes from producing
         // two truecolour ANSI sequences per cell on every frame.
         sample=math.Round(sample*32)/32
