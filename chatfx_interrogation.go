@@ -41,17 +41,20 @@ func interrogationANSIColor(parameters string, current [3]int, normal [3]int) [3
         switch {
         case n==0 || n==39:
             current=normal
-        case n==38 && i+4<len(fields) && fields[i+1]=="2":
+        case (n==38 || n==48) && i+4<len(fields) && fields[i+1]=="2":
+            // Consume all RGB components even for the opposite layer:
+            // e.g. the red component 104 in a foreground colour is NOT
+            // an SGR 104 bright-blue background instruction.
             r,e1:=strconv.Atoi(fields[i+2])
             g,e2:=strconv.Atoi(fields[i+3])
-            b,e3:=strconv.Atoi(fields[i+4])
-            if e1==nil && e2==nil && e3==nil {
-                current=[3]int{max(0,min(255,r)),max(0,min(255,g)),max(0,min(255,b))}
+            blue,e3:=strconv.Atoi(fields[i+4])
+            if n==38 && e1==nil && e2==nil && e3==nil {
+                current=[3]int{max(0,min(255,r)),max(0,min(255,g)),max(0,min(255,blue))}
             }
             i+=4
-        case n==38 && i+2<len(fields) && fields[i+1]=="5":
+        case (n==38 || n==48) && i+2<len(fields) && fields[i+1]=="5":
             index,e:=strconv.Atoi(fields[i+2])
-            if e==nil && index>=0 && index<=255 {current=interrogationANSI256(index)}
+            if n==38 && e==nil && index>=0 && index<=255 {current=interrogationANSI256(index)}
             i+=2
         case n>=30 && n<=37:
             current=interrogationANSI256(n-30)
