@@ -204,6 +204,8 @@ func (m model) renderChatFXBackground(rows []string, width int) {
 			if !exists { continue }
 			if x>blankStart {
 				setBG(bgANSI)
+				// Blank cells must never retain the blue particle foreground.
+				if lastFG!="" {tail.WriteString("\x1b[39m");lastFG=""}
 				tail.WriteString(strings.Repeat(" ",x-blankStart))
 			}
 			cellBG:=bgANSI
@@ -232,11 +234,15 @@ func (m model) renderChatFXBackground(rows []string, width int) {
 		if !wrote { continue }
 		if blankStart<width {
 			setBG(bgANSI)
+			if lastFG!="" {tail.WriteString("\x1b[39m");lastFG=""}
 			tail.WriteString(strings.Repeat(" ",width-blankStart))
 		}
 		head := ""
 		if prefix>0 { head=truncateANSI(original,prefix) }
-		rows[y]=head+tail.String()+"\x1b[0m"
+		// A message prefix may end with bold, reverse-video, or a custom
+		// background still active. Reset *before* drawing the particle
+		// tail so foreground droplets cannot tint later blank cells.
+		rows[y]=head+"\x1b[0m"+tail.String()+"\x1b[0m"
 	}
 	// Bubble backgrounds can coexist with the departing particles of the
 	// previously active effect; they never replace those glyphs or chat text.
