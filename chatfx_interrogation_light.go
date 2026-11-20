@@ -118,9 +118,11 @@ func interrogationLightRow(row,background,foreground string,width,height,y int,a
     x:=0
     lastFG,lastBG:=[3]int{-1,-1,-1},[3]int{-1,-1,-1}
     emit:=func() {
-        sample:=interrogationLightAt(min(width-1,x),y,width,height,emphasis,flicker)
+        sample:=0.0
         if len(shape)>0 {
             sample=math.Max(0.22,math.Min(1,0.23+shape[y*width+min(width-1,x)]*flicker))
+        } else {
+            sample=interrogationLightAt(min(width-1,x),y,width,height,emphasis,flicker)
         }
         // Use 32 light levels to keep wide terminal panes from producing
         // two truecolour ANSI sequences per cell on every frame.
