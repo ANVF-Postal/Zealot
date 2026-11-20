@@ -66,6 +66,29 @@ func bubbleOutlineColor(b bubbleParticle,glyph rune) [3]int {
     return color
 }
 
+// All 24 spring nodes bound the interpolated rim. Reject cells whose
+// entire 2x4 subpixel rectangle is provably inside or outside that rim.
+// This skips expensive atan2/hypot calculations in empty bubble interiors
+// without approximating or changing any visible Braille dots.
+func bubbleRimBounds(b bubbleParticle) (inner,outer float64) {
+    low,high:=0.0,0.0
+    for _,displacement:=range b.rim {
+        if displacement<low {low=displacement}
+        if displacement>high {high=displacement}
+    }
+    thickness:=math.Max(0.028,0.24/b.radius)
+    // Maximum normalized distance between a cell centre and any subpixel.
+    margin:=math.Hypot(0.125/b.radius,0.375/b.radius)
+    return math.Max(0,1+low-thickness-margin),1+high+thickness+margin
+}
+
+func bubbleCellMayTouchRim(b bubbleParticle,x,y int,inner,outer float64) bool {
+    dx:=(float64(x)+0.5-b.x)/(2*b.radius)
+    dy:=(float64(y)+0.5-b.y)/b.radius
+    squared:=dx*dx+dy*dy
+    return squared>=inner*inner && squared<=outer*outer
+}
+
 // Each bubble only visits its bounded rectangle; cost remains proportional
 // to the visible outlines, with a strict 32-bubble population cap.
 func (s *bubbleState) raster(width,height int) [][]bubblePixel {
@@ -76,6 +99,8 @@ func (s *bubbleState) raster(width,height int) [][]bubblePixel {
         grid[y][x]=bubblePixel{glyph:glyph,color:color}
     }
     for _,b:=range s.bubbles {
+        if b.radius<=0 {continue}
+        inner,outer:=bubbleRimBounds(b)
         rx:=2*b.radius*1.30
         ry:=b.radius*1.30
         startX:=max(0,int(math.Floor(b.x-rx))-1)
@@ -84,6 +109,7 @@ func (s *bubbleState) raster(width,height int) [][]bubblePixel {
         endY:=min(height,int(math.Ceil(b.y+ry))+1)
         for y:=startY;y<endY;y++ {
             for x:=startX;x<endX;x++ {
+                if !bubbleCellMayTouchRim(b,x,y,inner,outer) {continue}
                 glyph:=bubbleGlyphAt(b,x,y)
                 if glyph!=0 {paint(x,y,glyph,bubbleOutlineColor(b,glyph))}
             }
