@@ -35,6 +35,29 @@ func TestStopFXSelfHidesRoomEffectUntilStartFX(t *testing.T) {
 
 // The room stop command is authoritative; /startfx can resend the last room
 // effect only when it is still the same room and the client is connected.
+// A local room stop must preserve exiting particles without creating a
+// second copy when the room subsequently switches to another effect.
+func TestLocalRoomStopRetiresParticlesExactlyOnce(t *testing.T) {
+    m:=newMessageInteractionTestModel(100)
+    m.room="lobby"
+    m.width=100
+    m.height=30
+    m.fxSalt=19
+    m.fxRoom=chatFXState{name:"rain",started:time.Now()}
+    m.chatFXCommand("/stopfx",[]string{"/stopfx","self"})
+    if len(m.fxFading)==0 || len(m.fxFading[0].particles)==0 {
+        t.Fatal("local stop discarded the departing rain")
+    }
+    fading:=len(m.fxFading)
+    m.receiveChatFX(Packet{Type:"fx_state",FX:"blizzard"})
+    if m.currentChatFX().name!="blizzard" {
+        t.Fatal("new room effect did not become visible")
+    }
+    if len(m.fxFading)!=fading {
+        t.Fatal("room handoff duplicated particles already retired by local stop")
+    }
+}
+
 func TestStartFXRestartsLastStoppedRoomEffect(t *testing.T) {
     m:=newMessageInteractionTestModel(90)
     m.room="lobby"
