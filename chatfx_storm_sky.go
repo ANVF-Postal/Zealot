@@ -11,11 +11,19 @@ import (
 // Detect SGR 7 without allocating a parameter slice or confusing it
 // with colour values such as 37, 47, or 107.
 func chatFXHasInverseSGR(params string) bool {
-    for start:=0;start<len(params); {
-        end:=start
-        for end<len(params) && params[end]!=';' {end++}
-        if end==start+1 && params[start]=='7' {return true}
-        start=end+1
+    fields:=strings.Split(params,";")
+    for i:=0;i<len(fields);i++ {
+        switch fields[i] {
+        case "38","48":
+            // Extended RGB and indexed colours contain arbitrary numbers;
+            // a channel value of 7 is not reverse-video SGR 7.
+            if i+1<len(fields) {
+                if fields[i+1]=="2" && i+4<len(fields) {i+=4
+                } else if fields[i+1]=="5" && i+2<len(fields) {i+=2}
+            }
+        case "7":
+            return true
+        }
     }
     return false
 }
