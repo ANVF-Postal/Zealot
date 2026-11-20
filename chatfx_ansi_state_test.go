@@ -69,3 +69,34 @@ func TestInterrogationCannotInvertPreviousMatrixColoursIntoBackground(t *testing
         }
     }
 }
+
+func TestActualRainAndMatrixFramesHaveNoBrightBackgroundStreaks(t *testing.T) {
+    const width,height=90,28
+    for _,effect:=range []string{"rain","matrix"} {
+        m:=newMessageInteractionTestModel(width)
+        m.fxRoom=chatFXState{name:effect}
+        m.fxSalt=73
+        m.fxSimSteps=900
+        rows:=chatFXBenchmarkRows(width,height)
+        m.renderChatFXBackground(rows,width)
+        if effect=="rain" {
+            m.renderStormSkyGradient(rows,width)
+        } else {
+            m.fxRoom=chatFXState{name:"interrogation"}
+            m.fxInterrogationAmount=0.90
+            m.renderInterrogationRows(rows,0)
+        }
+        for y,row:=range rows {
+            assertChatFXNoReverseAtPrintable(t,row)
+            for x:=0;x<width;x++ {
+                bg:=interrogationBackgroundAt(row,x)
+                if bg[0]<0 || bg[1]<0 || bg[2]<0 {
+                    t.Fatalf("%s row %d col %d left background undefined",effect,y,x)
+                }
+                if bg[0]>70 || bg[1]>70 || bg[2]>70 {
+                    t.Fatalf("%s row %d col %d has unexpectedly bright background %v",effect,y,x,bg)
+                }
+            }
+        }
+    }
+}
