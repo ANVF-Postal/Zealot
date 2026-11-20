@@ -643,11 +643,11 @@ func aquariumPaintEel(f aquariumSwimmer,seconds float64,height int,put func(int,
 func (m model) renderAquariumFish(width,height int,seconds float64,salt uint64,put func(int,int,rune,string)) {
     for _,fish:=range aquariumSwimmers(width,height,seconds,salt) {
         if m.fxAquarium!=nil && m.fxAquarium.eaten[fish.id] {continue}
-        lines:=aquariumFishArt(fish)
         if fish.kind==aquariumEel {
             aquariumPaintEel(fish,seconds,height,put)
             continue
         }
+        lines:=aquariumFishArt(fish)
         for row,line:=range lines {
             for col,glyph:=range line {
                 put(fish.x+col,fish.y+row,glyph,aquariumFishGlyphColor(fish,row,col,glyph))
