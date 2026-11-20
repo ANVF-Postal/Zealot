@@ -146,6 +146,7 @@ type model struct {
 	fxAquarium *aquariumState
 	fxLocalOverride bool
 	fxDisabled bool
+	fxTerminalMuted bool // /stopfx self silences room typing locally
 	fxFrame uint64
 	fxSalt uint64
 	fxRenderFPS int
