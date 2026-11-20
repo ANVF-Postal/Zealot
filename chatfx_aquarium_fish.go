@@ -173,13 +173,22 @@ func aquariumMinnowColor(seed uint64) string {
 }
 
 func aquariumFishGlyphColor(f aquariumSwimmer,row,index int,glyph rune) string {
+    return aquariumFishGlyphColorWithWidth(f,row,index,glyph,0)
+}
+
+// Renderers know the width of the sprite they just built. Passing it once
+// avoids regenerating mirrored fish art for each character in the sprite.
+func aquariumFishGlyphColorWithWidth(f aquariumSwimmer,row,index int,glyph rune,fishWidth int) string {
     if f.kind==aquariumMinnow {
         seed:=f.colorSeed
         if seed==0 {seed=f.seed}
         return aquariumMinnowColor(seed)
     }
     originalIndex:=index
-    if f.direction<0 {originalIndex=aquariumFishWidth(f)-1-index}
+    if f.direction<0 {
+        if fishWidth==0 {fishWidth=aquariumFishWidth(f)}
+        originalIndex=fishWidth-1-index
+    }
     if f.kind==aquariumPike && (glyph=='(' || glyph==')') {
         // The bands belong to body segments, not the animation clock.
         if (originalIndex-2)%2==0 {return "#94C18A"}
@@ -648,9 +657,15 @@ func (m model) renderAquariumFish(width,height int,seconds float64,salt uint64,p
             continue
         }
         lines:=aquariumFishArt(fish)
+        fishWidth:=0
+        if fish.direction<0 {
+            for _,line:=range lines {
+                fishWidth=max(fishWidth,utf8.RuneCountInString(line))
+            }
+        }
         for row,line:=range lines {
             for col,glyph:=range line {
-                put(fish.x+col,fish.y+row,glyph,aquariumFishGlyphColor(fish,row,col,glyph))
+                put(fish.x+col,fish.y+row,glyph,aquariumFishGlyphColorWithWidth(fish,row,col,glyph,fishWidth))
             }
         }
     }
