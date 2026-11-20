@@ -97,3 +97,43 @@ func TestRainSkyStylingDoesNotInheritMessageReverseVideo(t *testing.T) {
         t.Fatalf("rain renderer did not isolate protected text styling: %q",rows[0])
     }
 }
+
+func TestInterrogationFadeDoesNotTintSubsequentRain(t *testing.T) {
+    m:=newMessageInteractionTestModel(80)
+    m.fxInterrogationAmount=1
+    m.fxRoom=chatFXState{name:"interrogation"}
+    source:=[]string{strings.Repeat(" ",70),strings.Repeat(" ",70)}
+    lit:=append([]string(nil),source...)
+    m.renderInterrogationRows(lit,0)
+    if lit[0]==source[0] {t.Fatal("interrogation not active in test")}
+    m.fxRoom=chatFXState{name:"rain"}
+    after:=append([]string(nil),source...)
+    m.renderInterrogationRows(after,0)
+    if after[0]!=source[0] || after[1]!=source[1] {
+        t.Fatal("fading interrogation light leaked into newly launched rain")
+    }
+    row:=m.renderInterrogationTypingRow(source[0],0)
+    if row!=source[0] {
+        t.Fatal("interrogation light leaked into typing row during rain")
+    }
+}
+
+func TestGlitchHasVisibleNULAndLongDiagnostics(t *testing.T) {
+    haveBlock,haveNUL:=false,false
+    for _,glyph:=range digitalGlitchGlyphs {
+        if glyph=='█' {haveBlock=true}
+        if glyph=='␀' {haveNUL=true}
+        if glyph==0 {t.Fatal("raw NUL would corrupt terminal rendering")}
+    }
+    if !haveBlock || !haveNUL {t.Fatal("glitch palette needs solid blocks and visible NUL symbols")}
+    foundTen:=false
+    for i:=uint64(0);i<1024;i++ {
+        seed:=chatFXHash(i)
+        if 2+int((seed>>43)%9)==10 {
+            foundTen=true
+            if glitchErrorDuration(seed)==0 {t.Fatal("ten-line diagnostic has no duration")}
+            break
+        }
+    }
+    if !foundTen {t.Fatal("ten-line glitch diagnostics are unreachable")}
+}
