@@ -206,17 +206,19 @@ func interrogationANSIBackground(parameters string,current,normal [3]int) [3]int
         switch {
         case n==0 || n==49:
             current=normal
-        case n==48 && i+4<len(fields) && fields[i+1]=="2":
+        case (n==38 || n==48) && i+4<len(fields) && fields[i+1]=="2":
+            // Consume foreground RGB operands too. Their values must
+            // never be mistaken for separate background SGR controls.
             r,e1:=strconv.Atoi(fields[i+2])
             g,e2:=strconv.Atoi(fields[i+3])
-            b,e3:=strconv.Atoi(fields[i+4])
-            if e1==nil && e2==nil && e3==nil {
-                current=[3]int{max(0,min(255,r)),max(0,min(255,g)),max(0,min(255,b))}
+            blue,e3:=strconv.Atoi(fields[i+4])
+            if n==48 && e1==nil && e2==nil && e3==nil {
+                current=[3]int{max(0,min(255,r)),max(0,min(255,g)),max(0,min(255,blue))}
             }
             i+=4
-        case n==48 && i+2<len(fields) && fields[i+1]=="5":
+        case (n==38 || n==48) && i+2<len(fields) && fields[i+1]=="5":
             index,e:=strconv.Atoi(fields[i+2])
-            if e==nil && index>=0 && index<=255 {current=interrogationANSI256(index)}
+            if n==48 && e==nil && index>=0 && index<=255 {current=interrogationANSI256(index)}
             i+=2
         case n>=40 && n<=47:
             current=interrogationANSI256(n-40)
