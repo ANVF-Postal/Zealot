@@ -44,7 +44,7 @@ func TestHandbookPublicCategoriesAndSplashButton(t *testing.T) {
         "/static [seconds]","/glitch [seconds]","/interrogation [seconds]",
         "/bubbles [seconds]","/aquarium [seconds]","/terminal [seconds]",
         "/fireworks [seconds]","/confetti [seconds]",
-        "/terminal off","/stop","/stopfx self","/disablefx","/fxfps 1-60",
+        "/terminal off","/stop","/stopfx self","/startfx","/disablefx","/enablefx","/fxfps 1-60",
     } {
         if !visualCommands[command] {
             t.Fatalf("VISUAL tab missing command %q",command)
