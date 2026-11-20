@@ -55,7 +55,7 @@ ever cross the Unix socket.
   directional orange trails, colorful radial/willow/crackle/peony explosions, per-shell horizontal spread for tall fonts and rare giant 0 shells
 - Permit optional durations and cap particle and flash rates
 - Stop/switch now retires existing particles instead of clearing the chat layer instantly
-- Introduce an accessibility-aware reduced-motion behavior
+- Accessibility and reduced motion are intentionally deferred to the future ChatFX options menu (Stage 5).
 
 ### Stage 4 — Secondary effects
 
@@ -72,7 +72,7 @@ ever cross the Unix socket.
 - `Background FX` (default) / `Foreground FX` (deliberate opt-in)
 - Quality options: off, low, normal, high; independent density/fps limits
 - Optional high-quality glow for embers, with a firm CPU budget
-- Accessibility and reduced-motion preferences; persistent local settings
+- Accessibility and reduced-motion preferences; persistent local settings (deferred from the current ChatFX release)
 - Guardrails to ensure FX never intercepts mouse or keyboard input, even
   in foreground mode
 
