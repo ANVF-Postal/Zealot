@@ -16,16 +16,15 @@ func TestTerminalTypingCursorRestoresInterrogationBackground(t *testing.T) {
             const width=36
             original:=strings.Repeat(" ",width)
             lit:=interrogationLightRow(original,palette.theme,"#D4E9CC",width,24,19,0.88,0,1)
-            beforeBG:=interrogationBackgroundAt(lit,10)
-            visible,placed:=0,false
+             visible,placed:=0,false
             result:=terminalMaskRow(lit,messageBodyRange{Start:10,End:24},
                 &visible,&placed,'█',"#D4E9CC",palette.theme)
             if !placed {t.Fatal("typewriter cursor was not painted")}
-            if got:=interrogationBackgroundAt(result,11);got!=beforeBG {
-                t.Fatalf("cursor leaked theme background into following space: got %v, expected lit %v",got,beforeBG)
+            if got:=interrogationBackgroundAt(result,11);got!=interrogationBackgroundAt(lit,11) {
+                t.Fatalf("cursor leaked theme background into following space: got %v, expected lit %v",got,interrogationBackgroundAt(lit,11))
             }
-            if got:=interrogationBackgroundAt(result,23);got!=beforeBG {
-                t.Fatalf("cursor background leaked across unrevealed text: got %v, expected lit %v",got,beforeBG)
+            if got:=interrogationBackgroundAt(result,23);got!=interrogationBackgroundAt(lit,23) {
+                t.Fatalf("cursor background leaked across unrevealed text: got %v, expected lit %v",got,interrogationBackgroundAt(lit,23))
             }
             if stripANSISequences(result)!=original[:10]+"█"+original[11:] {
                 t.Fatal("cursor changed printable content or row width")
