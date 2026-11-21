@@ -51,6 +51,22 @@ func interferencePulse(tick, salt, cycle uint64) float64 {
     return (1-progress)*2
 }
 
+// A minor CRT wash lasts 2–8 seconds at the fixed 30 Hz clock. Keep
+// the longer, gradual fade separate from the short digital glitch pulse.
+// Each deterministic 11-second window has a quiet interval, so static
+// never becomes a permanent overlay.
+func minorStaticPulse(tick,salt uint64) float64 {
+    const cycle uint64=330
+    seed:=chatFXHash(salt+(tick/cycle)*0xbf58476d1ce4e5b9)
+    offset:=uint64(10+seed%35)
+    length:=uint64(60+(seed>>12)%181) // 60..240 ticks = 2..8s
+    pos:=tick%cycle
+    if pos<offset || pos>=offset+length {return 0}
+    progress:=float64(pos-offset)/float64(length)
+    if progress<0.5 {return progress*2}
+    return (1-progress)*2
+}
+
 func (m model) staticPositions(width,height int) []map[int]chatFXCell {
     if width<1||height<1 {return nil}
     rows:=make([]map[int]chatFXCell,height)
@@ -59,7 +75,7 @@ func (m model) staticPositions(width,height int) []map[int]chatFXCell {
     // Minor CRT instability continues between large interruptions: dim
     // point noise fades softly, and occasional single-frame stars pop up.
     // Only major bursts use the dense mixed-glyph screen static below.
-    minor:=interferencePulse(tick,m.fxSalt^0x527a71,72)
+    minor:=minorStaticPulse(tick,m.fxSalt^0x527a71)
     minorSeed:=chatFXHash(m.fxSalt+tick*0x517cc1b727220a95)
     dots:=min(85,int(float64(width*height)*0.012*minor))
     for i:=0;i<dots;i++ {
@@ -108,6 +124,10 @@ func (m model) staticPositions(width,height int) []map[int]chatFXCell {
     return rows
 }
 
+// Minor digital faults use a more varied ASCII punctuation set than their
+// occasional underscore-only horizontal tracking tears.
+var minorDigitalGlitchGlyphs = [...]rune{'_', ':', '|', '.', ',', '!', '^', '*', '\'', ';', '?', '~', '/', '\\', '+', '=', '#', '%'}
+
 func (m model) glitchPositions(width,height int) []map[int]chatFXCell {
     if width<1||height<1 {return nil}
     // Written-out terminal errors own the display until fully faded.
@@ -129,7 +149,7 @@ func (m model) glitchPositions(width,height int) []map[int]chatFXCell {
             y:=int((r>>25)%uint64(height))
             if rows[y]==nil {rows[y]=make(map[int]chatFXCell)}
             rows[y][x]=chatFXCell{
-                glyph:[]rune{'_',':','|','.'}[int(r>>44)%4],
+                glyph:minorDigitalGlitchGlyphs[int((r>>44)%uint64(len(minorDigitalGlitchGlyphs)))],
                 color:digitalGlitchColors[int((r>>48)%uint64(len(digitalGlitchColors)-1)+1)],
             }
         }
