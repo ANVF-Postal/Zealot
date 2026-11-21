@@ -74,6 +74,58 @@ func TestMajorInterferenceHasIrregularLongAndShortGaps(t *testing.T) {
     }
 }
 
+func TestMinorStaticPulsesLastTwoToEightSeconds(t *testing.T) {
+    // Measure the continuous envelope, not the occasional star or
+    // quantized dot count. Every pulse starts and ends at zero intensity.
+    const cycle uint64=330
+    shortest,longest:=uint64(330),uint64(0)
+    different:=map[uint64]bool{}
+    for period:=uint64(0);period<100;period++ {
+        salt:=uint64(73)
+        start:=period*cycle
+        first,last:=uint64(0),uint64(0)
+        found:=false
+        peak:=0.0
+        for tick:=start;tick<start+cycle;tick++ {
+            intensity:=minorStaticPulse(tick,salt)
+            if intensity<0 || intensity>1 {t.Fatalf("minor static outside 0..1: %f",intensity)}
+            if intensity==0 {continue}
+            if !found {first=tick;found=true}
+            last=tick
+            if intensity>peak {peak=intensity}
+        }
+        if !found {t.Fatal("minor static never appeared")}
+        // The two zero endpoints are counted in the designed envelope
+        // duration; the nonzero samples occupy duration minus one tick.
+        duration:=last-first+2
+        if duration<60 || duration>240 {
+            t.Fatalf("minor static pulse lasted %d ticks, expected 60..240",duration)
+        }
+        if peak<0.98 {t.Fatalf("minor static did not fade fully in: %.3f",peak)}
+        if minorStaticPulse(start+cycle-1,salt)!=0 {
+            t.Fatal("minor static did not leave a quiet interval")
+        }
+        if duration<shortest {shortest=duration}
+        if duration>longest {longest=duration}
+        different[duration]=true
+    }
+    if shortest>90 || longest<210 || len(different)<30 {
+        t.Fatalf("minor static durations insufficiently varied: %d..%d ticks, %d distinct",shortest,longest,len(different))
+    }
+}
+
+func TestMinorGlitchGlyphsIncludePunctuation(t *testing.T) {
+    wanted:=[]rune{'.',',','!','^','*','\''}
+    available:=make(map[rune]bool,len(minorDigitalGlitchGlyphs))
+    for _,glyph:=range minorDigitalGlitchGlyphs {
+        if glyph==0 || glyph==' ' {t.Fatalf("unsafe minor glitch glyph: %q",glyph)}
+        available[glyph]=true
+    }
+    for _,glyph:=range wanted {
+        if !available[glyph] {t.Fatalf("missing minor glitch character %q",glyph)}
+    }
+}
+
 func TestMinorCRTInterferenceHasDotFadesAndRareStars(t *testing.T) {
     const width,height=100,30
     m:=newMessageInteractionTestModel(width)
