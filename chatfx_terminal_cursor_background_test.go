@@ -47,6 +47,10 @@ func TestTerminalTypingCursorRestoresInterrogationBackground(t *testing.T) {
             result:=terminalMaskRow(lit,messageBodyRange{Start:10,End:24},
                 &visible,&placed,'█',"#D4E9CC",palette.theme)
             if !placed {t.Fatal("typewriter cursor was not painted")}
+            if got,want:=terminalTestBackgroundAtColumn(result,10,palette.theme),
+                terminalTestBackgroundAtColumn(lit,10,palette.theme);got!=want {
+                t.Fatalf("visible cursor cell bypassed spotlight: got %v want %v",got,want)
+            }
             if got:=terminalTestBackgroundAtColumn(result,11,palette.theme);got!=terminalTestBackgroundAtColumn(lit,11,palette.theme) {
                 t.Fatalf("cursor leaked theme background into following space: got %v, expected lit %v",got,terminalTestBackgroundAtColumn(lit,11,palette.theme))
             }
@@ -55,6 +59,19 @@ func TestTerminalTypingCursorRestoresInterrogationBackground(t *testing.T) {
             }
             if stripANSISequences(result)!=original[:10]+"█"+original[11:] {
                 t.Fatal("cursor changed printable content or row width")
+            }
+            // A blinking-off cursor still paints one opaque, shaded blank
+            // cell instead of exposing the brighter normal theme colour.
+            visible,placed=0,false
+            off:=terminalMaskRow(lit,messageBodyRange{Start:10,End:24},
+                &visible,&placed,' ',"#D4E9CC",palette.theme)
+            if !placed {t.Fatal("blink-off cursor was not painted")}
+            if got,want:=terminalTestBackgroundAtColumn(off,10,palette.theme),
+                terminalTestBackgroundAtColumn(lit,10,palette.theme);got!=want {
+                t.Fatalf("blink-off cell bypassed spotlight: got %v want %v",got,want)
+            }
+            if stripANSISequences(off)!=original {
+                t.Fatal("blink-off changed printable text")
             }
         })
     }
@@ -66,6 +83,15 @@ func TestTerminalPersistentCursorRestoresInterrogationBackground(t *testing.T) {
     lit:=interrogationLightRow(original,"#18271E","#D4E9CC",width,24,20,0.85,0,1)
     beforeBG:=terminalTestBackgroundAtColumn(lit,len("Completed!")+1,"#18271E")
     result:=terminalCursorAtEnd(lit,len("Completed!"),'█',"#D4E9CC","#18271E")
+    if got,want:=terminalTestBackgroundAtColumn(result,len("Completed!"),"#18271E"),
+        terminalTestBackgroundAtColumn(lit,len("Completed!"),"#18271E");got!=want {
+        t.Fatalf("persistent cursor cell bypassed spotlight: got %v want %v",got,want)
+    }
+    off:=terminalCursorAtEnd(lit,len("Completed!"),' ',"#D4E9CC","#18271E")
+    if got,want:=terminalTestBackgroundAtColumn(off,len("Completed!"),"#18271E"),
+        terminalTestBackgroundAtColumn(lit,len("Completed!"),"#18271E");got!=want {
+        t.Fatalf("persistent blink-off cell bypassed spotlight: got %v want %v",got,want)
+    }
     if got:=terminalTestBackgroundAtColumn(result,len("Completed!")+1,"#18271E");got!=beforeBG {
         t.Fatalf("persistent cursor left a flat-coloured block: got %v, expected %v",got,beforeBG)
     }
