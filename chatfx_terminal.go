@@ -54,6 +54,20 @@ func terminalCursorPaint(cursor rune,mainTextColor,backgroundColor string) strin
         fg[0],fg[1],fg[2],bg[0],bg[1],bg[2],cursor)
 }
 
+// The cursor must be opaque while it is drawn, but its temporary theme
+// background must not continue through the rest of the row. In particular,
+// Interrogation has already shaded every cell before Terminal paints the
+// cursor. Restore both pre-cursor colours immediately afterward.
+func terminalCursorPaintRestoring(cursor rune, mainTextColor, backgroundColor string, previousFG, previousBG [3]int) string {
+    painted:=terminalCursorPaint(cursor,mainTextColor,backgroundColor)
+    var out strings.Builder
+    out.Grow(len(painted)+48)
+    out.WriteString(painted)
+    interrogationWriteRGB(&out,48,previousBG)
+    interrogationWriteRGB(&out,38,previousFG)
+    return out.String()
+}
+
 func terminalTextDuration(text string) time.Duration {
     duration:=time.Duration(0)
     for _,ch:=range text {
@@ -197,11 +211,19 @@ func terminalMaskRow(row string,body messageBodyRange,visibleCount *int,cursorPl
     if body.End<=body.Start {return row}
     var out strings.Builder
     out.Grow(len(row)+32)
+    previousBG:=interrogationRGB(backgroundColor,[3]int{17,19,24})
+    previousFG:=interrogationRGB(mainTextColor,[3]int{230,230,230})
+    baseBG,baseFG:=previousBG,previousFG
     column:=0
     for i:=0;i<len(row); {
         if row[i]==0x1b {
             end:=ansiSequenceEnd(row,i)
             if end<=i {end=i+1}
+            if row[end-1]=='m' && strings.HasPrefix(row[i:end],"\x1b[") {
+                params:=row[i+2:end-1]
+                previousBG=interrogationANSIBackground(params,previousBG,baseBG)
+                previousFG=interrogationANSIColor(params,previousFG,baseFG)
+            }
             out.WriteString(row[i:end])
             i=end
             continue
@@ -217,7 +239,7 @@ func terminalMaskRow(row string,body messageBodyRange,visibleCount *int,cursorPl
                 out.WriteString(row[i:i+n])
                 *visibleCount--
             } else if !*cursorPlaced && cursor!=0 {
-                out.WriteString(terminalCursorPaint(cursor,mainTextColor,backgroundColor))
+                out.WriteString(terminalCursorPaintRestoring(cursor,mainTextColor,backgroundColor,previousFG,previousBG))
                 if width>1 {out.WriteString(strings.Repeat(" ",width-1))}
                 *cursorPlaced=true
             } else {
@@ -238,12 +260,20 @@ func terminalCursorAtEnd(row string,column int,cursor rune,mainTextColor,backgro
     if column<0 {return row}
     var out strings.Builder
     out.Grow(len(row)+24)
+    previousBG:=interrogationRGB(backgroundColor,[3]int{17,19,24})
+    previousFG:=interrogationRGB(mainTextColor,[3]int{230,230,230})
+    baseBG,baseFG:=previousBG,previousFG
     pos:=0
     painted:=false
     for i:=0;i<len(row); {
         if row[i]==0x1b {
             end:=ansiSequenceEnd(row,i)
             if end<=i {end=i+1}
+            if row[end-1]=='m' && strings.HasPrefix(row[i:end],"\x1b[") {
+                params:=row[i+2:end-1]
+                previousBG=interrogationANSIBackground(params,previousBG,baseBG)
+                previousFG=interrogationANSIColor(params,previousFG,baseFG)
+            }
             out.WriteString(row[i:end])
             i=end
             continue
@@ -253,7 +283,7 @@ func terminalCursorAtEnd(row string,column int,cursor rune,mainTextColor,backgro
         width:=1
         if size>1 {width=lipgloss.Width(string(ch))}
         if !painted && pos==column && width>0 {
-            out.WriteString(terminalCursorPaint(cursor,mainTextColor,backgroundColor))
+            out.WriteString(terminalCursorPaintRestoring(cursor,mainTextColor,backgroundColor,previousFG,previousBG))
             // Replace the whole display footprint of any wide Matrix glyph.
             if width>1 {out.WriteString(strings.Repeat(" ",width-1))}
             painted=true
@@ -268,7 +298,7 @@ func terminalCursorAtEnd(row string,column int,cursor rune,mainTextColor,backgro
     // intact and still draw the block at the requested next-row column.
     if !painted && pos<=column {
         if column>pos {out.WriteString(strings.Repeat(" ",column-pos))}
-        out.WriteString(terminalCursorPaint(cursor,mainTextColor,backgroundColor))
+        out.WriteString(terminalCursorPaintRestoring(cursor,mainTextColor,backgroundColor,previousFG,previousBG))
     }
     return out.String()
 }
