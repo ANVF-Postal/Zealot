@@ -47,9 +47,16 @@ func terminalCursorGlyph(now time.Time) rune {
 // otherwise a Matrix glyph underneath can leak its colour, or show through
 // while the block is blinking off. Never use reverse video or a hollow box.
 func terminalCursorPaint(cursor rune,mainTextColor,backgroundColor string) string {
+    return terminalCursorPaintWithBackground(cursor,mainTextColor,
+        interrogationRGB(backgroundColor,[3]int{17,19,24}))
+}
+
+// Paint one opaque cursor cell using the colour already present at that
+// position. This is the theme background for ordinary effects, and the
+// calculated spotlight shade when Interrogation is running.
+func terminalCursorPaintWithBackground(cursor rune,mainTextColor string,bg [3]int) string {
     if cursor==0 {cursor=' '}
     fg:=interrogationRGB(mainTextColor,[3]int{230,230,230})
-    bg:=interrogationRGB(backgroundColor,[3]int{17,19,24})
     return fmt.Sprintf("\x1b[38;2;%d;%d;%d;48;2;%d;%d;%dm%c\x1b[39m",
         fg[0],fg[1],fg[2],bg[0],bg[1],bg[2],cursor)
 }
@@ -57,9 +64,9 @@ func terminalCursorPaint(cursor rune,mainTextColor,backgroundColor string) strin
 // The cursor must be opaque while it is drawn, but its temporary theme
 // background must not continue through the rest of the row. In particular,
 // Interrogation has already shaded every cell before Terminal paints the
-// cursor. Restore both pre-cursor colours immediately afterward.
+// cursor. Draw the cursor *on that shade*, then restore both colours.
 func terminalCursorPaintRestoring(cursor rune, mainTextColor, backgroundColor string, previousFG, previousBG [3]int) string {
-    painted:=terminalCursorPaint(cursor,mainTextColor,backgroundColor)
+    painted:=terminalCursorPaintWithBackground(cursor,mainTextColor,previousBG)
     var out strings.Builder
     out.Grow(len(painted)+48)
     out.WriteString(painted)
