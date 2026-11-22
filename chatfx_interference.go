@@ -137,9 +137,10 @@ func (m model) glitchPositions(width,height int) []map[int]chatFXCell {
     // Suspended across error blocks, so regular glitches resume afterward.
     tick:=glitchDistortionTick(m.fxSimSteps,m.fxSalt)
     seed,active:=interferenceBurst(tick,m.fxSalt^0x6117c4,true)
-    // Minor faults: short-lived chromatic ghosts and an occasional tiny
-    // tracking tear. Never a permanent full-screen colourful noise field.
-    minor:=interferencePulse(tick,m.fxSalt^0x91ac71,53)
+    // Minor faults follow irregular, independently timed swells with
+    // different attack/release speeds rather than a repeating pulse.
+    // They never form a permanent full-screen noise field.
+    minor:=minorGlitchPulse(tick,m.fxSalt^0x91ac71)
     microSeed:=chatFXHash(m.fxSalt+(tick/2)*0x517cc1b727220a95)
     speckles:=min(20,int(1+float64(width*height)*0.003*minor))
     if minor>0 {
