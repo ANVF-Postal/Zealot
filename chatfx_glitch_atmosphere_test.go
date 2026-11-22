@@ -49,7 +49,7 @@ func TestGlitchDiagnosticMemoryBleedIsSubtleAndTemporary(t *testing.T) {
     var event glitchErrorEvent
     found:=false
     for tick:=uint64(0);tick<4000;tick++ {
-        if candidate,ok:=glitchTextEvent(tick,m.fxSalt);ok {
+        if candidate,ok:=glitchTextEvent(tick,m.fxSalt);ok && candidate.duration>77+130 {
             event=candidate
             found=true
             break
