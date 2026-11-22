@@ -64,23 +64,26 @@ func TestGlitchDiagnosticMemoryBleedIsSubtleAndTemporary(t *testing.T) {
             if cell.glyph!='▌' {t.Fatalf("memory bleed obscured the initial cursor: %q",cell.glyph)}
         }
     }
-    // Writing has been underway long enough for the halo to appear.
-    m.fxSimSteps=event.start+90
-    withHalo,ok:=m.glitchErrorPositions(width,height)
-    if !ok {t.Fatal("diagnostic ended too early")}
+    // A halo flickers, so sample several writing frames rather than
+    // asserting that one particular random frame contains a given glyph.
     foundHalo:=false
-    for _,row:=range withHalo {
-        for _,cell:=range row {
-            if cell.background!="" {t.Fatal("memory bleed introduced a coloured background")}
-            if cell.glyph=='░' || cell.glyph=='▒' || cell.glyph=='␀' || cell.glyph=='╳' || cell.glyph=='·' {
-                foundHalo=true
+    for age:=uint64(45);age<110;age+=3 {
+        m.fxSimSteps=event.start+age
+        withHalo,ok:=m.glitchErrorPositions(width,height)
+        if !ok {t.Fatal("diagnostic ended too early")}
+        if !reflect.DeepEqual(withHalo,m.glitchPositions(width,height)) {
+            t.Fatal("major/minor glitches interrupted the typed diagnostic")
+        }
+        for _,row:=range withHalo {
+            for _,cell:=range row {
+                if cell.background!="" {t.Fatal("memory bleed introduced a coloured background")}
+                if cell.glyph=='░' || cell.glyph=='▒' || cell.glyph=='␀' || cell.glyph=='╳' || cell.glyph=='·' {
+                    foundHalo=true
+                }
             }
         }
     }
     if !foundHalo {t.Fatal("memory bleed did not produce any atmospheric glyphs")}
-    if !reflect.DeepEqual(withHalo,m.glitchPositions(width,height)) {
-        t.Fatal("major/minor glitches interrupted the typed diagnostic")
-    }
     m.fxSimSteps=event.start+event.duration-1
     closing,ok:=m.glitchErrorPositions(width,height)
     if !ok {t.Fatal("diagnostic exited before its fade")}
