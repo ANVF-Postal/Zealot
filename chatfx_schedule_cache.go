@@ -122,3 +122,64 @@ func cachedGlitchSchedule(tick,salt uint64) glitchScheduleSample {
     glitchSchedules.cursors[salt]=cursor
     return cursor.sample
 }
+
+
+// Minor Glitch disturbances follow a deterministic renewal schedule rather
+// than a repeated fixed-width pulse. A cursor makes sequential 30 Hz frames
+// constant-time while backward seeks recompute the original timeline.
+type minorGlitchCursor struct {
+    tick, next, index uint64
+    start, duration uint64
+    seed uint64
+    valid bool
+}
+var minorGlitchSchedules = struct {
+    sync.Mutex
+    cursors map[uint64]minorGlitchCursor
+}{cursors:make(map[uint64]minorGlitchCursor)}
+
+func minorGlitchPulse(tick,salt uint64) float64 {
+    minorGlitchSchedules.Lock()
+    defer minorGlitchSchedules.Unlock()
+    if _,exists:=minorGlitchSchedules.cursors[salt];!exists && len(minorGlitchSchedules.cursors)>=32 {
+        clear(minorGlitchSchedules.cursors)
+    }
+    c:=minorGlitchSchedules.cursors[salt]
+    if !c.valid || tick<c.tick {c=minorGlitchCursor{}}
+    // Consecutive periods have independent duration and quiet-time samples.
+    // Starts are typically separated by 1–8 seconds, not a metronome.
+    for c.index<100000 {
+        seed:=chatFXHash(salt+(c.index+1)*0xd1342543de82ef95)
+        gap:=uint64(18+(seed>>9)%171) // 0.6–6.3 seconds of quiet
+        duration:=uint64(14+(seed>>24)%91) // 0.47–3.47 seconds active
+        start:=c.next+gap
+        if tick<start {
+            c.tick=tick
+            c.valid=true
+            minorGlitchSchedules.cursors[salt]=c
+            return 0
+        }
+        if tick<start+duration {
+            // Asymmetric attack and release give some faults a sharp onset,
+            // and others a slow creep, without introducing a regular cycle.
+            phase:=float64(tick-start)/float64(duration)
+            attack:=0.16+0.34*chatFXUnit(seed+3)
+            intensity:=0.0
+            if phase<attack {
+                intensity=phase/attack
+            } else {
+                intensity=(1-phase)/(1-attack)
+            }
+            c.tick=tick
+            c.start=start
+            c.duration=duration
+            c.seed=seed
+            c.valid=true
+            minorGlitchSchedules.cursors[salt]=c
+            return intensity
+        }
+        c.index++
+        c.next=start+duration
+    }
+    return 0
+}
