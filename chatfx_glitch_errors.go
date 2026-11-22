@@ -144,5 +144,35 @@ func (m model) glitchErrorPositions(width,height int) ([]map[int]chatFXCell,bool
             put(x0+count,cursor)
         }
     }
+    // "Memory bleed": a faint cloud of corrupted bytes flickers around the
+    // diagnostic block only while characters are being written. It never
+    // occupies the text rectangle, never sets a background colour, and
+    // vanishes before the linger/fade portion of the event.
+    if age>=8 && event.duration>77 && age<event.duration-77 {
+        writingTicks:=event.duration-77
+        strength:=1.0
+        if age<23 {strength=float64(age-8)/15}
+        if remaining:=writingTicks-age;remaining<24 {
+            strength*=float64(remaining)/24
+        }
+        count:=min(18,max(2,int(float64(width*height)*0.0018*strength)))
+        frameSeed:=chatFXHash(event.seed+(age/3)*0x9e3779b97f4a7c15)
+        symbols:=[...]rune{'░','▒','␀','·','╳',':','/',',','^','!'}
+        // A compact halo stays close to the fake error text even on large
+        // viewports; the message contents themselves are left untouched.
+        spanX:=max(1,min(width,39))
+        for i:=0;i<count;i++ {
+            r:=chatFXHash(frameSeed+uint64(i+1)*0xbf58476d1ce4e5b9)
+            x:=x0-6+int(r%uint64(spanX+12))
+            y:=y0-3+int((r>>19)%uint64(lines+6))
+            if x<0 || x>=width || y<0 || y>=height {continue}
+            if x>=x0 && x<x0+spanX && y>=y0 && y<y0+lines {continue}
+            if rows[y]==nil {rows[y]=make(map[int]chatFXCell)}
+            if _,occupied:=rows[y][x];occupied {continue}
+            shade:=digitalGlitchColors[1+int((r>>44)%uint64(len(digitalGlitchColors)-1))]
+            color:=glitchMutedColor(shade,m.cfg.Theme.Background,0.25+0.3*strength)
+            rows[y][x]=chatFXCell{glyph:symbols[int((r>>36)%uint64(len(symbols)))],color:color}
+        }
+    }
     return rows,true
 }
