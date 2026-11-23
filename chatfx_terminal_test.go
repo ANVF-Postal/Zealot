@@ -80,7 +80,7 @@ func TestTerminalMixedPunctuationPausesAccumulate(t *testing.T) {
         case terminalPeriodPause: sentenceCount++
         }
     }
-    if clauseCount!=6 || sentenceCount!=1 {
+    if clauseCount!=7 || sentenceCount!=1 {
         t.Fatalf("unexpected mixed punctuation counts: %d clauses, %d sentences",clauseCount,sentenceCount)
     }
     expected:=time.Duration(len([]rune(text)))*terminalLetterDelay+
