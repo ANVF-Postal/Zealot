@@ -47,6 +47,56 @@ func TestTerminalQuestionAndExclamationPause(t *testing.T) {
     }
 }
 
+func TestTerminalClauseAndBracketPauses(t *testing.T) {
+    for _,punctuation:=range []rune{',',':',';','(',')','[',']','{','}'} {
+        text:="Go"+string(punctuation)+" Next"
+        prefix:=3*terminalLetterDelay
+        if got:=terminalPunctuationPause(punctuation);got!=terminalClausePause {
+            t.Fatalf("%q pause = %v, want %v",punctuation,got,terminalClausePause)
+        }
+        if got:=terminalRevealCount(text,prefix);got!=3 {
+            t.Fatalf("%q should be visible before the pause: got %d runes",punctuation,got)
+        }
+        if got:=terminalRevealCount(text,prefix+terminalClausePause-time.Millisecond);got!=3 {
+            t.Fatalf("%q did not hold cursor for clause pause: got %d runes",punctuation,got)
+        }
+        if got:=terminalRevealCount(text,prefix+terminalClausePause+terminalLetterDelay);got!=4 {
+            t.Fatalf("%q did not resume typing after pause: got %d runes",punctuation,got)
+        }
+        want:=time.Duration(len([]rune(text)))*terminalLetterDelay+terminalClausePause
+        if got:=terminalTextDuration(text);got!=want {
+            t.Fatalf("%q total duration = %v, want %v",punctuation,got,want)
+        }
+    }
+}
+
+func TestTerminalMixedPunctuationPausesAccumulate(t *testing.T) {
+    text:="value: [one, two]; {done}!"
+    clauseCount:=0
+    sentenceCount:=0
+    for _,ch:=range text {
+        switch terminalPunctuationPause(ch) {
+        case terminalClausePause: clauseCount++
+        case terminalPeriodPause: sentenceCount++
+        }
+    }
+    if clauseCount!=6 || sentenceCount!=1 {
+        t.Fatalf("unexpected mixed punctuation counts: %d clauses, %d sentences",clauseCount,sentenceCount)
+    }
+    expected:=time.Duration(len([]rune(text)))*terminalLetterDelay+
+        time.Duration(clauseCount)*terminalClausePause+
+        time.Duration(sentenceCount)*terminalPeriodPause
+    if got:=terminalTextDuration(text);got!=expected {
+        t.Fatalf("mixed punctuation duration = %v, want %v",got,expected)
+    }
+    if count:=terminalRevealCount(text,expected);count!=len([]rune(text)) {
+        t.Fatalf("mixed punctuation did not finish: %d of %d runes",count,len([]rune(text)))
+    }
+    if terminalPunctuationPause('a')!=0 {
+        t.Fatal("normal letters should not pause")
+    }
+}
+
 func TestTerminalCursorBlinksSolidBlockOnAndOff(t *testing.T) {
     now:=time.Unix(0,0)
     if got:=terminalCursorGlyph(now);got!='█' {t.Fatalf("first cursor phase: %q",got)}
