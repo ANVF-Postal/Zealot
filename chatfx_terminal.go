@@ -16,6 +16,7 @@ var terminalForever=time.Date(9999,1,1,0,0,0,0,time.UTC)
 const (
     terminalLetterDelay=38*time.Millisecond
     terminalPeriodPause=250*time.Millisecond
+    terminalClausePause=125*time.Millisecond
     terminalCursorBlink=500*time.Millisecond
 )
 
@@ -31,8 +32,22 @@ func terminalRevealDuration(reveal terminalReveal) time.Duration {
     return terminalTextDuration(reveal.text)
 }
 
+// Full stops, question marks and exclamation marks retain the longer
+// sentence pause. Commas, clause punctuation and paired brackets get a
+// shorter beat, including both opening and closing delimiters.
+func terminalPunctuationPause(ch rune) time.Duration {
+    switch ch {
+    case '.', '?', '!':
+        return terminalPeriodPause
+    case ',', ':', ';', '(', ')', '[', ']', '{', '}':
+        return terminalClausePause
+    default:
+        return 0
+    }
+}
+
 func terminalSentencePause(ch rune) bool {
-    return ch=='.' || ch=='?' || ch=='!'
+    return terminalPunctuationPause(ch)==terminalPeriodPause
 }
 
 // Blink a single solid block on and off at a fixed rate, independent of
@@ -79,7 +94,7 @@ func terminalTextDuration(text string) time.Duration {
     duration:=time.Duration(0)
     for _,ch:=range text {
         duration+=terminalLetterDelay
-        if terminalSentencePause(ch) {duration+=terminalPeriodPause}
+        duration+=terminalPunctuationPause(ch)
     }
     return duration
 }
@@ -91,9 +106,9 @@ func terminalRevealCount(text string,elapsed time.Duration) int {
         if elapsed<terminalLetterDelay {return count}
         elapsed-=terminalLetterDelay
         count++
-        if terminalSentencePause(ch) {
-            if elapsed<terminalPeriodPause {return count}
-            elapsed-=terminalPeriodPause
+        if pause:=terminalPunctuationPause(ch);pause>0 {
+            if elapsed<pause {return count}
+            elapsed-=pause
         }
     }
     return count
