@@ -9,11 +9,12 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-func TestSplashIncludesCenteredCommandsAndThemesActionsAfterStats(t *testing.T) {
+func TestSplashIncludesCenteredActionsAfterStats(t *testing.T) {
 	m := newMessageInteractionTestModel(100)
 	m.splashOpen = true
+	m.height = 60 // All splash actions must be visible for hitbox checks.
 	rows := m.splashRows()
-	if len(rows) < 3 || rows[len(rows)-3] != "" {
+	if len(rows) < 4 || rows[len(rows)-4] != "" {
 		t.Fatalf("splash actions must be separated from stats by a blank line")
 	}
 	for _, action := range []struct {
@@ -21,8 +22,9 @@ func TestSplashIncludesCenteredCommandsAndThemesActionsAfterStats(t *testing.T) 
 		row int
 		contains func(int, int) bool
 	}{
-		{"[COMMANDS]", len(rows)-2, m.splashCommandsButtonContains},
-		{"[THEMES]", len(rows)-1, m.splashThemesButtonContains},
+		{"[COMMANDS]", len(rows)-3, m.splashCommandsButtonContains},
+		{"[THEMES]", len(rows)-2, m.splashThemesButtonContains},
+		{"[OPTIONS]", len(rows)-1, m.splashOptionsButtonContains},
 	} {
 		if !strings.Contains(stripANSISequences(rows[action.row]), action.label) {
 			t.Fatalf("splash does not contain %s action at row %d: %q", action.label, action.row, rows[action.row])
