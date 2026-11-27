@@ -17,6 +17,7 @@ const (
     terminalLetterDelay=38*time.Millisecond
     terminalPeriodPause=250*time.Millisecond
     terminalClausePause=125*time.Millisecond
+    terminalCommaPause=162*time.Millisecond
     terminalCursorBlink=500*time.Millisecond
 )
 
@@ -33,13 +34,16 @@ func terminalRevealDuration(reveal terminalReveal) time.Duration {
 }
 
 // Full stops, question marks and exclamation marks retain the longer
-// sentence pause. Commas, clause punctuation and paired brackets get a
-// shorter beat, including both opening and closing delimiters.
+// sentence pause. Commas get a 162 ms beat (200 ms in total), while
+// other clause punctuation and paired brackets retain 125 ms.
 func terminalPunctuationPause(ch rune) time.Duration {
     switch ch {
     case '.', '?', '!':
         return terminalPeriodPause
-    case ',', ':', ';', '(', ')', '[', ']', '{', '}':
+    case ',':
+        // 38 ms character delay + 162 ms pause = exactly 200 ms.
+        return terminalCommaPause
+    case ':', ';', '(', ')', '[', ']', '{', '}':
         return terminalClausePause
     default:
         return 0
