@@ -131,6 +131,36 @@ type model struct {
 	privateTyping map[string]User
 	privateTypingOrder []string
 
+	// Visual effects are an optional, client-rendered chat decoration.
+	terminalRoomUntil time.Time
+	terminalLocalUntil time.Time
+	terminalReveals map[int]terminalReveal
+	fxRoom chatFXState
+	fxLastStopped string // last room effect, for /startfx after /stop
+	fxLastStoppedRoom string
+	fxLastSelfStopped string
+	fxLastSelfStoppedRoom string
+	fxLocal chatFXState
+	fxFading []chatFXFading
+	fxFire *doomFireState
+	fxBubbles *bubbleState
+	fxAquariumSalt uint64
+	fxAquarium *aquariumState
+	fxRoomMuted bool // local stop hides room FX without disturbing its state
+	fxLocalOverride bool
+	fxDisabled bool
+	fxTerminalMuted bool // /stopfx self silences room typing locally
+	fxFrame uint64
+	fxSalt uint64
+	fxRenderFPS int
+	fxLastTick time.Time
+	fxSimSteps uint64
+	fxSimAccumulator time.Duration
+	fxTickPending bool
+	fxTickGeneration int
+	fxInterrogationAmount float64 // 0..1, transitions across five seconds
+	fxInterrogationLast time.Time
+
 	input          textarea.Model
 	inputSelecting bool
 	rainbowMode    bool

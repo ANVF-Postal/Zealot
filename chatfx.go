@@ -1,0 +1,427 @@
+package main
+
+import (
+	"fmt"
+	"math"
+	"strconv"
+	"strings"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+)
+
+// ChatFX deliberately synchronizes intent rather than frames. Only room-wide
+// requests cross the Unix socket; each client renders its own particles.
+// Future primary effects replace rain; secondary overlays will have a separate
+// slot so two competing weather systems never stack.
+const (
+	chatFXDefaultFPS = 15
+	chatFXMaxFPS = 60
+	chatFXSimulationStep = time.Second / 30 // fixed 30 Hz, regardless of render FPS
+	chatFXMaxSeconds = 300
+	chatFXConfettiDefaultSeconds = 10
+)
+
+type chatFXTickMsg struct {
+	generation int
+	at time.Time
+}
+
+type chatFXState struct {
+	name string
+	started time.Time // client-local effect timeline origin
+	until time.Time // zero means until stopped; confetti drains after this point
+}
+
+func chatFXDuration(args []string) (int, bool) {
+	if len(args) == 0 { return 0, true }
+	if len(args) != 1 { return 0, false }
+	n, err := strconv.Atoi(args[0])
+	return n, err == nil && n >= 1 && n <= chatFXMaxSeconds
+}
+
+// Only these commands may control the FX system. Dispatch them before any
+// chat/whisper message handling so they can never leak as ordinary messages.
+func isChatFXCommand(command string) bool {
+	switch command {
+	case "/rain", "/snow", "/blizzard", "/embers", "/fire", "/matrix", "/confetti", "/fireworks", "/static", "/glitch", "/interrogation", "/bubbles", "/aquarium", "/terminal", "/stop", "/stopfx", "/disablefx", "/enablefx", "/startfx", "/fxfps":
+		return true
+	}
+	return false
+}
+
+func (m *model) chatFXCommand(command string, fields []string) {
+	switch command {
+	case "/terminal":
+		args:=fields[1:]
+		self:=len(args)>0 && strings.EqualFold(args[0],"self")
+		if self {args=args[1:]}
+		stop:=len(args)==1 && strings.EqualFold(args[0],"off")
+		seconds:=0
+		if !stop {
+			var ok bool
+			seconds,ok=chatFXDuration(args)
+			if !ok {m.chatFXNotice("Usage: /terminal [self] [seconds 1-300|off]");return}
+		}
+		if self {
+			if stop {
+				m.terminalLocalUntil=time.Time{}
+				m.chatFXNotice("Local terminal typing stopped.")
+			} else {
+				m.fxTerminalMuted=false
+				m.terminalLocalUntil=terminalForever
+				if seconds>0 {m.terminalLocalUntil=time.Now().Add(time.Duration(seconds)*time.Second)}
+				m.chatFXNotice(formatChatFXLaunch("You","terminal",seconds)+" (local)")
+			}
+		} else if m.client!=nil && m.connected {
+			typ:="fx_terminal_start"
+			if stop {typ="fx_terminal_stop"}
+			_ = m.client.send(Packet{Type:typ,Room:m.room,FXSeconds:seconds})
+		}
+		if stop && !m.terminalEnabled() {m.terminalClearReveals()}
+	case "/fxfps":
+		if len(fields) != 2 {
+			m.chatFXNotice("Usage: /fxfps 1-60")
+			return
+		}
+		fps, err := strconv.Atoi(fields[1])
+		if err != nil || fps < 1 || fps > chatFXMaxFPS {
+			m.chatFXNotice("Usage: /fxfps 1-60")
+			return
+		}
+		m.fxRenderFPS = fps
+		// Invalidate any already-scheduled frame so the new interval takes
+		// effect immediately (rather than after an old low-FPS timer).
+		m.fxTickGeneration++
+		m.fxTickPending = false
+		m.chatFXNotice(fmt.Sprintf("ChatFX rendering set to %d FPS", fps))
+	case "/disablefx", "/enablefx":
+		if len(fields) != 1 { m.chatFXNotice("Usage: "+command); return }
+		if command=="/disablefx" { m.fxDisabled=!m.fxDisabled } else {m.fxDisabled=false}
+		if m.fxDisabled {
+			m.chatFXNotice("ChatFX disabled locally. Use /enablefx or /disablefx to enable.")
+		} else {
+			m.chatFXNotice("ChatFX enabled locally.")
+		}
+	case "/startfx":
+		if len(fields)!=1 {m.chatFXNotice("Usage: /startfx");return}
+		// Restore the room effect suppressed by /stopfx self. This is a
+		// local presentation action; restarting does not broadcast to peers.
+		m.fxDisabled=false
+		m.fxTerminalMuted=false
+		m.fxRoomMuted=false
+		m.fxLocalOverride=false
+		m.fxLocal=chatFXState{}
+		if m.currentChatFX().name=="" {
+			if m.fxLastSelfStopped!="" && m.fxLastSelfStoppedRoom==m.room {
+				m.fxLocal=chatFXState{name:m.fxLastSelfStopped,started:time.Now()}
+				m.fxLocalOverride=true
+				m.fxFading=nil
+				m.resetChatFXSimulation()
+				m.chatFXNotice("Local ChatFX restarted.")
+			} else if m.fxLastStopped!="" && m.fxLastStoppedRoom==m.room && m.client!=nil && m.connected {
+				_ = m.client.send(Packet{Type:"fx_start",Room:m.room,FX:m.fxLastStopped})
+				m.chatFXNotice("Restarting the last room ChatFX.")
+			} else {
+				m.chatFXNotice("No room ChatFX to restart.")
+			}
+			return
+		}
+		m.fxFading=nil
+		m.resetChatFXSimulation()
+		m.chatFXNotice("ChatFX restarted locally.")
+	case "/rain", "/snow", "/blizzard", "/embers", "/fire", "/matrix", "/confetti", "/fireworks", "/static", "/glitch", "/interrogation", "/bubbles", "/aquarium":
+		args := fields[1:]
+		self := len(args)>0 && strings.EqualFold(args[0], "self")
+		if self { args=args[1:] }
+		seconds, ok := chatFXDuration(args)
+		if !ok { m.chatFXNotice("Usage: "+command+" [self] [seconds 1-300]"); return }
+		name := strings.TrimPrefix(command, "/")
+		// Confetti is a celebration, unlike persistent room weather.
+		if (name == "confetti" || name == "fireworks") && seconds == 0 { seconds = chatFXConfettiDefaultSeconds }
+		until := time.Time{}
+		if seconds > 0 { until = time.Now().Add(time.Duration(seconds)*time.Second) }
+		if self {
+			m.retireChatFX(m.currentChatFX())
+			m.fxLocal = chatFXState{name:name, started:time.Now(), until:until}
+			m.fxLocalOverride = true
+			m.fxRoomMuted=false
+			m.resetChatFXSimulation()
+			m.chatFXNotice(formatChatFXLaunch("You",name,seconds)+" (local)")
+		} else if m.client != nil && m.connected {
+			_ = m.client.send(Packet{Type:"fx_start", Room:m.room, FX:name, FXSeconds:seconds})
+		}
+	case "/stop", "/stopfx":
+		if len(fields)==2 && strings.EqualFold(fields[1], "self") {
+			m.terminalLocalUntil=time.Time{}
+			m.fxTerminalMuted=true
+			if !m.terminalEnabled() {m.terminalClearReveals()}
+			// Remember a self-launched effect if there is no room effect to
+			// resume. /startfx can restore it without contacting the daemon.
+			if m.fxLocalOverride && m.fxLocal.name!="" {
+				m.fxLastSelfStopped=m.fxLocal.name
+				m.fxLastSelfStoppedRoom=m.room
+			} else {
+				m.fxLastSelfStopped=""
+				m.fxLastSelfStoppedRoom=""
+			}
+			// A room effect must stay running for other clients, but it
+			// must no longer reappear immediately on this client.
+			// Retire before clearing the local emitter. Room FX stays in
+			// the daemon and continues for other clients.
+			m.retireChatFX(m.currentChatFX())
+			m.fxLocal = chatFXState{}
+			m.fxLocalOverride = false
+			m.fxRoomMuted = true
+			// Keep outgoing particles and the Interrogation fade-out.
+			// They expire naturally unless /disablefx hides all effects.
+			m.chatFXNotice("ChatFX stopped locally. Use /startfx to resume the room effect.")
+		} else if len(fields)==1 {
+			if m.client != nil && m.connected {
+				_ = m.client.send(Packet{Type:"fx_stop", Room:m.room})
+			}
+		} else {
+			m.chatFXNotice("Usage: /stopfx [self] (or /stop)")
+		}
+	}
+}
+
+func (m *model) chatFXNotice(text string) {
+	m.appendMessage(Packet{Type:"system", Text:text, Time:time.Now().UTC()})
+}
+
+func (m *model) receiveChatFX(packet Packet) {
+	switch packet.Type {
+	case "fx_terminal_state":
+		m.terminalRoomUntil=packet.FXUntil
+		if !m.terminalEnabled() {m.terminalClearReveals()}
+	case "fx_state":
+		previous := m.currentChatFX()
+		previousRoom:=m.fxRoom.name
+		// /stopfx self already retired its local particles. Do not
+		// retire that hidden room emitter again during the next handoff.
+		if packet.FX=="" && previousRoom!="" {
+			m.fxLastStopped=previousRoom
+			m.fxLastStoppedRoom=m.room
+		}
+		// A genuinely different new room effect can play after a local
+		// /stopfx self; /disablefx remains the persistent opt-out.
+		if packet.FX!="" && packet.FX!=previousRoom {
+			m.fxLastSelfStopped=""
+			m.fxLastSelfStoppedRoom=""
+			m.fxRoomMuted=false
+			m.fxTerminalMuted=false
+		}
+		// Preserve the visible room effect as outgoing particles before
+		// replacing/stopping its authoritative state.
+		if previous.name != "" && !m.fxLocalOverride {
+			m.retireChatFX(previous)
+		}
+		if (packet.FX == "rain" || packet.FX == "snow" || packet.FX == "blizzard" || packet.FX == "embers" || packet.FX == "fire" || packet.FX == "matrix" || packet.FX == "confetti" || packet.FX == "fireworks" || packet.FX == "static" || packet.FX == "glitch" || packet.FX == "interrogation" || packet.FX == "bubbles" || packet.FX == "aquarium") &&
+			(packet.FXUntil.IsZero() || packet.FXUntil.After(time.Now())) {
+			m.fxRoom = chatFXState{name:packet.FX, started:time.Now(), until:packet.FXUntil}
+			if !m.fxLocalOverride { m.resetChatFXSimulation() }
+		} else {
+			m.fxRoom = chatFXState{}
+		}
+	}
+}
+
+// A timed celebration stops *emitting* at its deadline; existing pieces
+// keep falling until the slowest one has cleared the viewport.
+func (m model) chatFXAlive(fx chatFXState) bool {
+	if fx.name == "" { return false }
+	if fx.until.IsZero() { return true }
+	deadline := fx.until
+	if fx.name == "confetti" {
+		height := max(1, m.messageHeight()-1)
+		// Slowest confetti is 2.8 rows/s, plus a few rows above the top.
+		deadline = deadline.Add(time.Duration(math.Ceil(float64(height+14)/2.8)+4)*time.Second)
+	}
+	if fx.name == "fireworks" { deadline = deadline.Add(8*time.Second) }
+	return time.Now().Before(deadline)
+}
+
+func (m model) currentChatFX() chatFXState {
+	if m.fxDisabled { return chatFXState{} }
+	if m.fxLocalOverride && m.chatFXAlive(m.fxLocal) {return m.fxLocal}
+	if m.fxRoomMuted {return chatFXState{}}
+	if m.chatFXAlive(m.fxRoom) { return m.fxRoom }
+	return chatFXState{}
+}
+
+func (m model) chatFXVisible() bool {
+	return !m.splashOpen && !m.usersOpen && !m.themesOpen && !m.commandsOpen && m.longReader == nil
+}
+
+// chatFXFrameInterval controls only how often a new frame is presented.
+// The physics below always advances in 1/30-second steps.
+func (m model) chatFXFrameInterval() time.Duration {
+	fps := m.fxRenderFPS
+	if fps < 1 || fps > chatFXMaxFPS {
+		fps = chatFXDefaultFPS
+		// Fire benefits from interpolation; active typing benefits from
+		// smooth, single-character updates.
+		if m.currentChatFX().name == "fire" { fps = 30 }
+		if m.terminalIsTyping(time.Now()) { fps = max(fps,30) }
+	}
+	if len(m.terminalReveals)>0 && m.terminalEnabled() {
+		if m.terminalIsTyping(time.Now()) {
+			fps=max(fps,30)
+		} else if m.currentChatFX().name=="" && len(m.fxFading)==0 &&
+			m.fxInterrogationAmount<=0 {
+			// Just a blinking cursor: two frames/s, not a permanent
+			// 30 FPS redraw of an otherwise still chat window.
+			fps=2
+		} else {
+			fps=max(fps,2)
+		}
+	}
+	return time.Second / time.Duration(fps)
+}
+
+func (m *model) ensureChatFXTick() tea.Cmd {
+	if m.fxTickPending || (m.currentChatFX().name == "" && len(m.fxFading)==0 && m.fxInterrogationAmount<=0 && len(m.terminalReveals)==0) { return nil }
+	m.fxTickPending = true
+	m.fxTickGeneration++
+	generation := m.fxTickGeneration
+	interval := m.chatFXFrameInterval()
+	// Alternate panels never need full-rate ChatFX repaints.
+	if !m.chatFXVisible() { interval = time.Second }
+	return tea.Tick(interval, func(t time.Time) tea.Msg {
+		return chatFXTickMsg{generation: generation, at: t}
+	})
+}
+
+// resetChatFXSimulation begins a fresh locally generated effect without
+// changing the room's authoritative state.
+func (m *model) resetChatFXSimulation() {
+	m.fxSimSteps = 0
+	m.fxSimAccumulator = 0
+	m.fxLastTick = time.Time{}
+	m.fxFire=nil
+	m.fxBubbles=nil
+	m.fxAquariumSalt=0
+	m.fxAquarium=nil
+	if m.currentChatFX().name=="aquarium" {
+		m.fxAquariumSalt=chatFXHash(m.fxSalt^uint64(time.Now().UnixNano()))
+		m.fxAquarium=newAquariumState()
+	}
+	if m.currentChatFX().name=="bubbles" {
+		m.fxBubbles=newBubbleState(chatContentWidth(m.width),max(1,m.messageHeight()-1),m.fxSalt)
+	}
+	if m.currentChatFX().name=="fire" {
+		m.fxFire=newDoomFireState(chatContentWidth(m.width),max(1,m.messageHeight()-1),m.fxSalt)
+	}
+}
+
+// advanceChatFXClock has no dependency on the presentation frame rate.
+// The accumulator advances a fixed-step simulation clock, with a remainder
+// used for smooth interpolation on faster displays.
+func (m *model) advanceChatFXClock(now time.Time) {
+	if now.IsZero() { now = time.Now() }
+	if m.fxLastTick.IsZero() {
+		m.fxLastTick = now
+		return
+	}
+	delta := now.Sub(m.fxLastTick)
+	m.fxLastTick = now
+	if delta < 0 { delta = 0 }
+	if delta > 2*time.Second { delta = 2*time.Second }
+	m.fxSimAccumulator += delta
+	steps := m.fxSimAccumulator / chatFXSimulationStep
+	m.fxSimSteps += uint64(steps)
+	m.fxSimAccumulator -= steps * chatFXSimulationStep
+	if m.currentChatFX().name=="aquarium" {
+		if m.fxAquarium==nil {m.fxAquarium=newAquariumState()}
+		w,h:=chatContentWidth(m.width),max(1,m.messageHeight()-1)
+		for step:=int64(0);step<int64(steps);step++ {
+			second:=float64(m.fxSimSteps-uint64(steps)+uint64(step)+1)/30
+			m.fxAquarium.advance(*m,w,h,second)
+		}
+	}
+	if m.currentChatFX().name=="bubbles" {
+		w,h:=chatContentWidth(m.width),max(1,m.messageHeight()-1)
+		if m.fxBubbles==nil {m.fxBubbles=newBubbleState(w,h,m.fxSalt)}
+		m.fxBubbles.advance(uint64(steps),w,h)
+	}
+	if m.currentChatFX().name=="fire" {
+		w,h:=chatContentWidth(m.width),max(1,m.messageHeight()-1)
+		if m.fxFire==nil || m.fxFire.width!=w || m.fxFire.height!=doomFireHeight(w,h) {
+			m.fxFire=newDoomFireState(w,h,m.fxSalt)
+		}
+		m.fxFire.advance(m.fxSimSteps,m.fxSalt)
+	}
+}
+
+func (m *model) advanceChatFX(msg chatFXTickMsg) tea.Cmd {
+	if msg.generation != m.fxTickGeneration { return nil }
+	m.fxTickPending = false
+	m.advanceInterrogationFade(msg.at)
+	m.trimChatFXFading(time.Now())
+	m.finishExpiredPrimary(time.Now())
+	if m.fxLocalOverride && m.fxLocal.name!="" && !m.chatFXAlive(m.fxLocal) {
+		m.fxLocalOverride = false
+		m.fxLocal = chatFXState{}
+	}
+	m.terminalAdvance(time.Now())
+	if m.currentChatFX().name == "" && len(m.fxFading)==0 && m.fxInterrogationAmount<=0 && len(m.terminalReveals)==0 {
+		m.fxLastTick = time.Time{}
+		return nil
+	}
+	if m.chatFXVisible() {
+		m.advanceChatFXClock(msg.at)
+		m.fxFrame++
+	} else {
+		// Don't simulate unseen FX or catch up a long panel pause.
+		m.fxLastTick = time.Time{}
+	}
+	return m.ensureChatFXTick()
+}
+
+// chatFXHash produces a reproducible per-client particle distribution without
+// global random state or viewport-dependent initialization.
+func chatFXHash(x uint64) uint64 {
+	x += 0x9e3779b97f4a7c15
+	x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9
+	x = (x ^ (x >> 27)) * 0x94d049bb133111eb
+	return x ^ (x >> 31)
+}
+
+func chatFXUnit(x uint64) float64 {
+	return float64(chatFXHash(x)>>11) / float64(uint64(1)<<53)
+}
+
+// rainPositions recomputes its distribution for the *current* visible width
+// and height on every render, including the very first one. Resizing is never
+// required to initialize or extend the effect to the viewport boundaries.
+func (m model) rainPositions(width, height int) []map[int]rune {
+	if width < 1 || height < 1 { return nil }
+	positions := make([]map[int]rune, height)
+	count := int(float64(min(320, max(12, width*height/18))) * rainDensityAt(
+		(float64(m.fxSimSteps)+float64(m.fxSimAccumulator)/float64(chatFXSimulationStep))/30, m.fxSalt))
+	count = max(1, count)
+	simTime := (float64(m.fxSimSteps) +
+		float64(m.fxSimAccumulator)/float64(chatFXSimulationStep)) / 30.0
+	for i:=0; i<count; i++ {
+		seed := uint64(i+1)*0x9e3779b97f4a7c15 + m.fxSalt
+		x0 := chatFXUnit(seed)
+		y0 := chatFXUnit(seed+1)
+		speed := 7 + 9*chatFXUnit(seed+2)
+		drift := 0.4 + 0.7*chatFXUnit(seed+3)
+		x := int(math.Floor(math.Mod(x0*float64(width)+simTime*drift,float64(width))))
+		y := int(math.Floor(math.Mod(y0*float64(height)+simTime*speed,float64(height))))
+		if positions[y] == nil { positions[y] = make(map[int]rune) }
+		glyph := '·'
+		if chatFXHash(seed+4)%3 == 0 { glyph='│' }
+		positions[y][x] = glyph
+	}
+	return positions
+}
+
+// formatChatFXLaunch gives every effect the same compact launch notice.
+func formatChatFXLaunch(actor,name string, seconds int) string {
+	message:=actor+" launched "+name+"!"
+	if seconds>0 {message+=fmt.Sprintf(" (%ds)",seconds)}
+	return message
+}

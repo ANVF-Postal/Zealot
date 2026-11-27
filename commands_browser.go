@@ -37,6 +37,29 @@ var handbookPages = []struct {
 		{"Click a message", "Click another user's message to reply directly to it."},
 		{"Click a username", "Click a user's name to insert an @mention with their name pre-written."},
 	}},
+	{"VISUAL", []handbookEntry{
+		{"/rain [seconds]", "Gentle rain that drifts through the chat background and varies naturally in intensity."},
+		{"/snow [seconds]", "Falling snow with delicate flakes that drift at different speeds."},
+		{"/blizzard [seconds]", "Dense wind-driven snow, changing gusts and occasional calm periods."},
+		{"/embers [seconds]", "Glowing embers rise and slowly cool as they fade."},
+		{"/fire [seconds]", "Doom-inspired ASCII flames that sway and adapt their height to the terminal."},
+		{"/matrix [seconds]", "Falling green code with bright heads and smooth trails fading into your theme background."},
+		{"/static [seconds]", "Unpredictable CRT static, intermittent bursts and occasional flashes."},
+		{"/glitch [seconds]", "ANSI-coloured screen tears, simulated errors and short typed error messages."},
+		{"/interrogation [seconds]", "A dim lamp, rounded vignette and a spotlight on recent messages, with rare flickers."},
+		{"/bubbles [seconds]", "Springy hollow Braille bubbles with reflections, elastic collisions and animated pops."},
+		{"/aquarium [seconds]", "Individually coloured minnows, pike, perch, bluegill, bass, bottom-dwelling walleye, rare eels and muskies, bubbles and swaying kelp."},
+		{"/terminal [seconds]", "Incoming messages type letter by letter with a blinking main-text-coloured block cursor (█). Pauses after . ? ! and stacks with other visual effects."},
+		{"/fireworks [seconds]", "Colourful bursts with radial, willow and crackle styles. Defaults to 10 seconds."},
+		{"/confetti [seconds]", "Colourful paper and streamers fall through the chat. Defaults to 10 seconds."},
+		{"/terminal off", "Stops the room's terminal typing layer without stopping its background effect. Add self to stop only your local terminal layer."},
+		{"/stop", "Stops room-wide visual effects. Remaining particles drift or fade away."},
+		{"/stopfx self", "Hides the current effect on your client without stopping it for the room."},
+		{"/startfx", "Restarts the room effect locally, or restarts the last stopped room effect."},
+		{"/disablefx", "Toggles all visual effects off or on for your client."},
+		{"/enablefx", "Enables visual effects locally without toggling them off."},
+		{"/fxfps 1-60", "Sets your local effects rendering frame rate (default 15 FPS). Simulations run independently at 30 Hz."},
+	}},
 	{"USER", []handbookEntry{
 		{"/rename", "Renames you from the chat window. Usage: /rename name"},
 		{"/color", "Changes your user color from the chat window. Use #RRGGBB or RRGGBB (case-insensitive), or an ANSI color number (0–255)."},
@@ -47,6 +70,16 @@ var handbookPages = []struct {
 		{"--room example", "Joins the room named example, creating it if it doesn't exist."},
 		{"--add-history", "Enables chat history when creating a room. New arrivals can see earlier messages. History clears when the last user leaves."},
 	}},
+}
+
+// The VISUAL handbook explains the common room/local syntax once instead
+// of repeating an identical self variant for every effect.
+const handbookVisualIntro = "These are commands to activate visual effects for the current room. Type \"self\" after a command to have it only affect you."
+
+func handbookTabLabels() []string {
+    labels:=make([]string,len(handbookPages))
+    for i,page:=range handbookPages {labels[i]=" "+page.Name+" "}
+    return labels
 }
 
 func (m *model) openCommandsBrowser() {
@@ -96,7 +129,7 @@ func commandsTabWidth(label string) int {
 func (m model) commandsTabsOverflow() bool {
 	// Match the actual folder artwork, including the leading inset cell.
 	total := 1
-	for _, label := range []string{" CHAT ", " USER ", " LAUNCH "} {
+	for _, label := range handbookTabLabels() {
 		total += commandsTabWidth(label)
 	}
 	return total > chatContentWidth(m.width)
@@ -130,7 +163,7 @@ func (m model) commandsTabsLine() (top, face string, ranges []messageBodyRange) 
 	bg := lipgloss.Color(m.cfg.Theme.Background)
 	active := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.AccentColor)).Background(bg).Bold(true)
 	inactive := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).Background(bg)
-	labels := []string{" CHAT ", " USER ", " LAUNCH "}
+	labels := handbookTabLabels()
 	ranges = make([]messageBodyRange, len(labels))
 	width := chatContentWidth(m.width)
 	overflow := m.commandsTabsOverflow()
@@ -210,6 +243,13 @@ func (m model) buildCommandsTextRows() []string {
 	nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.TextColor)).Background(bg).Bold(true)
 	descriptionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.MutedTextColor)).Background(bg)
 	lines := make([]string, 0, 40)
+    if handbookPages[m.commandsTab].Name=="VISUAL" {
+        introStyle:=lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.TextColor)).Background(bg)
+        for _,line:=range wrapText(handbookVisualIntro,width) {
+            lines=append(lines,introStyle.Render("  "+line))
+        }
+        lines=append(lines,"")
+    }
 	for _, entry := range handbookPages[m.commandsTab].Entries {
 		for _, line := range wrapText(entry.Command, width) {
 			lines = append(lines, nameStyle.Render("  "+line))

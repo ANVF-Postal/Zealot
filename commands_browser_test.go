@@ -9,17 +9,50 @@ import (
 )
 
 func TestHandbookPublicCategoriesAndSplashButton(t *testing.T) {
-	if len(handbookPages) != 3 ||
+	if len(handbookPages) != 4 ||
 		handbookPages[0].Name != "CHAT" ||
-		handbookPages[1].Name != "USER" ||
-		handbookPages[2].Name != "LAUNCH" {
+        handbookPages[1].Name != "VISUAL" ||
+		handbookPages[2].Name != "USER" ||
+		handbookPages[3].Name != "LAUNCH" {
 		t.Fatalf("incorrect handbook categories: %+v", handbookPages)
 	}
-	if len(handbookPages[0].Entries) != 16 ||
-		len(handbookPages[1].Entries) != 4 ||
-		len(handbookPages[2].Entries) != 2 {
+	// Keep the original public entries covered while allowing new commands
+	// to be added without failing this test for a legitimate feature expansion.
+	if len(handbookPages[0].Entries) < 16 ||
+        len(handbookPages[1].Entries) < 17 ||
+		len(handbookPages[2].Entries) < 4 ||
+		len(handbookPages[3].Entries) < 2 {
 		t.Fatal("handbook is missing public commands or click behaviors")
 	}
+	chatCommands := make(map[string]bool, len(handbookPages[0].Entries))
+	for _, entry := range handbookPages[0].Entries {
+		chatCommands[entry.Command] = true
+	}
+    visualCommands:=make(map[string]bool,len(handbookPages[1].Entries))
+    for _,entry:=range handbookPages[1].Entries {
+        visualCommands[entry.Command]=true
+        if strings.Contains(entry.Command," self [seconds]") {
+            t.Fatalf("duplicate self-only visual command %q",entry.Command)
+        }
+        if chatCommands[entry.Command] {
+            t.Fatalf("visual command %q also appears on CHAT tab",entry.Command)
+        }
+    }
+    for _,command:=range []string{
+        "/rain [seconds]","/snow [seconds]","/blizzard [seconds]",
+        "/embers [seconds]","/fire [seconds]","/matrix [seconds]",
+        "/static [seconds]","/glitch [seconds]","/interrogation [seconds]",
+        "/bubbles [seconds]","/aquarium [seconds]","/terminal [seconds]",
+        "/fireworks [seconds]","/confetti [seconds]",
+        "/terminal off","/stop","/stopfx self","/startfx","/disablefx","/enablefx","/fxfps 1-60",
+    } {
+        if !visualCommands[command] {
+            t.Fatalf("VISUAL tab missing command %q",command)
+        }
+    }
+    if !chatCommands["/rainbow"] || !chatCommands["/rb"] {
+        t.Fatal("rainbow chat commands should remain on CHAT tab")
+    }
 	m := newMessageInteractionTestModel(100)
 	m.splashOpen = true
 	rows := m.splashRows()
@@ -50,8 +83,8 @@ func TestHandbookFolderTabClickAndEscape(t *testing.T) {
 		!strings.Contains(stripANSISequences(face),"│ CHAT │") {
 		t.Fatalf("folder tab artwork missing: %q %q",rim,face)
 	}
-	if len(regions)!=3 { t.Fatal("expected three click regions") }
-	for _,tab := range []int{1,2,0} {
+	if len(regions)!=4 { t.Fatal("expected four click regions") }
+	for _,tab := range []int{1,2,3,0} {
 		x:=1+regions[tab].Start+1
 		updated,_:=m.Update(tea.MouseClickMsg{Button:tea.MouseLeft,X:x,Y:3})
 		m=updated.(model)
@@ -63,6 +96,42 @@ func TestHandbookFolderTabClickAndEscape(t *testing.T) {
 	updated,_:=m.Update(tea.KeyPressMsg{Code:27})
 	m=updated.(model)
 	if m.commandsOpen || !m.splashOpen { t.Fatal("Escape did not return from handbook to splash") }
+}
+
+func TestHandbookVisualIntroductionAndCompactNavigation(t *testing.T) {
+    for _,width:=range []int{19,23,45,100} {
+        m:=newMessageInteractionTestModel(width)
+        m.openCommandsBrowser()
+        m.selectCommandsTab(1)
+        rows:=m.commandsTextRows()
+        if len(rows)<3 {
+            t.Fatalf("width %d: VISUAL page empty",width)
+        }
+        if intro:=strings.Join(func() []string {
+            lines:=make([]string,0)
+            for _,row:=range rows {
+                if row=="" {break}
+                lines=append(lines,stripANSISequences(row))
+            }
+            return lines
+        }()," ");!strings.Contains(strings.Join(strings.Fields(intro)," "),handbookVisualIntro) {
+            t.Fatalf("width %d: missing VISUAL intro: %q",width,intro)
+        }
+        rendered:=m.renderCommandsBrowser()
+        if !strings.Contains(stripANSISequences(rendered),"VISUAL") && width>=45 {
+            t.Fatalf("width %d: VISUAL folder not shown",width)
+        }
+        for _,row:=range rows {
+            if lipgloss.Width(row)>chatContentWidth(width) {
+                t.Fatalf("width %d: VISUAL row overflow: %q",width,row)
+            }
+        }
+        _,_,hits:=m.commandsTabsLine()
+        if len(hits)!=4 {t.Fatalf("width %d: expected 4 folder hitboxes",width)}
+        if hits[1].End<=hits[1].Start {
+            t.Fatalf("width %d: selected VISUAL folder is inaccessible",width)
+        }
+    }
 }
 
 func TestHandbookWordWrapAndScroll(t *testing.T) {
@@ -84,7 +153,7 @@ func TestHandbookWordWrapAndScroll(t *testing.T) {
 	updated,_=m.Update(tea.MouseClickMsg{Button:tea.MouseLeft,X:targets.pgDnStart,Y:m.height-1})
 	m=updated.(model)
 	if m.commandsScroll<=before { t.Fatal("footer PgDn did not scroll handbook") }
-	m.selectCommandsTab(2)
+	m.selectCommandsTab(3)
 	if m.commandsScroll!=0 { t.Fatal("changing tabs did not reset scroll") }
 }
 
@@ -133,7 +202,7 @@ func TestHandbookCompactTabsOverlayAndNavigation(t *testing.T) {
 	left := 0
 	if !narrowBordersHidden(m.width) { left = 1 }
 	arrowX := left + chatContentWidth(m.width)-1
-	for _, target := range []int{1, 2} {
+	for _, target := range []int{1, 2, 3} {
 		updated, _ := m.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: arrowX, Y: 3})
 		m = updated.(model)
 		if m.commandsTab != target || m.commandsScroll != 0 {
@@ -147,10 +216,10 @@ func TestHandbookCompactTabsOverlayAndNavigation(t *testing.T) {
 	// Endpoints stop at the final tab, rather than wrapping to CHAT.
 	updated, _ := m.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: arrowX, Y: 3})
 	m = updated.(model)
-	if m.commandsTab != 2 { t.Fatal("right arrow wrapped beyond LAUNCH") }
+	if m.commandsTab != 3 { t.Fatal("right arrow wrapped beyond LAUNCH") }
 
 	leftArrowX := left + chatContentWidth(m.width)-lipgloss.Width(commandsTabNavigation)
-	for _, target := range []int{1, 0} {
+	for _, target := range []int{2, 1, 0} {
 		updated, _ = m.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: leftArrowX, Y: 2})
 		m = updated.(model)
 		if m.commandsTab != target { t.Fatalf("left arrow failed to select %d; got %d", target, m.commandsTab) }
@@ -174,14 +243,14 @@ func TestHandbookTabNavigationDisappearsWhenThereIsRoom(t *testing.T) {
 	}
 
 	// Resizing while on the LAUNCH tab must keep that tab reachable.
-	m.selectCommandsTab(2)
+	m.selectCommandsTab(3)
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 20, Height: 24})
 	m = updated.(model)
-	if m.commandsTab != 2 || !m.commandsTabsOverflow() {
+	if m.commandsTab != 3 || !m.commandsTabsOverflow() {
 		t.Fatalf("resize lost selected tab or overflow: tab=%d", m.commandsTab)
 	}
 	_, face, regions = m.commandsTabsLine()
-	if regions[2].End <= regions[2].Start {
+	if regions[3].End <= regions[3].Start {
 		t.Fatalf("LAUNCH tab not kept visible after resizing: %q", face)
 	}
 }

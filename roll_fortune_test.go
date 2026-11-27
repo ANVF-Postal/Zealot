@@ -73,7 +73,13 @@ func TestFortuneResultPresentationAndPublicDocumentation(t *testing.T) {
 		rendered:=stripANSISequences(strings.Join(m.renderPacketBaseLines(p,100),"\n"))
 		prefix:="Postal's Fortune: "
 		if target!="" {prefix="Postal, your fortune is: "}
-		if !strings.Contains(rendered,prefix) || !strings.Contains(rendered,p.Text) {
+		// Long fortune text can wrap in the middle of a word at the
+		// chat viewport boundary. Compare content without layout whitespace
+		// while still checking that the visible prefix is preserved.
+		compact := func(text string) string {
+			return strings.Join(strings.Fields(text), "")
+		}
+		if !strings.Contains(rendered,prefix) || !strings.Contains(compact(rendered),compact(p.Text)) {
 			t.Fatalf("fortune rendering incorrect: %q",rendered)
 		}
 		if !strings.Contains(rendered,"["+p.Time.Local().Format("15:04")+"]") {

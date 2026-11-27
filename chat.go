@@ -26,6 +26,12 @@ func (m model) renderMessageLines() []string {
  // or constructing terminal row strings. It is used for off-screen messages
  // so scroll geometry remains accurate while rendering stays viewport-bound.
 func (m model) renderPacketLineCount(msg Packet, width int) int {
+    count:=m.renderPacketLineCountBase(msg,width)
+    if m.terminalCursorNeedsWrap(msg,width) {count++}
+    return count
+}
+
+func (m model) renderPacketLineCountBase(msg Packet, width int) int {
 	msg = m.displayedMessage(msg)
 	if width < 1 {
 		return 1
@@ -61,7 +67,7 @@ func (m model) renderPacketLineCount(msg Packet, width int) int {
 	case "whisper_result":
 		// Private replies can add the same trailing [1]/[2] navigation rows
 		// as ordinary messages. Count them through the shared renderer.
-		return max(1, len(m.renderPacketLines(msg, width)))
+		return max(1, len(m.renderPacketLinesBase(msg, width)))
 	case "message":
 		if msg.XKeyscore > 0 {
 			return m.xkeyscoreLineCount(msg, width)
@@ -72,7 +78,7 @@ func (m model) renderPacketLineCount(msg Packet, width int) int {
 	// Reply markers can add rows at the end of a parent message. These are
 	// uncommon, so use the existing renderer to keep their placement exact.
 	if len(m.repliesFor(msg.ID)) > 0 {
-		return max(1, len(m.renderPacketLines(msg, width)))
+		return max(1, len(m.renderPacketLinesBase(msg, width)))
 	}
 
 	replyBadge := m.renderReplyBadgeForWidth(msg, width)
@@ -317,6 +323,17 @@ func trimANSIEndPadding(line string) string {
 }
 
 func (m model) renderPacketLines(msg Packet, width int) []string {
+    lines:=m.renderPacketLinesBase(msg,width)
+    if m.terminalCursorNeedsWrap(msg,width) {
+        fill:=lipgloss.NewStyle().Background(lipgloss.Color(m.cfg.Theme.Background))
+        // This must contain real blank cells, not just ANSI styling.
+        // The terminal cursor renderer replaces the first one with █.
+        lines=append(lines,renderChatRow(fill,strings.Repeat(" ",chatContentWidth(width)),chatContentWidth(width)))
+    }
+    return lines
+}
+
+func (m model) renderPacketLinesBase(msg Packet, width int) []string {
 	lines := m.renderPacketBaseLines(msg, width)
 	if (msg.Type != "message" && msg.Type != "whisper_result") || msg.ID == "" || msg.XKeyscore > 0 {
 		return lines

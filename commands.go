@@ -39,6 +39,12 @@ func (m *model) sendMessage(text string, replyTo string) bool {
 	if len(fields) == 0 {
 		return false
 	}
+	// ChatFX controls are local actions or dedicated FX packets, never
+	// public text or whisper replies. Handle them before reply routing.
+	if command := strings.ToLower(fields[0]); isChatFXCommand(command) {
+		m.chatFXCommand(command, fields)
+		return false
+	}
 	// Replying to a whisper always stays private, even when the draft
 	// resembles a slash command. Reuse the selected reply target rather
 	// than creating a separate composer or interaction state.

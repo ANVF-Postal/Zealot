@@ -239,6 +239,16 @@ func (m model) View() tea.View {
 			scrollbarRows[i] = scrollbarStyle.Render(glyph)
 		}
 	}
+	// ChatFX is painted on a copy of the visible chat rows, never the
+	// message cache. Its backdrop has no influence on hit-testing.
+	m.renderChatFXBackground(visible, chatContentWidth(m.width))
+	// Weather skies tint the top quarter after particles are laid down,
+	// preserving foreground weather glyphs and existing message content.
+	m.renderStormSkyGradient(visible, chatContentWidth(m.width))
+	m.renderInterrogationRows(visible,start)
+	// Terminal is the sole stackable foreground ChatFX layer. It hides only
+	// unrevealed body glyphs; the complete message already reserves all rows.
+	m.renderTerminalRows(visible,start)
 	for i := range visible {
 		visible[i] = truncateANSI(visible[i], chatContentWidth(m.width)) + scrollbarRows[i]
 	}
@@ -265,6 +275,9 @@ func (m model) View() tea.View {
 			break
 		}
 	}
+	// The typing indicator is the final row of the same illuminated pane.
+	// Shade it before attaching the unaffected scrollbar column.
+	typingLine = m.renderInterrogationTypingRow(typingLine, chatHeight)
 	typingLine = truncateANSI(typingLine, chatContentWidth(m.width)) + scrollbarRows[chatHeight]
 	chat += "\n" + typingLine
 
