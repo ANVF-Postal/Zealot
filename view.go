@@ -163,6 +163,9 @@ func (m model) View() tea.View {
 		return m.renderViewWithChat(header, chatBox, true, false)
 	}
 
+	if m.optionsOpen {
+		return m.renderViewWithChat(header, m.renderOptionsBrowser(), false, true)
+	}
 	if m.commandsOpen {
 		chatBox := m.renderCommandsBrowser()
 		return m.renderViewWithChat(header, chatBox, false, false)

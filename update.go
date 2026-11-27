@@ -340,6 +340,12 @@ func (m model) Update(
 		// particular, don't make a header click wait for an old hover timer.
 		m.refreshMessageHover()
 
+		if m.optionsOpen && mouse.Button == tea.MouseLeft {
+			if mouse.Y == 0 || (mouse.Y >= 2 && mouse.Y < 2+m.messageHeight()) {
+				m.optionsClick(mouse.X, mouse.Y)
+				return m, nil
+			}
+		}
 		// A field edit owns the composer until Enter or Escape completes it.
 		// Keep other panel clicks from closing the screen or firing actions.
 		if m.themesOpen && (m.themeEditField != "" || m.themePackNaming) && !m.inputSelectionContains(mouse.X, mouse.Y) {
@@ -513,6 +519,10 @@ func (m model) Update(
 				m.selectCommandsTab(index)
 				return m,nil
 			}
+		}
+		if mouse.Button == tea.MouseLeft && m.splashOptionsButtonContains(mouse.X, mouse.Y) {
+			m.openOptionsBrowser()
+			return m, nil
 		}
 		if m.splashOpen && !m.themesOpen && !m.commandsOpen && mouse.Button == tea.MouseLeft && m.splashLogoContains(mouse.X, mouse.Y) {
 			m.cycleSplashLogo()
@@ -921,6 +931,11 @@ func (m model) Update(
 	// -------------------------------------------------------------------------
 
 	if mouseMsg, ok := msg.(tea.MouseWheelMsg); ok {
+		if m.optionsOpen {
+			if mouseMsg.Button == tea.MouseWheelUp { m.optionsScroll -= 3 } else if mouseMsg.Button == tea.MouseWheelDown { m.optionsScroll += 3 }
+			m.clampOptionsScroll()
+			return m, nil
+		}
 		if m.commandsOpen {
 			switch mouseMsg.Button {
 			case tea.MouseWheelUp: m.commandsScroll-=3
@@ -993,6 +1008,12 @@ func (m model) Update(
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		if keyMsg.Keystroke() != "tab" {
 			m.resetMentionTabCompletion()
+		}
+		if keyMsg.Keystroke() == "ctrl+," && !m.optionsOpen && !m.themesOpen && !m.commandsOpen && m.longReader == nil {
+			m.openOptionsBrowser(); return m, nil
+		}
+		if m.optionsOpen && keyMsg.Keystroke() != "ctrl+c" && keyMsg.Keystroke() != "ctrl+q" {
+			m.optionsKey(keyMsg.Keystroke()); return m, nil
 		}
 		if m.commandsOpen {
 			switch keyMsg.Keystroke() {
@@ -1437,6 +1458,11 @@ func (m *model) applyMouseMotion(x, y int) {
 
 // scrollPage applies the same viewport movement for keyboard and footer clicks.
 func (m *model) scrollPage(up bool) {
+	if m.optionsOpen {
+		step := max(1, m.messageHeight()-2)
+		if up { m.optionsScroll -= step } else { m.optionsScroll += step }
+		m.clampOptionsScroll(); return
+	}
 	if m.commandsOpen {
 		if up {m.commandsScroll-=m.commandsVisibleHeight()} else {m.commandsScroll+=m.commandsVisibleHeight()}
 		m.clampCommandsScroll(); return

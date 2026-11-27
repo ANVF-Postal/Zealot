@@ -31,6 +31,10 @@ type model struct {
 	usersAnimationRunning bool
 
 	splashOpen                       bool
+	optionsOpen bool
+	optionsCategory, optionsSelected, optionsScroll int
+	optionsDraft Config
+	optionsStatus string
 	splashLogoIndex                  int
 	commandsOpen bool
 	commandsTab int

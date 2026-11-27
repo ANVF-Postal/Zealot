@@ -130,7 +130,7 @@ func TestSplashThemeActionStillWorksAfterSwitchingLogos(t *testing.T) {
 	}
 	button := "[THEMES]"
 	x := 1 + max(0,(chatContentWidth(m.width)-len(button))/2)
-	y := 2+len(m.splashRows())-1
+	y := 2+len(m.splashRows())-2
 	if !m.splashThemesButtonContains(x,y) {
 		t.Fatal("[THEMES] button moved or lost its hitbox")
 	}

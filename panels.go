@@ -303,6 +303,7 @@ func (m model) splashRows() []string {
 	rows = append(rows, "")
 	rows = append(rows, m.styles.accent.Render(center("[COMMANDS]")))
 	rows = append(rows, m.styles.accent.Render(center("[THEMES]")))
+	rows = append(rows, m.styles.accent.Render(center("[OPTIONS]")))
 	return rows
 }
 
@@ -310,7 +311,7 @@ func (m model) splashRows() []string {
 // [THEMES] action, accounting for the splash's vertical scroll offset.
 func (m model) splashCommandsButtonContains(x, y int) bool {
 	button := "[COMMANDS]"
-	row := len(m.splashRows())-2
+	row := len(m.splashRows())-3
 	screenY := 2+row-m.splashScroll
 	left := 0
 	if !narrowBordersHidden(m.width) { left = 1 }
@@ -321,7 +322,7 @@ func (m model) splashCommandsButtonContains(x, y int) bool {
 
 func (m model) splashThemesButtonContains(x, y int) bool {
 	button := "[THEMES]"
-	row := len(m.splashRows()) - 1
+	row := len(m.splashRows()) - 2
 	screenY := 2 + row - m.splashScroll // chat pane's top border and first content row
 	left := 0
 	if !narrowBordersHidden(m.width) { left = 1 }
