@@ -48,7 +48,7 @@ func TestTerminalQuestionAndExclamationPause(t *testing.T) {
 }
 
 func TestTerminalClauseAndBracketPauses(t *testing.T) {
-    for _,punctuation:=range []rune{',',':',';','(',')','[',']','{','}'} {
+    for _,punctuation:=range []rune{':',';','(',')','[',']','{','}'} {
         text:="Go"+string(punctuation)+" Next"
         prefix:=3*terminalLetterDelay
         if got:=terminalPunctuationPause(punctuation);got!=terminalClausePause {
@@ -70,21 +70,44 @@ func TestTerminalClauseAndBracketPauses(t *testing.T) {
     }
 }
 
+func TestTerminalCommaTakesExactly200Milliseconds(t *testing.T) {
+    if terminalLetterDelay+terminalCommaPause!=200*time.Millisecond {
+        t.Fatal("comma must take 200 ms including its character delay")
+    }
+    text:="A,B"
+    if got:=terminalPunctuationPause(',');got!=162*time.Millisecond {
+        t.Fatalf("comma pause = %v, want 162 ms",got)
+    }
+    afterComma:=2*terminalLetterDelay
+    if got:=terminalRevealCount(text,afterComma+terminalCommaPause-time.Millisecond);got!=2 {
+        t.Fatalf("next letter appeared during comma pause: %d",got)
+    }
+    if got:=terminalRevealCount(text,afterComma+terminalCommaPause+terminalLetterDelay);got!=3 {
+        t.Fatalf("next letter didn't appear after comma pause: %d",got)
+    }
+    if got,want:=terminalTextDuration(text),3*terminalLetterDelay+terminalCommaPause;got!=want {
+        t.Fatalf("comma duration = %v, want %v",got,want)
+    }
+}
+
 func TestTerminalMixedPunctuationPausesAccumulate(t *testing.T) {
     text:="value: [one, two]; {done}!"
     clauseCount:=0
+    commaCount:=0
     sentenceCount:=0
     for _,ch:=range text {
         switch terminalPunctuationPause(ch) {
         case terminalClausePause: clauseCount++
+        case terminalCommaPause: commaCount++
         case terminalPeriodPause: sentenceCount++
         }
     }
-    if clauseCount!=7 || sentenceCount!=1 {
-        t.Fatalf("unexpected mixed punctuation counts: %d clauses, %d sentences",clauseCount,sentenceCount)
+    if clauseCount!=6 || commaCount!=1 || sentenceCount!=1 {
+        t.Fatalf("unexpected mixed punctuation counts: %d clauses, %d commas, %d sentences",clauseCount,commaCount,sentenceCount)
     }
     expected:=time.Duration(len([]rune(text)))*terminalLetterDelay+
         time.Duration(clauseCount)*terminalClausePause+
+        time.Duration(commaCount)*terminalCommaPause+
         time.Duration(sentenceCount)*terminalPeriodPause
     if got:=terminalTextDuration(text);got!=expected {
         t.Fatalf("mixed punctuation duration = %v, want %v",got,expected)
