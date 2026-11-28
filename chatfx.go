@@ -90,6 +90,7 @@ func (m *model) chatFXCommand(command string, fields []string) {
 			return
 		}
 		m.fxRenderFPS = fps
+		m.cfg.FXFPS=fps
 		// Invalidate any already-scheduled frame so the new interval takes
 		// effect immediately (rather than after an old low-FPS timer).
 		m.fxTickGeneration++
@@ -244,9 +245,9 @@ func (m model) chatFXAlive(fx chatFXState) bool {
 
 func (m model) currentChatFX() chatFXState {
 	if m.fxDisabled { return chatFXState{} }
-	if m.fxLocalOverride && m.chatFXAlive(m.fxLocal) {return m.fxLocal}
+	if m.fxLocalOverride && m.chatFXAlive(m.fxLocal) {if m.cfg.FXBlocked&optionsEffectBit(m.fxLocal.name)!=0{return chatFXState{}};return m.fxLocal}
 	if m.fxRoomMuted {return chatFXState{}}
-	if m.chatFXAlive(m.fxRoom) { return m.fxRoom }
+	if m.chatFXAlive(m.fxRoom) && m.cfg.FXBlocked&optionsEffectBit(m.fxRoom.name)==0 { return m.fxRoom }
 	return chatFXState{}
 }
 

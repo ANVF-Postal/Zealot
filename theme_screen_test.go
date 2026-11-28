@@ -24,7 +24,7 @@ func TestSplashIncludesCenteredActionsAfterStats(t *testing.T) {
 	}{
 		{"[COMMANDS]", len(rows)-3, m.splashCommandsButtonContains},
 		{"[THEMES]", len(rows)-2, m.splashThemesButtonContains},
-		{"[OPTIONS]", len(rows)-1, m.splashOptionsButtonContains},
+		{"[SETTINGS]", len(rows)-1, m.splashOptionsButtonContains},
 	} {
 		if !strings.Contains(stripANSISequences(rows[action.row]), action.label) {
 			t.Fatalf("splash does not contain %s action at row %d: %q", action.label, action.row, rows[action.row])

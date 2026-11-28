@@ -266,6 +266,9 @@ func newModel(
 
 	return model{
 		cfg:          cfg,
+		splashOpen: cfg.ShowStartupSplash,
+		fxDisabled: cfg.FXDisabled,
+		fxRenderFPS: cfg.FXFPS,
 		room:         room,
 		roomExplicit: roomExplicit,
 		user:         user,

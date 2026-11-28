@@ -227,10 +227,8 @@ func (m model) Update(
 			if animationCmd := m.startUsersAnimation(); animationCmd != nil {
 				commands = append(commands, animationCmd)
 			}
-			if m.notificationsReady && m.cfg.Bell {
-				commands = append(commands, terminalBellCmd())
-			}
 		}
+		if m.notificationsReady && m.shouldRingBell(packet) {commands=append(commands,terminalBellCmd())}
 		if fxCmd := m.ensureChatFXTick(); fxCmd != nil {
 			commands = append(commands, fxCmd)
 		}
@@ -1459,7 +1457,7 @@ func (m *model) applyMouseMotion(x, y int) {
 // scrollPage applies the same viewport movement for keyboard and footer clicks.
 func (m *model) scrollPage(up bool) {
 	if m.optionsOpen {
-		step := max(1, m.messageHeight()-2)
+		step := m.optionsVisibleRows()
 		if up { m.optionsScroll -= step } else { m.optionsScroll += step }
 		m.clampOptionsScroll(); return
 	}

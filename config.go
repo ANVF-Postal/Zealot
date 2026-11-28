@@ -31,6 +31,12 @@ type Config struct {
 	Name             string
 	UserColor        string
 	Bell             bool
+	BellMention bool
+	ShowStartupSplash bool
+	FixedSplashLogo bool
+	FXDisabled bool
+	FXFPS int
+	FXBlocked uint16
 	InputHeight      int
 	AdaptiveHeight   bool
 	HeightMaxPercent int
@@ -54,6 +60,7 @@ func defaultConfig() Config {
 	return Config{
 		Name:             "Anonymous",
 		Bell:             true,
+		FXFPS: chatFXDefaultFPS,
 		InputHeight:      1,
 		AdaptiveHeight:   false,
 		HeightMaxPercent: 30,
@@ -142,9 +149,19 @@ func loadConfig() (Config, error) {
 		case "selection_background_color":
 			cfg.Theme.SelectionBackgroundColor = value
 		case "bell":
-			if enabled, err := strconv.ParseBool(value); err == nil {
-				cfg.Bell = enabled
-			}
+			if strings.EqualFold(value,"mention") {cfg.Bell=true;cfg.BellMention=true
+			} else if enabled,err:=strconv.ParseBool(value);err==nil {cfg.Bell=enabled;cfg.BellMention=false}
+		case "show_startup_splash":
+			if v,err:=strconv.ParseBool(value);err==nil {cfg.ShowStartupSplash=v}
+		case "random_splash_logo":
+			if v,err:=strconv.ParseBool(value);err==nil {cfg.FixedSplashLogo=!v}
+		case "chatfx_enabled":
+			if v,err:=strconv.ParseBool(value);err==nil {cfg.FXDisabled=!v}
+		case "chatfx_fps":
+			if v,err:=strconv.Atoi(value);err==nil && v>=1 && v<=chatFXMaxFPS {cfg.FXFPS=v}
+		case "chatfx_blocked":
+			cfg.FXBlocked=0
+			for _,name:=range strings.Split(value,","){cfg.FXBlocked|=optionsEffectBit(strings.TrimSpace(name))}
 		case "input_height":
 			if height, err := strconv.Atoi(value); err == nil {
 				cfg.InputHeight = height
@@ -197,6 +214,11 @@ name = "Anonymous"
 user_color = "#7CFFCB"
 
 bell = true
+show_startup_splash = false
+random_splash_logo = true
+chatfx_enabled = true
+chatfx_fps = 15
+chatfx_blocked = ""
 
 # Minimum visible text rows in the composer (1-8).
 input_height = 1
@@ -239,7 +261,12 @@ func configFileValues(cfg Config) []configFileEntry {
 	entries := []configFileEntry{
 		{key: "name", value: strconv.Quote(cfg.Name)},
 		{key: "user_color", value: strconv.Quote(cfg.UserColor)},
-		{key: "bell", value: strconv.FormatBool(cfg.Bell)},
+		{key: "bell", value: optionsBellValue(cfg)},
+		{key:"show_startup_splash",value:strconv.FormatBool(cfg.ShowStartupSplash)},
+		{key:"random_splash_logo",value:strconv.FormatBool(!cfg.FixedSplashLogo)},
+		{key:"chatfx_enabled",value:strconv.FormatBool(!cfg.FXDisabled)},
+		{key:"chatfx_fps",value:strconv.Itoa(cfg.FXFPS)},
+		{key:"chatfx_blocked",value:strconv.Quote(optionsBlockedEffects(cfg.FXBlocked))},
 		{key: "input_height", value: strconv.Itoa(cfg.InputHeight)},
 		{key: "adaptive_height", value: strconv.FormatBool(cfg.AdaptiveHeight)},
 		{key: "height_max_percent", value: strconv.Itoa(cfg.HeightMaxPercent)},

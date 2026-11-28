@@ -119,7 +119,7 @@ func terminalRevealCount(text string,elapsed time.Duration) int {
 }
 
 func (m model) terminalEnabled() bool {
-    if m.fxDisabled || m.fxTerminalMuted {return false}
+    if m.fxDisabled || m.fxTerminalMuted || m.cfg.FXBlocked&optionsEffectBit("terminal")!=0 {return false}
     now:=time.Now()
     local:=!m.terminalLocalUntil.IsZero() && now.Before(m.terminalLocalUntil)
     room:=!m.terminalRoomUntil.IsZero() && now.Before(m.terminalRoomUntil)

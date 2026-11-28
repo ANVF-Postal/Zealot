@@ -213,6 +213,7 @@ var splashLogos = [][]string{
 // cycleSplashLogo chooses a different logo each time the splash opens or
 // its artwork is clicked; additional designs can be added to splashLogos.
 func (m *model) cycleSplashLogo() {
+	if m.cfg.FixedSplashLogo {return}
 	if len(splashLogos) < 2 {
 		m.splashLogoIndex = 0
 		return
@@ -303,7 +304,7 @@ func (m model) splashRows() []string {
 	rows = append(rows, "")
 	rows = append(rows, m.styles.accent.Render(center("[COMMANDS]")))
 	rows = append(rows, m.styles.accent.Render(center("[THEMES]")))
-	rows = append(rows, m.styles.accent.Render(center("[OPTIONS]")))
+	rows = append(rows, m.styles.accent.Render(center("[SETTINGS]")))
 	return rows
 }
 
