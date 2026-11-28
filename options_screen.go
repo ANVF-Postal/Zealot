@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"image/color"
 	"strconv"
 	"strings"
 
@@ -231,8 +232,7 @@ func (m model) renderOptionsBrowser() string {
 			row:=rows[i]
 			width:=max(1,right-1)
 			gap:=max(1,width-lipgloss.Width(row.label)-lipgloss.Width(row.value))
-			line=row.label+strings.Repeat(" ",gap)+row.value
-			if i==m.optionsSelected {line=normal.Bold(true).Render(truncateANSI("› "+row.label,max(0,width-lipgloss.Width(row.value)-1)))+normal.Render(strings.Repeat(" ",max(0,width-lipgloss.Width(truncateANSI("› "+row.label,max(0,width-lipgloss.Width(row.value)-1)))-lipgloss.Width(row.value))))+optionsValueStyle(normal,accent,m.cfg.Theme.MutedTextColor,row.value).Render(row.value)
+						if i==m.optionsSelected {line=normal.Bold(true).Render(truncateANSI("› "+row.label,max(0,width-lipgloss.Width(row.value)-1)))+normal.Render(strings.Repeat(" ",max(0,width-lipgloss.Width(truncateANSI("› "+row.label,max(0,width-lipgloss.Width(row.value)-1)))-lipgloss.Width(row.value))))+optionsValueStyle(normal,accent,m.cfg.Theme.MutedTextColor,row.value).Render(row.value)
 			}else{line=normal.Render(truncateANSI(row.label+strings.Repeat(" ",gap),max(0,width-lipgloss.Width(row.value))))+optionsValueStyle(normal,accent,m.cfg.Theme.MutedTextColor,row.value).Render(row.value)}
 		}
 		glyph:="│"
@@ -281,7 +281,7 @@ func (m model) shouldRingBell(p Packet) bool {
 	return false
 }
 
-func optionsValueStyle(normal lipgloss.Style, accent interface{RGBA()(uint32,uint32,uint32,uint32)}, muted string,value string) lipgloss.Style {
+func optionsValueStyle(normal lipgloss.Style, accent color.Color, muted string,value string) lipgloss.Style {
 	switch value {
 	case "[ ON ]","[ MENTION ]","[x]":return normal.Foreground(accent).Bold(true)
 	case "[ OFF ]","[ ]":return normal.Foreground(lipgloss.Color(muted))
