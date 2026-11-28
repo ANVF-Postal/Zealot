@@ -68,7 +68,16 @@ func (m *model) optionsRows() []optionsRow {
 			{label:"Random splash logo",value:optionsToggle(!d.FixedSplashLogo),change:func(_ int){d.FixedSplashLogo=!d.FixedSplashLogo}},
 		}
 	case 1:
-		rows = []optionsRow{{label:"Chat preferences", value:"Not implemented yet"}}
+		format:="24-hour";if d.TwelveHourTime{format="12-hour"}
+		sign:="+";offset:=d.TimeOffsetMinutes;if offset<0{sign="-";offset=-offset}
+		rows=[]optionsRow{
+			{label:"Show timestamps",value:optionsToggle(!d.HideTimestamps),change:func(_ int){d.HideTimestamps=!d.HideTimestamps}},
+			{label:"Timestamp format",value:"[ "+format+" ]",change:func(_ int){d.TwelveHourTime=!d.TwelveHourTime}},
+			{label:"Offset hours",value:fmt.Sprintf("[-] %s%02d [+]",sign,offset/60),change:func(n int){d.TimeOffsetMinutes=min(1439,max(-1439,d.TimeOffsetMinutes+n*60))}},
+			{label:"Offset minutes",value:fmt.Sprintf("[-] %s%02d [+]",sign,offset%60),change:func(n int){d.TimeOffsetMinutes=min(1439,max(-1439,d.TimeOffsetMinutes+n))}},
+			{label:"Highlight mentions",value:optionsToggle(!d.DisableMentionHighlight),change:func(_ int){d.DisableMentionHighlight=!d.DisableMentionHighlight}},
+			{label:"Confirm Quit click",value:optionsToggle(!d.QuitWithoutConfirm),change:func(_ int){d.QuitWithoutConfirm=!d.QuitWithoutConfirm}},
+		}
 	case 2:
 		rows = []optionsRow{
 			{label:"Input height", value:fmt.Sprintf("[-] %d [+]",d.InputHeight), change:func(n int){d.InputHeight = min(8,max(1,d.InputHeight+n))}},
@@ -90,6 +99,11 @@ func (m *model) optionsActions() []optionsRow {
 		defaults:=defaultConfig()
 		d.Bell=defaults.Bell
 		d.BellMention=false
+		d.HideTimestamps=false
+		d.TwelveHourTime=false
+		d.TimeOffsetMinutes=0
+		d.DisableMentionHighlight=false
+		d.QuitWithoutConfirm=false
 		d.ShowStartupSplash=defaults.ShowStartupSplash
 		d.FixedSplashLogo=false
 		d.FXDisabled=false
@@ -115,7 +129,8 @@ func (m *model) saveOptions() {
 	m.fxTickGeneration++
 	m.fxTickPending=false
 	if !m.terminalEnabled(){m.terminalClearReveals()}
-	m.input.SetHeight(d.InputHeight)
+	m.resizeInput()
+	m.rebuildMessageCache()
 	m.clampScroll()
 	m.clampSplashScroll()
 	m.optionsDraft=m.cfg
@@ -217,7 +232,8 @@ func (m model) renderOptionsBrowser() string {
 			width:=max(1,right-1)
 			gap:=max(1,width-lipgloss.Width(row.label)-lipgloss.Width(row.value))
 			line=row.label+strings.Repeat(" ",gap)+row.value
-			if i==m.optionsSelected {line=selected.Render(truncateANSI(line,width))}else{line=normal.Render(truncateANSI(line,width))}
+			if i==m.optionsSelected {line=normal.Bold(true).Render(truncateANSI("› "+row.label,max(0,width-lipgloss.Width(row.value)-1)))+normal.Render(strings.Repeat(" ",max(0,width-lipgloss.Width(truncateANSI("› "+row.label,max(0,width-lipgloss.Width(row.value)-1)))-lipgloss.Width(row.value))))+optionsValueStyle(normal,accent,m.cfg.Theme.MutedTextColor,row.value).Render(row.value)
+			}else{line=normal.Render(truncateANSI(row.label+strings.Repeat(" ",gap),max(0,width-lipgloss.Width(row.value))))+optionsValueStyle(normal,accent,m.cfg.Theme.MutedTextColor,row.value).Render(row.value)}
 		}
 		glyph:="│"
 		if len(rows)>visible && j<track && j>=top && j<top+thumb {glyph="█"}
@@ -263,4 +279,12 @@ func (m model) shouldRingBell(p Packet) bool {
 	for _,name:=range p.Mentions{if strings.EqualFold(name,m.user.Name){return true}}
 	if p.ReplyTo!=""{for _,parent:=range m.messages{if parent.ID==p.ReplyTo && strings.EqualFold(parent.User.Name,m.user.Name){return true}}}
 	return false
+}
+
+func optionsValueStyle(normal lipgloss.Style, accent interface{RGBA()(uint32,uint32,uint32,uint32)}, muted string,value string) lipgloss.Style {
+	switch value {
+	case "[ ON ]","[ MENTION ]","[x]":return normal.Foreground(accent).Bold(true)
+	case "[ OFF ]","[ ]":return normal.Foreground(lipgloss.Color(muted))
+	default:return normal
+	}
 }

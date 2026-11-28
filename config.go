@@ -32,6 +32,11 @@ type Config struct {
 	UserColor        string
 	Bell             bool
 	BellMention bool
+	HideTimestamps bool
+	TwelveHourTime bool
+	TimeOffsetMinutes int
+	DisableMentionHighlight bool
+	QuitWithoutConfirm bool
 	ShowStartupSplash bool
 	FixedSplashLogo bool
 	FXDisabled bool
@@ -151,6 +156,16 @@ func loadConfig() (Config, error) {
 		case "bell":
 			if strings.EqualFold(value,"mention") {cfg.Bell=true;cfg.BellMention=true
 			} else if enabled,err:=strconv.ParseBool(value);err==nil {cfg.Bell=enabled;cfg.BellMention=false}
+		case "show_timestamps":
+			if v,err:=strconv.ParseBool(value);err==nil{cfg.HideTimestamps=!v}
+		case "timestamp_12_hour":
+			if v,err:=strconv.ParseBool(value);err==nil{cfg.TwelveHourTime=v}
+		case "timestamp_offset_minutes":
+			if v,err:=strconv.Atoi(value);err==nil{cfg.TimeOffsetMinutes=min(1439,max(-1439,v))}
+		case "highlight_mentions":
+			if v,err:=strconv.ParseBool(value);err==nil{cfg.DisableMentionHighlight=!v}
+		case "confirm_quit":
+			if v,err:=strconv.ParseBool(value);err==nil{cfg.QuitWithoutConfirm=!v}
 		case "show_startup_splash":
 			if v,err:=strconv.ParseBool(value);err==nil {cfg.ShowStartupSplash=v}
 		case "random_splash_logo":
@@ -214,6 +229,11 @@ name = "Anonymous"
 user_color = "#7CFFCB"
 
 bell = true
+show_timestamps = true
+timestamp_12_hour = false
+timestamp_offset_minutes = 0
+highlight_mentions = true
+confirm_quit = true
 show_startup_splash = false
 random_splash_logo = true
 chatfx_enabled = true
@@ -262,6 +282,11 @@ func configFileValues(cfg Config) []configFileEntry {
 		{key: "name", value: strconv.Quote(cfg.Name)},
 		{key: "user_color", value: strconv.Quote(cfg.UserColor)},
 		{key: "bell", value: optionsBellValue(cfg)},
+		{key:"show_timestamps",value:strconv.FormatBool(!cfg.HideTimestamps)},
+		{key:"timestamp_12_hour",value:strconv.FormatBool(cfg.TwelveHourTime)},
+		{key:"timestamp_offset_minutes",value:strconv.Itoa(cfg.TimeOffsetMinutes)},
+		{key:"highlight_mentions",value:strconv.FormatBool(!cfg.DisableMentionHighlight)},
+		{key:"confirm_quit",value:strconv.FormatBool(!cfg.QuitWithoutConfirm)},
 		{key:"show_startup_splash",value:strconv.FormatBool(cfg.ShowStartupSplash)},
 		{key:"random_splash_logo",value:strconv.FormatBool(!cfg.FixedSplashLogo)},
 		{key:"chatfx_enabled",value:strconv.FormatBool(!cfg.FXDisabled)},

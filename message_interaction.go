@@ -57,7 +57,7 @@ func (m model) messageBodyRangesForLineCount(msg Packet, width, lineCount int) [
 		bodyWidth := lipgloss.Width(terminalSafeText(msg.Text))
 		limit := max(1, contentWidth)
 		for row := range ranges {
-			if compact && row == len(ranges)-1 {
+			if compact && !m.cfg.HideTimestamps && row == len(ranges)-1 {
 				break // muted timestamp occupies a separate final row
 			}
 			start := max(0, headerWidth-row*limit)
@@ -78,11 +78,11 @@ func (m model) messageBodyRangesForLineCount(msg Packet, width, lineCount int) [
 		Foreground(lipgloss.Color(msg.User.Color)).
 		Background(bg).
 		Bold(true)
-	timeText := msg.Time.Local().Format("15:04")
-	timestamp := m.styles.time.Render("[" + timeText + "]")
+	timeText := m.timestampText(msg.Time)
+	timestamp := m.styles.time.Render(m.timestampPrefix(msg.Time))
 	replyBadge := m.renderReplyBadgeForWidth(msg, width)
 	badgeWidth := lipgloss.Width(replyBadge)
-	prefix := timestamp + bodyStyle.Render(" ") + nameStyle.Render(msg.User.Name)
+	prefix := timestamp + nameStyle.Render(msg.User.Name)
 	if replyBadge != "" {
 		prefix += replyBadge
 	}
@@ -120,17 +120,18 @@ func (m model) messageBodyRangesForLineCount(msg Packet, width, lineCount int) [
 	if len(nameParts) == 0 {
 		nameParts = []string{""}
 	}
-	stamp := "[" + timeText + "]"
+	stamp := compactTimestamp(timeText)
+	stampGap := compactTimestampGap(stamp)
 	stampWidth := lipgloss.Width(stamp)
 
 	if len(nameParts) > 1 {
-		wrapped := wrapTextVariable(msg.Text, 0, contentWidth-stampWidth-1, contentWidth)
+		wrapped := wrapTextVariable(msg.Text, 0, contentWidth-stampWidth-stampGap, contentWidth)
 		if msg.Rainbow {
 			wrapped = rainbowParts(wrapped, msg.RainbowPhase)
 		}
 		bodyRow := len(nameParts)
 		if len(wrapped) >= 2 && bodyRow < len(ranges) {
-			ranges[bodyRow] = clippedMessageBodyRange(stampWidth+1, stampWidth+1+lipgloss.Width(wrapped[1]), contentWidth)
+			ranges[bodyRow] = clippedMessageBodyRange(stampWidth+stampGap, stampWidth+stampGap+lipgloss.Width(wrapped[1]), contentWidth)
 		}
 		for i := 2; i < len(wrapped) && bodyRow+i-1 < len(ranges); i++ {
 			ranges[bodyRow+i-1] = clippedMessageBodyRange(0, lipgloss.Width(wrapped[i]), contentWidth)
@@ -140,7 +141,7 @@ func (m model) messageBodyRangesForLineCount(msg Packet, width, lineCount int) [
 
 	labelWidth := badgeWidth + lipgloss.Width(nameParts[0] + ": ")
 	firstWidth := contentWidth - labelWidth
-	wrapped := wrapTextVariable(msg.Text, firstWidth, contentWidth-stampWidth-1, contentWidth)
+	wrapped := wrapTextVariable(msg.Text, firstWidth, contentWidth-stampWidth-stampGap, contentWidth)
 	if msg.Rainbow {
 		wrapped = rainbowParts(wrapped, msg.RainbowPhase)
 	}
@@ -148,7 +149,7 @@ func (m model) messageBodyRangesForLineCount(msg Packet, width, lineCount int) [
 		ranges[0] = clippedMessageBodyRange(labelWidth+1, labelWidth+1+lipgloss.Width(wrapped[0]), contentWidth)
 	}
 	if len(wrapped) >= 2 && len(ranges) > 1 {
-		ranges[1] = clippedMessageBodyRange(stampWidth+1, stampWidth+1+lipgloss.Width(wrapped[1]), contentWidth)
+		ranges[1] = clippedMessageBodyRange(stampWidth+stampGap, stampWidth+stampGap+lipgloss.Width(wrapped[1]), contentWidth)
 	}
 	for i := 2; i < len(wrapped) && i < len(ranges); i++ {
 		ranges[i] = clippedMessageBodyRange(0, lipgloss.Width(wrapped[i]), contentWidth)
@@ -402,16 +403,16 @@ func (m model) messageUsernameAt(x, y int) string {
 	relativeRow := row - messageRows.Start
 	localX := x - left
 	contentWidth := chatContentWidth(m.width)
-	timeWidth := lipgloss.Width("[" + packet.Time.Local().Format("15:04") + "]")
+	timeWidth := lipgloss.Width(m.timestampPrefix(packet.Time))
 	if m.width > 48 {
 		badge := m.renderReplyBadgeForWidth(packet, m.width)
 		prefixExtra := 2 // colon and body gap for ordinary messages
 		if packet.XKeyscore > 0 {
 			prefixExtra = 1 // XKeyscore headers end directly after the colon
 		}
-		prefixWidth := timeWidth + 1 + lipgloss.Width(packet.User.Name) + lipgloss.Width(badge) + prefixExtra
+		prefixWidth := timeWidth + lipgloss.Width(packet.User.Name) + lipgloss.Width(badge) + prefixExtra
 		if prefixWidth < contentWidth {
-			nameStart := timeWidth + 1
+			nameStart := timeWidth
 			nameEnd := nameStart + lipgloss.Width(packet.User.Name)
 			if relativeRow == 0 && localX >= nameStart && localX < nameEnd {
 				return packet.User.Name
@@ -469,10 +470,10 @@ func (m model) messageLinkRangesForLineCount(msg Packet, width, lineCount int) [
 			bg := m.messageBackground(msg)
 			nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.User.Color)).Background(bg).Bold(true)
 			bodyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.cfg.Theme.TextColor)).Background(bg)
-			timestamp := m.styles.time.Render("[" + msg.Time.Local().Format("15:04") + "]")
-			widePrefix := timestamp + bodyStyle.Render(" ") + nameStyle.Render(msg.User.Name) + badge + bodyStyle.Render(": ")
+			timestamp := m.styles.time.Render(m.timestampPrefix(msg.Time))
+			widePrefix := timestamp + nameStyle.Render(msg.User.Name) + badge + bodyStyle.Render(": ")
 			if lipgloss.Width(widePrefix) < chatContentWidth(width) {
-				badgeStart = lipgloss.Width(timestamp + " " + nameStyle.Render(msg.User.Name))
+				badgeStart = lipgloss.Width(timestamp + nameStyle.Render(msg.User.Name))
 			} else {
 				compact = true
 				widthForBadge = 48
@@ -502,7 +503,7 @@ func (m model) messageLinkRangesForLineCount(msg Packet, width, lineCount int) [
 		// appended to the body row in that case, matching renderPacketLines.
 		if width <= 48 && row > 0 {
 			plainLast := strings.TrimSpace(stripANSISequences(base[row]))
-			if plainLast == "["+msg.Time.Local().Format("15:04")+"]" {
+			if !m.cfg.HideTimestamps && plainLast == m.timestamp(msg.Time) {
 				row--
 			}
 		}

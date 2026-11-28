@@ -122,7 +122,7 @@ func (m model) renderThemeShareLines(packet Packet, width int) []string {
 			Bold(true)
 	}
 	nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(packet.User.Color)).Background(bg).Bold(true)
-	prefix := muted.Render("["+packet.Time.Local().Format("15:04")+"] ") +
+	prefix := muted.Render(m.timestampPrefix(packet.Time)) +
 		nameStyle.Render(terminalSafeText(packet.User.Name)) + normal.Render(" sent a ")
 	link := accent.Render("[Theme]") + normal.Render("!")
 	var result []string

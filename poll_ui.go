@@ -24,7 +24,7 @@ func (m model) pollLayout(packet Packet, width int) ([]string, []int) {
 	}
 	kind := "POLL"
 	if p.Multi { kind = "MULTIPOLL" }
-	header := fmt.Sprintf("[%s] [%s #%s] %s asks:", packet.Time.Local().Format("15:04"), kind, p.ID, terminalSafeText(packet.User.Name))
+	header := fmt.Sprintf("%s[%s #%s] %s asks:", m.timestampPrefix(packet.Time), kind, p.ID, terminalSafeText(packet.User.Name))
 	for _, line := range wrapANSIHardLine(header, w) { add(line, 0) }
 	for _, line := range wrapANSIHardLine(terminalSafeText(p.Question), w) { add(line, 0) }
 	add("", 0)
@@ -122,7 +122,7 @@ func (m model) renderPollLines(packet Packet, width int) []string {
 		nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(packet.User.Color)).Background(bg).Bold(true)
 		kind := "POLL"
 		if packet.Poll.Multi { kind="MULTIPOLL" }
-		styledHeader := muted.Render("["+packet.Time.Local().Format("15:04")+"] ") +
+		styledHeader := muted.Render(m.timestampPrefix(packet.Time)) +
 			accent.Render("["+kind+" #"+packet.Poll.ID+"] ") +
 			nameStyle.Render(terminalSafeText(packet.User.Name)) +
 			plain.Render(" asks:")

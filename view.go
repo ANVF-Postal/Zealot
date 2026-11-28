@@ -812,6 +812,7 @@ func (m model) renderViewWithChat(header, chatBox string, usersOpen, splashOpen 
 	}
 	mentionStyle := m.mentionStyle(lipgloss.Color(m.cfg.Theme.Background), false)
 	mentionCandidates := m.mentionCandidates()
+	if m.cfg.DisableMentionHighlight {mentionCandidates=nil}
 	for i := range inputView {
 		inputView[i] = styleANSIVisibleMentions(inputView[i], mentionCandidates, mentionStyle)
 	}

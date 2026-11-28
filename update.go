@@ -411,7 +411,7 @@ func (m model) Update(
 				return m, nil
 			}
 			if mouse.X >= targets.quitStart && mouse.X < targets.quitEnd {
-				if m.quitConfirm {
+				if m.quitConfirm || m.cfg.QuitWithoutConfirm {
 					m.quitConfirm = false
 					m.quitConfirmGeneration++
 					m.sendTyping(false)
